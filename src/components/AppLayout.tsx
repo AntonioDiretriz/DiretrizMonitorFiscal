@@ -17,6 +17,11 @@ export function AppLayout() {
           <main className="flex-1 p-6 overflow-auto">
             <Outlet />
           </main>
+          <footer className="border-t bg-card px-6 py-2 text-center">
+            <p className="text-xs text-muted-foreground">
+              © {new Date().getFullYear()} <span className="font-semibold text-foreground">Diretriz Contabilidade</span> — Todos os direitos reservados
+            </p>
+          </footer>
         </div>
       </div>
     </SidebarProvider>
