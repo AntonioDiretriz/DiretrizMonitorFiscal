@@ -1,9 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <!-- Diretriz icon: D-arrow shape, red background, white D+arrow mark -->
-  <!-- Red rounded-rectangle background -->
-  <rect x="2" y="2" width="60" height="60" rx="11" fill="#ED3237"/>
-  <!-- White D-arrow: pentagon shape (D stem left + arrowhead right) -->
-  <path d="M14 14 L14 50 L38 50 L52 32 L38 14 Z" fill="white"/>
-  <!-- Red cutout to create the hollow D body -->
-  <path d="M22 23 L22 41 L35 41 L44 32 L35 23 Z" fill="#ED3237"/>
+  <!--
+    Diretriz D-mark: two horizontal bars connected by D-bowl on the right,
+    with a diagonal gap between them (italic/forward lean effect).
+    fill-rule evenodd punches the gap out of the solid D shape.
+  -->
+  <path fill-rule="evenodd" fill="#ED3237" d="
+    M 6,60
+    L 37,57
+    Q 61,57 61,32
+    Q 61,7  37,7
+    L 6,10
+    Z
+    M 6,27  L 37,24  L 37,40  L 6,43  Z
+  "/>
 </svg>
