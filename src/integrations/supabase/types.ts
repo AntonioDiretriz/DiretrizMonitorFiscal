@@ -71,6 +71,93 @@ export type Database = {
           },
         ]
       }
+      caixas_postais: {
+        Row: {
+          cnpj: string
+          contrato_status: "ativo" | "rescindido"
+          created_at: string
+          data_inicio: string
+          data_rescisao: string | null
+          data_vencimento: string
+          email_responsavel: string | null
+          empresa: string
+          empresa_id: string | null
+          id: string
+          nome_responsavel: string
+          numero: number
+          telefone: string | null
+          updated_at: string
+          user_id: string
+          valor_atual: number | null
+        }
+        Insert: {
+          cnpj: string
+          contrato_status?: "ativo" | "rescindido"
+          created_at?: string
+          data_inicio: string
+          data_rescisao?: string | null
+          data_vencimento: string
+          email_responsavel?: string | null
+          empresa: string
+          empresa_id?: string | null
+          id?: string
+          nome_responsavel: string
+          numero: number
+          telefone?: string | null
+          updated_at?: string
+          user_id: string
+          valor_atual?: number | null
+        }
+        Update: {
+          cnpj?: string
+          contrato_status?: "ativo" | "rescindido"
+          created_at?: string
+          data_inicio?: string
+          data_rescisao?: string | null
+          data_vencimento?: string
+          email_responsavel?: string | null
+          empresa?: string
+          empresa_id?: string | null
+          id?: string
+          nome_responsavel?: string
+          numero?: number
+          telefone?: string | null
+          updated_at?: string
+          user_id?: string
+          valor_atual?: number | null
+        }
+        Relationships: []
+      }
+      caixas_postais_historico: {
+        Row: {
+          caixa_postal_id: string
+          created_at: string
+          data_renovacao: string
+          id: string
+          observacao: string | null
+          user_id: string
+          valor_pago: number | null
+        }
+        Insert: {
+          caixa_postal_id: string
+          created_at?: string
+          data_renovacao: string
+          id?: string
+          observacao?: string | null
+          user_id: string
+          valor_pago?: number | null
+        }
+        Update: {
+          caixa_postal_id?: string
+          created_at?: string
+          data_renovacao?: string
+          id?: string
+          observacao?: string | null
+          user_id?: string
+          valor_pago?: number | null
+        }
+        Relationships: []
+      }
       certificados: {
         Row: {
           created_at: string

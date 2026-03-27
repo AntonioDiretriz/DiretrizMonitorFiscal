@@ -15,6 +15,7 @@ import Certificados from "./pages/Certificados";
 import Alertas from "./pages/Alertas";
 import Configuracoes from "./pages/Configuracoes";
 import Usuarios from "./pages/Usuarios";
+import CaixasPostais from "./pages/CaixasPostais";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -43,6 +44,7 @@ const App = () => (
               <Route path="/alertas" element={<Alertas />} />
               <Route path="/configuracoes" element={<Configuracoes />} />
               <Route path="/usuarios" element={<Usuarios />} />
+              <Route path="/caixas-postais" element={<CaixasPostais />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

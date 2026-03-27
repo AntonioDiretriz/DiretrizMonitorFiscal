@@ -1,6 +1,5 @@
-import { LayoutDashboard, Building2, FileCheck, Bell, Settings, LogOut, Shield, Users, KeyRound } from "lucide-react";
+import { LayoutDashboard, Building2, FileCheck, Bell, Settings, LogOut, Users, KeyRound, MailOpen } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
-import { useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Sidebar,
@@ -17,19 +16,19 @@ import {
 import { Button } from "@/components/ui/button";
 
 const menuItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Empresas", url: "/empresas", icon: Building2 },
-  { title: "Certificados", url: "/certificados", icon: KeyRound },
-  { title: "Certidões", url: "/certidoes", icon: FileCheck },
-  { title: "Alertas", url: "/alertas", icon: Bell },
-  { title: "Equipe", url: "/usuarios", icon: Users },
-  { title: "Configurações", url: "/configuracoes", icon: Settings },
+  { title: "Dashboard",      url: "/",               icon: LayoutDashboard },
+  { title: "Empresas",       url: "/empresas",        icon: Building2 },
+  { title: "Certificados",   url: "/certificados",    icon: KeyRound },
+  { title: "Caixas Postais", url: "/caixas-postais",  icon: MailOpen },
+  { title: "Certidões",      url: "/certidoes",       icon: FileCheck },
+  { title: "Alertas",        url: "/alertas",         icon: Bell },
+  { title: "Equipe",         url: "/usuarios",        icon: Users },
+  { title: "Configurações",  url: "/configuracoes",   icon: Settings },
 ];
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
-  const location = useLocation();
   const { signOut } = useAuth();
 
   return (
