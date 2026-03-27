@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Diretriz Icon - D+Arrow in red -->
+  <path d="M10 52 L10 18 C10 8 18 0 28 0 L46 0 C56 0 64 8 64 18 L64 44 C64 54 56 62 46 62 L28 62 C18 62 10 54 10 52 Z" fill="#ED3237"/>
+  <!-- Arrow stripes (white cuts) -->
+  <rect x="4" y="18" width="52" height="7" rx="2" fill="white"/>
+  <rect x="4" y="37" width="52" height="7" rx="2" fill="white"/>
+</svg>

@@ -1,9 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" width="200" height="60">
-  <rect width="200" height="60" rx="8" fill="#1e40af"/>
-  <text x="16" y="22" font-family="Arial, sans-serif" font-size="11" font-weight="600" fill="#93c5fd" letter-spacing="1">DIRETRIZ</text>
-  <text x="16" y="44" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#ffffff" letter-spacing="0.5">Monitor Fiscal</text>
-  <rect x="168" y="10" width="22" height="40" rx="4" fill="none" stroke="#60a5fa" stroke-width="1.5"/>
-  <path d="M174 24 L180 18 L186 24" stroke="#60a5fa" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-  <path d="M174 34 L180 28 L186 34" stroke="#93c5fd" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-  <circle cx="180" cy="42" r="2" fill="#60a5fa"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 60" width="320" height="60">
+  <!-- Diretriz Brand Logo - New Visual Identity -->
+
+  <!-- Icon: D+Arrow symbol in red -->
+  <g transform="translate(0, 5)">
+    <!-- Main D shape with arrow cuts -->
+    <path d="M8 40 L8 16 C8 8 14 2 22 2 L36 2 C44 2 50 8 50 16 L50 34 C50 42 44 48 36 48 L22 48 C14 48 8 42 8 40 Z" fill="#ED3237"/>
+    <!-- Arrow cut lines (white gaps creating the arrow/stripe effect) -->
+    <rect x="4" y="15" width="40" height="5" rx="1" fill="white"/>
+    <rect x="4" y="30" width="40" height="5" rx="1" fill="white"/>
+    <!-- Arrow tip top-right -->
+    <path d="M34 2 L50 16 L50 2 Z" fill="#ED3237"/>
+  </g>
+
+  <!-- Text "Diretriz" in Kanit SemiBold style - Navy -->
+  <text x="62" y="38" font-family="Kanit, sans-serif" font-size="32" font-weight="600" fill="#10143D" letter-spacing="-0.5">Diretriz</text>
+
+  <!-- Subtitle "CONTABILIDADE E CONSULTORIA" -->
+  <text x="222" y="28" font-family="Kanit, sans-serif" font-size="6.5" font-weight="500" fill="#10143D" letter-spacing="2" opacity="0.7">CONTABILIDADE</text>
+  <text x="222" y="38" font-family="Kanit, sans-serif" font-size="6.5" font-weight="500" fill="#10143D" letter-spacing="2" opacity="0.7">E CONSULTORIA</text>
 </svg>

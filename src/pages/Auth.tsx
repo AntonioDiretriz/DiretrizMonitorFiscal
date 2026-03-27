@@ -63,13 +63,34 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex">
+      {/* Left panel - Brand */}
+      <div className="hidden lg:flex lg:w-1/2 bg-[#10143D] items-center justify-center relative overflow-hidden">
+        <div className="absolute inset-0 opacity-5">
+          <svg viewBox="0 0 400 400" className="w-full h-full">
+            <path d="M80 320 L80 128 C80 64 128 16 192 16 L304 16 C368 16 416 64 416 128 L416 272 C416 336 368 384 304 384 L192 384 C128 384 80 336 80 320 Z" fill="white"/>
+            <rect x="40" y="120" width="340" height="45" rx="8" fill="#10143D"/>
+            <rect x="40" y="240" width="340" height="45" rx="8" fill="#10143D"/>
+          </svg>
+        </div>
+        <div className="relative z-10 text-center px-12">
+          <img src="/logo-white.svg" alt="Diretriz" className="h-14 w-auto mx-auto mb-8" />
+          <p className="text-white/70 text-lg font-light leading-relaxed">
+            Sistema de Monitoramento Fiscal
+          </p>
+        </div>
+      </div>
+
+      {/* Right panel - Form */}
+      <div className="flex-1 flex items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-md border-0 shadow-none lg:shadow-none">
         <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <img src="/logo.svg" alt="Diretriz Monitor Fiscal" className="h-16 w-auto object-contain" />
+          <div className="flex justify-center mb-4 lg:hidden">
+            <img src="/logo.svg" alt="Diretriz Monitor Fiscal" className="h-14 w-auto object-contain" />
           </div>
-          <CardTitle className="text-2xl">Diretriz Monitor Fiscal</CardTitle>
+          <CardTitle className="text-2xl font-semibold">
+            {isResetting ? "Recuperar Senha" : isLogin ? "Bem-vindo" : "Criar Conta"}
+          </CardTitle>
           <CardDescription>
             {isResetting
               ? "Digite seu e-mail para receber um link de recuperação"
@@ -147,6 +168,7 @@ export default function Auth() {
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

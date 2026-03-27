@@ -39,10 +39,10 @@ export function AppSidebar() {
           <SidebarGroupLabel className="px-4 py-6">
             {!collapsed ? (
               <div className="flex items-center gap-3">
-                <img src="/logo.svg" alt="Diretriz Logo" className="h-8 w-auto object-contain" />
+                <img src="/logo-white.svg" alt="Diretriz Logo" className="h-8 w-auto object-contain" />
               </div>
             ) : (
-              <img src="/logo.svg" alt="Diretriz Logo" className="h-8 w-auto object-cover object-left max-w-[2rem]" />
+              <img src="/favicon.svg" alt="Diretriz" className="h-7 w-7 object-contain" />
             )}
           </SidebarGroupLabel>
           <SidebarGroupContent>
@@ -53,8 +53,8 @@ export function AppSidebar() {
                     <NavLink
                       to={item.url}
                       end={item.url === "/"}
-                      className="hover:bg-accent/50"
-                      activeClassName="bg-accent text-primary font-medium"
+                      className="hover:bg-sidebar-accent text-sidebar-foreground/80 hover:text-sidebar-foreground"
+                      activeClassName="bg-sidebar-accent text-sidebar-foreground font-medium"
                     >
                       <item.icon className="mr-2 h-4 w-4" />
                       {!collapsed && <span>{item.title}</span>}
@@ -69,7 +69,7 @@ export function AppSidebar() {
       <SidebarFooter className="p-3">
         <Button
           variant="ghost"
-          className="w-full justify-start text-muted-foreground hover:text-destructive"
+          className="w-full justify-start text-sidebar-foreground/60 hover:text-red-400 hover:bg-sidebar-accent"
           onClick={signOut}
         >
           <LogOut className="mr-2 h-4 w-4" />

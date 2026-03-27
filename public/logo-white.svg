@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 60" width="320" height="60">
+  <!-- Diretriz Brand Logo - White version for dark backgrounds -->
+
+  <!-- Icon: D+Arrow symbol in red -->
+  <g transform="translate(0, 5)">
+    <path d="M8 40 L8 16 C8 8 14 2 22 2 L36 2 C44 2 50 8 50 16 L50 34 C50 42 44 48 36 48 L22 48 C14 48 8 42 8 40 Z" fill="#ED3237"/>
+    <rect x="4" y="15" width="40" height="5" rx="1" fill="#10143D"/>
+    <rect x="4" y="30" width="40" height="5" rx="1" fill="#10143D"/>
+    <path d="M34 2 L50 16 L50 2 Z" fill="#ED3237"/>
+  </g>
+
+  <!-- Text "Diretriz" in white -->
+  <text x="62" y="38" font-family="Kanit, sans-serif" font-size="32" font-weight="600" fill="#FFFFFF" letter-spacing="-0.5">Diretriz</text>
+
+  <!-- Subtitle -->
+  <text x="222" y="28" font-family="Kanit, sans-serif" font-size="6.5" font-weight="500" fill="#FFFFFF" letter-spacing="2" opacity="0.6">CONTABILIDADE</text>
+  <text x="222" y="38" font-family="Kanit, sans-serif" font-size="6.5" font-weight="500" fill="#FFFFFF" letter-spacing="2" opacity="0.6">E CONSULTORIA</text>
+</svg>
