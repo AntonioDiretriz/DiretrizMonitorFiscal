@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, KeyRound, AlertTriangle, XCircle, CheckCircle2, Trash2, Pencil, FileKey2 } from "lucide-react";
+import { Plus, KeyRound, AlertTriangle, XCircle, CheckCircle2, Trash2, Pencil, FileKey2, Printer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, differenceInDays } from "date-fns";
 import type { Tables } from "@/integrations/supabase/types";
@@ -169,6 +169,98 @@ export default function Certificados() {
     .filter(c => !statusFilter || statusFilter === 'todos' || getStatus(c.data_vencimento).id === statusFilter)
     .filter(c => c.empresa.toLowerCase().includes(search.toLowerCase()));
 
+  const handleExportPDF = () => {
+    const filtroLabel = statusFilter === 'ativo' ? 'Ativos' : statusFilter === 'a_expirar' ? 'A Expirar' : statusFilter === 'vencido' ? 'Vencidos' : 'Todos';
+
+    const rows = certificadosFiltrados.map(cert => {
+      const status = getStatus(cert.data_vencimento);
+      const dias = getDiasRestantes(cert.data_vencimento);
+      const diasStr = dias < 0 ? 'Vencido' : `${dias} dias`;
+      const diasColor = dias < 0 ? '#dc2626' : dias <= 10 ? '#d97706' : dias <= 30 ? '#d97706' : '#16a34a';
+      const statusColor = status.id === 'ativo' ? '#16a34a' : status.id === 'a_expirar' ? '#d97706' : '#dc2626';
+      return `<tr>
+        <td>${cert.empresa}</td>
+        <td style="text-align:center">${cert.tipo}</td>
+        <td style="text-align:center">${format(toDate(cert.data_vencimento), 'dd/MM/yyyy')}</td>
+        <td style="text-align:center;color:${diasColor};font-weight:600">${diasStr}</td>
+        <td style="text-align:center;color:${statusColor};font-weight:600">${status.label}</td>
+      </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Certificados Digitais — Diretriz</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700&display=swap');
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Kanit',Arial,sans-serif; font-size:12px; color:#1a1a1a; padding:28px; }
+    .header { display:flex; align-items:center; justify-content:space-between; border-bottom:3px solid #ED3237; padding-bottom:14px; margin-bottom:18px; }
+    .brand { display:flex; align-items:center; gap:12px; }
+    .brand-name { font-size:24px; font-weight:700; color:#10143D; line-height:1; }
+    .brand-sub { font-size:8px; letter-spacing:2.5px; color:#888; margin-top:3px; }
+    .report-info { text-align:right; }
+    .report-title { font-size:15px; font-weight:600; color:#10143D; margin-bottom:3px; }
+    .report-date { font-size:11px; color:#666; }
+    .filter-tag { display:inline-block; background:#f3f4f6; border:1px solid #d1d5db; border-radius:4px; padding:3px 10px; font-size:10px; font-weight:600; color:#374151; margin-bottom:14px; }
+    .summary { display:flex; gap:14px; margin-bottom:18px; }
+    .summary-box { padding:10px 20px; border-radius:8px; text-align:center; min-width:80px; }
+    .summary-box .num { font-size:22px; font-weight:700; }
+    .summary-box .lbl { font-size:9px; text-transform:uppercase; letter-spacing:1px; margin-top:2px; }
+    .box-green { background:#f0fdf4; color:#16a34a; border:1px solid #bbf7d0; }
+    .box-amber { background:#fffbeb; color:#d97706; border:1px solid #fde68a; }
+    .box-red   { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; }
+    table { width:100%; border-collapse:collapse; }
+    th { background:#10143D; color:#fff; padding:9px 12px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
+    td { padding:8px 12px; border-bottom:1px solid #e5e7eb; font-size:11px; }
+    tr:nth-child(even) td { background:#f9fafb; }
+    .footer { margin-top:28px; padding-top:10px; border-top:1px solid #e5e7eb; font-size:9px; color:#9ca3af; text-align:center; }
+    @media print { @page { margin:15mm; } body { padding:0; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">
+      <svg width="44" height="44" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+        <path d="M10 52 L10 18 C10 8 18 0 28 0 L46 0 C56 0 64 8 64 18 L64 44 C64 54 56 62 46 62 L28 62 C18 62 10 54 10 52 Z" fill="#ED3237"/>
+        <rect x="4" y="18" width="52" height="7" rx="2" fill="white"/>
+        <rect x="4" y="37" width="52" height="7" rx="2" fill="white"/>
+      </svg>
+      <div>
+        <div class="brand-name">Diretriz</div>
+        <div class="brand-sub">CONTABILIDADE E CONSULTORIA</div>
+      </div>
+    </div>
+    <div class="report-info">
+      <div class="report-title">Relatório de Certificados Digitais</div>
+      <div class="report-date">Emitido em ${format(new Date(), 'dd/MM/yyyy')} às ${format(new Date(), 'HH:mm')}</div>
+    </div>
+  </div>
+  <span class="filter-tag">Filtro: ${filtroLabel} — ${certificadosFiltrados.length} registro(s)</span>
+  <div class="summary">
+    <div class="summary-box box-green"><div class="num">${ativos}</div><div class="lbl">Ativos</div></div>
+    <div class="summary-box box-amber"><div class="num">${aExpirar}</div><div class="lbl">A Expirar</div></div>
+    <div class="summary-box box-red"><div class="num">${vencidos}</div><div class="lbl">Vencidos</div></div>
+  </div>
+  <table>
+    <thead><tr><th>Empresa</th><th style="text-align:center">Tipo</th><th style="text-align:center">Vencimento</th><th style="text-align:center">Dias Restantes</th><th style="text-align:center">Status</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="5" style="text-align:center;padding:24px;color:#9ca3af">Nenhum certificado encontrado para o filtro selecionado.</td></tr>'}</tbody>
+  </table>
+  <div class="footer">© ${new Date().getFullYear()} Diretriz Contabilidade — Todos os direitos reservados</div>
+  <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 400); };<\/script>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank', 'width=960,height=720');
+    if (!win) {
+      toast({ title: "Bloqueado pelo navegador", description: "Permita pop-ups para este site e tente novamente.", variant: "destructive" });
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in zoom-in-95 duration-200">
       <div className="flex items-center justify-between">
@@ -176,6 +268,10 @@ export default function Certificados() {
           <h1 className="text-2xl font-bold text-foreground">Certificados Digitais</h1>
           <p className="text-muted-foreground">Controle rigoroso dos vencimentos de A1 e A3.</p>
         </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleExportPDF} disabled={certificadosFiltrados.length === 0}>
+            <Printer className="mr-2 h-4 w-4" /> Imprimir / PDF
+          </Button>
         <Dialog open={dialogOpen} onOpenChange={(open) => {
           if (!open) {
             setEditingId(null);
@@ -270,6 +366,7 @@ export default function Certificados() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <div className="flex items-center gap-2 mb-2">
