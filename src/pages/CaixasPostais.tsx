@@ -535,7 +535,13 @@ export default function CaixasPostais() {
                 <Input
                   type="date"
                   value={form.data_inicio}
-                  onChange={e => setForm({ ...form, data_inicio: e.target.value })}
+                  min="2000-01-01"
+                  max="2099-12-31"
+                  onChange={e => {
+                    const val = e.target.value;
+                    if (val && val.split("-")[0]?.length > 4) return;
+                    setForm({ ...form, data_inicio: val });
+                  }}
                   required
                 />
               </div>
