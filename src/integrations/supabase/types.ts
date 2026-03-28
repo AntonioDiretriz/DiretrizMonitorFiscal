@@ -75,6 +75,7 @@ export type Database = {
         Row: {
           cnpj: string
           contrato_status: "ativo" | "rescindido"
+          gratuidade: boolean
           created_at: string
           data_inicio: string
           data_rescisao: string | null
@@ -95,6 +96,7 @@ export type Database = {
           contrato_status?: "ativo" | "rescindido"
           created_at?: string
           data_inicio: string
+          gratuidade?: boolean
           data_rescisao?: string | null
           data_vencimento: string
           email_responsavel?: string | null
@@ -113,6 +115,7 @@ export type Database = {
           contrato_status?: "ativo" | "rescindido"
           created_at?: string
           data_inicio?: string
+          gratuidade?: boolean
           data_rescisao?: string | null
           data_vencimento?: string
           email_responsavel?: string | null

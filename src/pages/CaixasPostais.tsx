@@ -20,6 +20,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   Plus, MailOpen, AlertTriangle, XCircle, CheckCircle2,
   Pencil, RefreshCw, History, Ban, Loader2,
@@ -43,6 +44,7 @@ const EMPTY_FORM = {
   email_responsavel: "",
   data_inicio: format(new Date(), "yyyy-MM-dd"),
   valor_atual: "",
+  gratuidade: false,
 };
 
 const EMPTY_RENOVACAO = {
@@ -191,6 +193,7 @@ export default function CaixasPostais() {
       email_responsavel: c.email_responsavel || "",
       data_inicio:      c.data_inicio,
       valor_atual:      c.valor_atual != null ? String(c.valor_atual) : "",
+      gratuidade:       c.gratuidade ?? false,
     });
     setDialogOpen(true);
   };
@@ -218,7 +221,8 @@ export default function CaixasPostais() {
       email_responsavel: form.email_responsavel.trim() || null,
       data_inicio:      form.data_inicio,
       data_vencimento:  dataVencimento,
-      valor_atual:      form.valor_atual ? parseFloat(form.valor_atual) : null,
+      valor_atual:      form.gratuidade ? 0 : (form.valor_atual ? parseFloat(form.valor_atual) : null),
+      gratuidade:       form.gratuidade,
       contrato_status:  "ativo" as const,
       data_rescisao:    null,
     };
@@ -415,7 +419,16 @@ export default function CaixasPostais() {
                 return (
                   <TableRow key={c.id} className={c.contrato_status === "rescindido" ? "opacity-55" : ""}>
                     <TableCell className="font-bold text-primary">#{c.numero}</TableCell>
-                    <TableCell className="font-medium">{c.empresa}</TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        {c.empresa}
+                        {c.gratuidade && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-100 text-violet-700 border border-violet-200">
+                            GRATUIDADE
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-sm tabular-nums text-muted-foreground">{c.cnpj}</TableCell>
                     <TableCell className="text-sm">{c.nome_responsavel}</TableCell>
                     <TableCell className="text-sm tabular-nums">
@@ -528,6 +541,20 @@ export default function CaixasPostais() {
               </div>
             </div>
 
+            {/* Gratuidade toggle */}
+            <div className={`flex items-center justify-between rounded-lg border p-3 ${form.gratuidade ? "border-violet-300 bg-violet-50" : "border-border bg-muted/20"}`}>
+              <div>
+                <p className="text-sm font-medium">Gratuidade</p>
+                <p className="text-xs text-muted-foreground">Cliente ou parceiro com isenção de pagamento</p>
+              </div>
+              <Switch
+                checked={form.gratuidade}
+                onCheckedChange={checked =>
+                  setForm({ ...form, gratuidade: checked, valor_atual: checked ? "0" : "" })
+                }
+              />
+            </div>
+
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 CNPJ da Empresa
@@ -577,10 +604,15 @@ export default function CaixasPostais() {
                 <Label>Valor do Contrato (R$)</Label>
                 <Input
                   type="number" step="0.01" min="0"
-                  value={form.valor_atual}
+                  value={form.gratuidade ? "0" : form.valor_atual}
                   onChange={e => setForm({ ...form, valor_atual: e.target.value })}
                   placeholder="0,00"
+                  disabled={form.gratuidade}
+                  className={form.gratuidade ? "bg-muted/50 text-muted-foreground" : ""}
                 />
+                {form.gratuidade && (
+                  <p className="text-xs text-violet-600 font-medium">Isento — gratuidade aplicada</p>
+                )}
               </div>
             </div>
 
