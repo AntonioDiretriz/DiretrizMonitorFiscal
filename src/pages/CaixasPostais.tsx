@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import {
   Plus, MailOpen, AlertTriangle, XCircle, CheckCircle2,
-  Pencil, RefreshCw, History, Ban,
+  Pencil, RefreshCw, History, Ban, Loader2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, addDays, differenceInDays } from "date-fns";
@@ -66,6 +66,7 @@ export default function CaixasPostais() {
   const [editingId, setEditingId]             = useState<string | null>(null);
   const [selectedId, setSelectedId]           = useState<string | null>(null);
 
+  const [loadingCnpj, setLoadingCnpj]         = useState(false);
   const [statusFilter, setStatusFilter]       = useState<string | null>(null);
   const [search, setSearch]                   = useState("");
 
@@ -130,24 +131,43 @@ export default function CaixasPostais() {
 
   // ── CNPJ lookup ────────────────────────────────────────────────────────────
 
-  const handleCnpjChange = (raw: string) => {
-    const digits = raw.replace(/\D/g, "");
-    const formatted = digits
+  const formatCnpj = (digits: string) =>
+    digits
       .replace(/^(\d{2})(\d)/, "$1.$2")
       .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
       .replace(/\.(\d{3})(\d)/, ".$1/$2")
       .replace(/(\d{4})(\d)/, "$1-$2")
       .slice(0, 18);
 
-    const empresa = empresas.find(e => e.cnpj.replace(/\D/g, "") === digits);
-    setForm(prev => ({
-      ...prev,
-      cnpj: formatted,
-      empresa:    empresa ? empresa.razao_social : prev.empresa,
-      empresa_id: empresa ? empresa.id           : "",
-    }));
-    if (digits.length === 14 && !empresa) {
-      toast({ title: "CNPJ não encontrado", description: "Esse CNPJ não está cadastrado em Empresas.", variant: "destructive" });
+  const handleCnpjChange = async (raw: string) => {
+    const digits = raw.replace(/\D/g, "").slice(0, 14);
+    const formatted = formatCnpj(digits);
+
+    // Update formatted value immediately
+    setForm(prev => ({ ...prev, cnpj: formatted }));
+
+    if (digits.length !== 14) return;
+
+    // 1. Try local empresas table first (links empresa_id)
+    const local = empresas.find(e => e.cnpj.replace(/\D/g, "") === digits);
+    if (local) {
+      setForm(prev => ({ ...prev, cnpj: formatted, empresa: local.razao_social, empresa_id: local.id }));
+      return;
+    }
+
+    // 2. Fallback: BrasilAPI (same as Empresas page)
+    setLoadingCnpj(true);
+    try {
+      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`);
+      if (!res.ok) throw new Error("não encontrado");
+      const data = await res.json();
+      const nome = data.razao_social || data.nome_fantasia || "";
+      setForm(prev => ({ ...prev, cnpj: formatted, empresa: nome, empresa_id: "" }));
+      toast({ title: "Empresa encontrada!", description: nome });
+    } catch {
+      toast({ title: "CNPJ não encontrado", description: "Verifique o número e tente novamente.", variant: "destructive" });
+    } finally {
+      setLoadingCnpj(false);
     }
   };
 
@@ -509,7 +529,10 @@ export default function CaixasPostais() {
             </div>
 
             <div className="space-y-2">
-              <Label>CNPJ da Empresa</Label>
+              <Label className="flex items-center gap-2">
+                CNPJ da Empresa
+                {loadingCnpj && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+              </Label>
               <Input
                 placeholder="00.000.000/0000-00"
                 value={form.cnpj}
