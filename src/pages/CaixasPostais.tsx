@@ -29,6 +29,19 @@ import { useToast } from "@/hooks/use-toast";
 import { format, addDays, differenceInDays } from "date-fns";
 import type { Tables } from "@/integrations/supabase/types";
 
+function formatPhoneNumber(raw: string) {
+  const d = raw.replace(/\D/g, "").slice(0, 9);
+  if (d.length <= 4) return d;
+  if (d.length <= 8) return `${d.slice(0, 4)}-${d.slice(4)}`;
+  return `${d.slice(0, 5)}-${d.slice(5)}`;
+}
+
+function parsePhone(tel: string | null): { ddd: string; numero: string } {
+  if (!tel) return { ddd: "", numero: "" };
+  const d = tel.replace(/\D/g, "");
+  return { ddd: d.slice(0, 2), numero: d.slice(2) };
+}
+
 type CaixaPostal = Tables<"caixas_postais">;
 type Historico    = Tables<"caixas_postais_historico">;
 
@@ -40,7 +53,8 @@ const EMPTY_FORM = {
   empresa: "",
   empresa_id: "",
   nome_responsavel: "",
-  telefone: "",
+  telefone_ddd: "",
+  telefone_numero: "",
   email_responsavel: "",
   data_inicio: format(new Date(), "yyyy-MM-dd"),
   valor_atual: "",
@@ -167,7 +181,12 @@ export default function CaixasPostais() {
       setForm(prev => ({ ...prev, cnpj: formatted, empresa: nome, empresa_id: "" }));
       toast({ title: "Empresa encontrada!", description: nome });
     } catch {
-      toast({ title: "CNPJ não encontrado", description: "Verifique o número e tente novamente.", variant: "destructive" });
+      // CNPJ not in BrasilAPI — clear empresa field and allow manual entry
+      setForm(prev => ({ ...prev, cnpj: formatted, empresa: "", empresa_id: "" }));
+      toast({
+        title: "Empresa não encontrada automaticamente",
+        description: "Preencha o nome da empresa manualmente.",
+      });
     } finally {
       setLoadingCnpj(false);
     }
@@ -189,7 +208,8 @@ export default function CaixasPostais() {
       empresa:          c.empresa,
       empresa_id:       c.empresa_id || "",
       nome_responsavel: c.nome_responsavel,
-      telefone:         c.telefone || "",
+      telefone_ddd:     parsePhone(c.telefone).ddd,
+      telefone_numero:  parsePhone(c.telefone).numero,
       email_responsavel: c.email_responsavel || "",
       data_inicio:      c.data_inicio,
       valor_atual:      c.valor_atual != null ? String(c.valor_atual) : "",
@@ -217,7 +237,9 @@ export default function CaixasPostais() {
       empresa:          form.empresa.trim(),
       empresa_id:       form.empresa_id || null,
       nome_responsavel: form.nome_responsavel.trim(),
-      telefone:         form.telefone.trim() || null,
+      telefone:         form.telefone_ddd && form.telefone_numero
+                          ? `(${form.telefone_ddd}) ${formatPhoneNumber(form.telefone_numero)}`
+                          : null,
       email_responsavel: form.email_responsavel.trim() || null,
       data_inicio:      form.data_inicio,
       data_vencimento:  dataVencimento,
@@ -227,7 +249,7 @@ export default function CaixasPostais() {
       data_rescisao:    null,
     };
 
-    let error;
+    let error: { message: string } | null;
     if (editingId) {
       ({ error } = await supabase.from("caixas_postais").update(payload).eq("id", editingId));
     } else if (existente) {
@@ -582,7 +604,7 @@ export default function CaixasPostais() {
                 readOnly={!!form.empresa_id}
                 className={form.empresa_id ? "bg-muted/50 font-medium" : ""}
                 onChange={e => !form.empresa_id ? setForm({ ...form, empresa: e.target.value }) : undefined}
-                placeholder="Aguardando CNPJ cadastrado..."
+                placeholder="Digite o CNPJ acima ou preencha manualmente"
                 required
               />
             </div>
@@ -600,11 +622,26 @@ export default function CaixasPostais() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Telefone do Responsável</Label>
-                <Input
-                  value={form.telefone}
-                  onChange={e => setForm({ ...form, telefone: e.target.value })}
-                  placeholder="(00) 00000-0000"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    className="w-16 text-center"
+                    placeholder="DDD"
+                    value={form.telefone_ddd}
+                    maxLength={2}
+                    onChange={e => {
+                      const ddd = e.target.value.replace(/\D/g, "").slice(0, 2);
+                      setForm({ ...form, telefone_ddd: ddd });
+                    }}
+                  />
+                  <Input
+                    placeholder="00000-0000"
+                    value={formatPhoneNumber(form.telefone_numero)}
+                    onChange={e => {
+                      const num = e.target.value.replace(/\D/g, "").slice(0, 9);
+                      setForm({ ...form, telefone_numero: num });
+                    }}
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Valor do Contrato (R$)</Label>

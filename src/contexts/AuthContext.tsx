@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
+import { ALL_MODULE_IDS, type ModuleId } from "@/lib/modules";
 
 type UsuarioPerfil = Tables<"usuarios_perfil">;
 
@@ -13,6 +14,9 @@ interface AuthContextType {
   podeEditar: boolean;
   podeExcluir: boolean;
   isOwner: boolean;
+  isAdmin: boolean;
+  modulosPermitidos: ModuleId[];
+  temModulo: (id: ModuleId) => boolean;
   signOut: () => Promise<void>;
 }
 
@@ -24,6 +28,9 @@ const AuthContext = createContext<AuthContextType>({
   podeEditar: true,
   podeExcluir: true,
   isOwner: true,
+  isAdmin: true,
+  modulosPermitidos: ALL_MODULE_IDS,
+  temModulo: () => true,
   signOut: async () => {},
 });
 
@@ -50,7 +57,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (event === "INITIAL_SESSION" || event === "SIGNED_IN") {
           setLoading(false);
           if (session?.user) {
-            // Defer to avoid Supabase auth deadlock
             setTimeout(() => loadPerfil(session.user.id), 0);
           }
         }
@@ -60,7 +66,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
     );
-
     return () => subscription.unsubscribe();
   }, []);
 
@@ -68,12 +73,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   };
 
-  // If the user has a perfil record (team member), use its permissions.
-  // If no record found, the user is the escritório owner → full permissions.
+  // Owner = no perfil record → full access to everything
   const isOwner = perfil === null;
-  const podeIncluir = isOwner || perfil?.pode_incluir === true;
-  const podeEditar = isOwner || perfil?.pode_editar === true;
-  const podeExcluir = isOwner || perfil?.pode_excluir === true;
+  const isAdmin = isOwner || perfil?.is_admin === true;
+
+  const podeIncluir = isAdmin || perfil?.pode_incluir === true;
+  const podeEditar  = isAdmin || perfil?.pode_editar  === true;
+  const podeExcluir = isAdmin || perfil?.pode_excluir === true;
+
+  // Modules: admin/owner gets all; regular member gets only what's in modulos[]
+  const modulosPermitidos: ModuleId[] = isAdmin
+    ? ALL_MODULE_IDS
+    : ((perfil?.modulos ?? []) as ModuleId[]);
+
+  const temModulo = (id: ModuleId) => modulosPermitidos.includes(id);
 
   return (
     <AuthContext.Provider value={{
@@ -84,6 +97,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       podeEditar,
       podeExcluir,
       isOwner,
+      isAdmin,
+      modulosPermitidos,
+      temModulo,
       signOut,
     }}>
       {children}

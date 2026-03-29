@@ -306,6 +306,7 @@ export type Database = {
           razao_social: string
           regime_tributario: string | null
           responsavel: string | null
+          telefone: string | null
           uf: string | null
           updated_at: string
           user_id: string
@@ -322,6 +323,7 @@ export type Database = {
           razao_social: string
           regime_tributario?: string | null
           responsavel?: string | null
+          telefone?: string | null
           uf?: string | null
           updated_at?: string
           user_id: string
@@ -338,6 +340,7 @@ export type Database = {
           razao_social?: string
           regime_tributario?: string | null
           responsavel?: string | null
+          telefone?: string | null
           uf?: string | null
           updated_at?: string
           user_id?: string
@@ -379,6 +382,7 @@ export type Database = {
           escritorio_owner_id: string
           id: string
           is_admin: boolean
+          modulos: string[]
           nome: string
           pode_editar: boolean
           pode_excluir: boolean
@@ -392,6 +396,7 @@ export type Database = {
           escritorio_owner_id: string
           id?: string
           is_admin?: boolean
+          modulos?: string[]
           nome: string
           pode_editar?: boolean
           pode_excluir?: boolean
@@ -405,6 +410,7 @@ export type Database = {
           escritorio_owner_id?: string
           id?: string
           is_admin?: boolean
+          modulos?: string[]
           nome?: string
           pode_editar?: boolean
           pode_excluir?: boolean
