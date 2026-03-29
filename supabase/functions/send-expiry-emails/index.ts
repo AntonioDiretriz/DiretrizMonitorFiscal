@@ -97,8 +97,39 @@ serve(async () => {
     });
   }
 
+  // ── Caixas Postais expiring in 7 or 30 days ─────────────────────────────
+  const { data: caixas } = await supabase
+    .from("caixas_postais")
+    .select("*")
+    .in("data_vencimento", [fmt(in7), fmt(in30)])
+    .eq("contrato_status", "ativo");
+
+  for (const caixa of caixas ?? []) {
+    const dias = caixa.data_vencimento === fmt(in7) ? 7 : 30;
+    if (caixa.email_responsavel) {
+      await sendEmail(
+        caixa.email_responsavel,
+        `[Monitor Fiscal] Caixa Postal vencendo em ${dias} dias — ${caixa.empresa}`,
+        `<p>Olá,</p>
+         <p>O contrato da Caixa Postal <strong>nº ${caixa.numero}</strong> da empresa
+         <strong>${caixa.empresa}</strong> vence em <strong>${dias} dias</strong>
+         (${caixa.data_vencimento}).</p>
+         <p>Acesse o Monitor Fiscal para realizar a renovação.</p>`
+      );
+    }
+    await supabase.from("alertas").insert({
+      user_id: caixa.user_id,
+      empresa_id: caixa.empresa_id,
+      caixa_postal_id: caixa.id,
+      nivel: dias === 7 ? "critico" : "aviso",
+      titulo: `Caixa Postal vencendo em ${dias} dias`,
+      mensagem: `O contrato da Caixa Postal nº ${caixa.numero} de ${caixa.empresa} vence em ${dias} dias (${caixa.data_vencimento}).`,
+      acao_recomendada: "Renove o contrato da caixa postal antes do vencimento.",
+    });
+  }
+
   return new Response(
-    JSON.stringify({ ok: true, certidoes: certidoes?.length ?? 0, certificados: certificados?.length ?? 0 }),
+    JSON.stringify({ ok: true, certidoes: certidoes?.length ?? 0, certificados: certificados?.length ?? 0, caixas: caixas?.length ?? 0 }),
     { headers: { "Content-Type": "application/json" } }
   );
 });
