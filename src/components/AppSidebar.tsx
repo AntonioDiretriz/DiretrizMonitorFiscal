@@ -61,15 +61,17 @@ export function AppSidebar() {
     { title: "Certificados",       url: "/certificados",   icon: KeyRound,    moduleId: "certificados" },
   ].filter(item => item.soon || !item.moduleId || temModulo(item.moduleId));
 
-  const financeiroItems: { title: string; icon: React.ElementType }[] = [
-    { title: "Conciliação",    icon: Banknote   },
-    { title: "Contas a pagar", icon: CreditCard },
-    { title: "Obrigações",     icon: ListChecks },
+  const financeiroItems: { title: string; url: string; icon: React.ElementType; soon?: boolean }[] = [
+    { title: "Visão Geral",    url: "/financeiro",   icon: Banknote   },
+    { title: "Contas a Pagar", url: "/contas-pagar", icon: CreditCard },
+    { title: "Conciliação",    url: "#",             icon: ListChecks, soon: true },
+    { title: "Obrigações",     url: "#",             icon: ListChecks, soon: true },
   ];
 
   const configItems = [
-    { title: "Empresas", url: "/empresas",  icon: Building2 },
-    { title: "Equipe",   url: "/usuarios",  icon: Users,    adminOnly: true },
+    { title: "Empresas",       url: "/empresas",      icon: Building2 },
+    { title: "Equipe",         url: "/usuarios",      icon: Users,    adminOnly: true },
+    { title: "Plano de Contas",url: "/plano-contas",  icon: ListChecks },
   ].filter(item => !("adminOnly" in item && item.adminOnly) || isAdmin);
 
   return (
@@ -155,11 +157,24 @@ export function AppSidebar() {
                           <SidebarMenuSub>
                             {financeiroItems.map((item) => (
                               <SidebarMenuSubItem key={item.title}>
-                                <SidebarMenuSubButton disabled className="opacity-50 cursor-default">
-                                  <item.icon className="h-3.5 w-3.5 shrink-0" />
-                                  <span className="flex-1">{item.title}</span>
-                                  <span className="ml-auto text-[10px] text-muted-foreground">Em breve</span>
-                                </SidebarMenuSubButton>
+                                {item.soon ? (
+                                  <SidebarMenuSubButton disabled className="opacity-50 cursor-default">
+                                    <item.icon className="h-3.5 w-3.5 shrink-0" />
+                                    <span className="flex-1">{item.title}</span>
+                                    <span className="ml-auto text-[10px] text-muted-foreground">Em breve</span>
+                                  </SidebarMenuSubButton>
+                                ) : (
+                                  <SidebarMenuSubButton asChild>
+                                    <NavLink
+                                      to={item.url}
+                                      className="hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-foreground"
+                                      activeClassName="text-sidebar-foreground font-medium"
+                                    >
+                                      <item.icon className="h-3.5 w-3.5 shrink-0" />
+                                      <span>{item.title}</span>
+                                    </NavLink>
+                                  </SidebarMenuSubButton>
+                                )}
                               </SidebarMenuSubItem>
                             ))}
                           </SidebarMenuSub>

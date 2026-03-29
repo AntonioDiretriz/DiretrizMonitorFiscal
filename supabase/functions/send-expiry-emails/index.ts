@@ -128,8 +128,50 @@ serve(async () => {
     });
   }
 
+  // ── Contas a Pagar vencendo em 3 ou 7 dias ───────────────────────────────
+  const in3 = new Date(today); in3.setDate(today.getDate() + 3);
+  const { data: contasPagar } = await supabase
+    .from("contas_pagar")
+    .select("*, empresas(razao_social, email_responsavel)")
+    .in("data_vencimento", [fmt(in3), fmt(in7)])
+    .in("status", ["pendente", "aprovado"]);
+
+  for (const conta of contasPagar ?? []) {
+    const dias = conta.data_vencimento === fmt(in3) ? 3 : 7;
+    const email = conta.empresas?.email_responsavel;
+    if (email) {
+      await sendEmail(
+        email,
+        `[Monitor Fiscal] Conta a pagar vencendo em ${dias} dias — ${conta.fornecedor}`,
+        `<p>Olá,</p>
+         <p>A conta a pagar para <strong>${conta.fornecedor}</strong>
+         no valor de <strong>R$ ${Number(conta.valor).toFixed(2).replace(".", ",")}</strong>
+         vence em <strong>${dias} dias</strong> (${conta.data_vencimento}).</p>
+         <p>Acesse o Monitor Fiscal para registrar o pagamento.</p>`
+      );
+    }
+    const titulo = `Conta a pagar: ${conta.fornecedor} vence em ${dias} dias`;
+    const { data: jaExiste } = await supabase
+      .from("alertas")
+      .select("id")
+      .eq("user_id", conta.user_id)
+      .eq("titulo", titulo)
+      .eq("resolvida", false)
+      .limit(1);
+    if (!jaExiste || jaExiste.length === 0) {
+      await supabase.from("alertas").insert({
+        user_id: conta.user_id,
+        empresa_id: conta.empresa_id,
+        nivel: dias === 3 ? "critico" : "aviso",
+        titulo,
+        mensagem: `Conta a pagar para ${conta.fornecedor} no valor de R$ ${Number(conta.valor).toFixed(2).replace(".", ",")} vence em ${dias} dias (${conta.data_vencimento}).`,
+        acao_recomendada: "Registre o pagamento antes do vencimento para evitar juros.",
+      });
+    }
+  }
+
   return new Response(
-    JSON.stringify({ ok: true, certidoes: certidoes?.length ?? 0, certificados: certificados?.length ?? 0, caixas: caixas?.length ?? 0 }),
+    JSON.stringify({ ok: true, certidoes: certidoes?.length ?? 0, certificados: certificados?.length ?? 0, caixas: caixas?.length ?? 0, contas_pagar: contasPagar?.length ?? 0 }),
     { headers: { "Content-Type": "application/json" } }
   );
 });

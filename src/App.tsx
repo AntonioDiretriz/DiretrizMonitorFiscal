@@ -16,6 +16,9 @@ import Alertas from "./pages/Alertas";
 import Configuracoes from "./pages/Configuracoes";
 import Usuarios from "./pages/Usuarios";
 import CaixasPostais from "./pages/CaixasPostais";
+import Financeiro from "./pages/Financeiro";
+import ContasPagar from "./pages/ContasPagar";
+import PlanoContas from "./pages/PlanoContas";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -45,6 +48,9 @@ const App = () => (
               <Route path="/configuracoes" element={<Configuracoes />} />
               <Route path="/usuarios" element={<Usuarios />} />
               <Route path="/caixas-postais" element={<CaixasPostais />} />
+              <Route path="/financeiro" element={<Financeiro />} />
+              <Route path="/contas-pagar" element={<ContasPagar />} />
+              <Route path="/plano-contas" element={<PlanoContas />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

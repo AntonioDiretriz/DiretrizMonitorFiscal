@@ -1,6 +1,6 @@
-import { FileCheck, KeyRound, MailOpen, type LucideIcon } from "lucide-react";
+import { FileCheck, KeyRound, MailOpen, Banknote, type LucideIcon } from "lucide-react";
 
-export type ModuleId = "certidoes" | "certificados" | "caixas";
+export type ModuleId = "certidoes" | "certificados" | "caixas" | "financeiro";
 
 export const MODULES: { id: ModuleId; label: string; url: string; icon: LucideIcon; description: string }[] = [
   {
@@ -23,6 +23,13 @@ export const MODULES: { id: ModuleId; label: string; url: string; icon: LucideIc
     url: "/caixas-postais",
     icon: MailOpen,
     description: "Gestão de contratos de caixas postais",
+  },
+  {
+    id: "financeiro",
+    label: "Financeiro",
+    url: "/financeiro",
+    icon: Banknote,
+    description: "Gestão financeira, contas a pagar e conciliação",
   },
 ];
 
