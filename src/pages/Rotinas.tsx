@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO } from "date-fns";
+import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO, addMonths, setDate, subDays, getDaysInMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   Plus, Search, Filter, ClipboardList, Clock, AlertTriangle,
@@ -76,16 +76,46 @@ function NovaRotinaDialog({ open, onOpenChange, empresas, equipe }: NovaRotinaDi
 
   const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }));
 
-  // Auto-fill título and tipo when catálogo item is selected
+  // Calcula datas de vencimento com base na competência + catálogo
+  function calcDatas(competencia: string, catalogoId: string) {
+    if (!competencia || !catalogoId || catalogoId === "_manual") return {};
+    const item = catalogo.data?.find(c => c.id === catalogoId);
+    if (!item || !item.dia_vencimento) return {};
+
+    const refMes = parseISO(competencia + "-01");
+    const mesPagamento = addMonths(refMes, item.meses_offset ?? 1);
+    const maxDia = getDaysInMonth(mesPagamento);
+    const dia = Math.min(item.dia_vencimento, maxDia);
+    const vencLegal = setDate(mesPagamento, dia);
+    const vencInterno = subDays(vencLegal, item.margem_seguranca ?? 3);
+
+    return {
+      data_vencimento: format(vencLegal, "yyyy-MM-dd"),
+      data_vencimento_interno: format(vencInterno, "yyyy-MM-dd"),
+    };
+  }
+
+  // Auto-fill título, tipo e datas quando catálogo é selecionado
   function onCatalogoChange(id: string) {
-    set("catalogo_id", id);
-    if (id && id !== "_manual") {
-      const item = catalogo.data?.find(c => c.id === id);
-      if (item) {
-        set("titulo", item.nome);
-        set("tipo", item.tipo);
-      }
+    if (!id || id === "_manual") {
+      setForm(p => ({ ...p, catalogo_id: id, titulo: "", tipo: "", data_vencimento: "", data_vencimento_interno: "" }));
+      return;
     }
+    const item = catalogo.data?.find(c => c.id === id);
+    const datas = calcDatas(form.competencia, id);
+    setForm(p => ({
+      ...p,
+      catalogo_id: id,
+      titulo: item?.nome ?? p.titulo,
+      tipo: item?.tipo ?? p.tipo,
+      ...datas,
+    }));
+  }
+
+  // Recalcula datas quando competência muda (se já tem catálogo selecionado)
+  function onCompetenciaChange(v: string) {
+    const datas = calcDatas(v, form.catalogo_id);
+    setForm(p => ({ ...p, competencia: v, ...datas }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -148,7 +178,7 @@ function NovaRotinaDialog({ open, onOpenChange, empresas, equipe }: NovaRotinaDi
               <Input
                 type="month"
                 value={form.competencia}
-                onChange={e => set("competencia", e.target.value)}
+                onChange={e => onCompetenciaChange(e.target.value)}
               />
             </div>
           </div>
@@ -192,7 +222,12 @@ function NovaRotinaDialog({ open, onOpenChange, empresas, equipe }: NovaRotinaDi
           {/* Datas */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label>Vencimento Legal *</Label>
+              <Label>
+                Vencimento Legal *
+                {form.catalogo_id && form.catalogo_id !== "_manual" && (
+                  <span className="ml-2 text-[10px] text-muted-foreground font-normal">calculado automaticamente</span>
+                )}
+              </Label>
               <Input
                 type="date"
                 value={form.data_vencimento}
@@ -201,7 +236,12 @@ function NovaRotinaDialog({ open, onOpenChange, empresas, equipe }: NovaRotinaDi
               />
             </div>
             <div>
-              <Label>Prazo Interno</Label>
+              <Label>
+                Prazo Interno
+                {form.catalogo_id && form.catalogo_id !== "_manual" && (
+                  <span className="ml-2 text-[10px] text-muted-foreground font-normal">calculado automaticamente</span>
+                )}
+              </Label>
               <Input
                 type="date"
                 value={form.data_vencimento_interno}
