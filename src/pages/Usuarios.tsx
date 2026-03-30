@@ -10,17 +10,26 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Plus, Users, Trash2, Pencil, PackageCheck } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import type { Tables } from "@/integrations/supabase/types";
 import { MODULES, ALL_MODULE_IDS, type ModuleId } from "@/lib/modules";
 
 type UsuarioPerfil = Tables<"usuarios_perfil">;
 
+const PAPEL_ROTINAS_OPTIONS = [
+  { value: "nenhum",      label: "Não participa de Rotinas" },
+  { value: "responsavel", label: "Responsável pela tarefa"  },
+  { value: "revisor",     label: "Revisor da tarefa"        },
+  { value: "ambos",       label: "Responsável e Revisor"    },
+];
+
 const EMPTY_FORM = {
   nome: "", email: "", cpf: "",
   is_admin: false,
   pode_incluir: false, pode_editar: false, pode_excluir: false,
   modulos: [] as ModuleId[],
+  papel_rotinas: "nenhum",
 };
 
 export default function Usuarios() {
@@ -67,6 +76,7 @@ export default function Usuarios() {
       is_admin: u.is_admin,
       pode_incluir: u.pode_incluir, pode_editar: u.pode_editar, pode_excluir: u.pode_excluir,
       modulos: (u.modulos ?? []) as ModuleId[],
+      papel_rotinas: (u as any).papel_rotinas ?? "nenhum",
     });
     setDialogOpen(true);
   };
@@ -108,6 +118,7 @@ export default function Usuarios() {
       pode_editar:  form.is_admin ? true : form.pode_editar,
       pode_excluir: form.is_admin ? true : form.pode_excluir,
       modulos: form.is_admin ? ALL_MODULE_IDS : form.modulos,
+      papel_rotinas: form.papel_rotinas,
     };
 
     let error: { message: string } | null;
@@ -277,6 +288,27 @@ export default function Usuarios() {
                 )}
               </div>
 
+              {/* Papel nas Rotinas */}
+              <div className="border-t pt-4 space-y-2">
+                <Label className="font-semibold text-sm">Papel nas Rotinas</Label>
+                <Select
+                  value={form.papel_rotinas}
+                  onValueChange={v => setForm({ ...form, papel_rotinas: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAPEL_ROTINAS_OPTIONS.map(o => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Define se este colaborador pode ser atribuído como Responsável e/ou Revisor nas tarefas de Rotinas.
+                </p>
+              </div>
+
               <Button type="submit" className="w-full">
                 {editingId ? "Salvar Alterações" : "Cadastrar na Equipe"}
               </Button>
@@ -294,6 +326,7 @@ export default function Usuarios() {
                 <TableHead>Perfil</TableHead>
                 <TableHead>Permissões</TableHead>
                 <TableHead>Módulos</TableHead>
+                <TableHead>Rotinas</TableHead>
                 <TableHead className="w-12 text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
@@ -320,6 +353,18 @@ export default function Usuarios() {
                     )}
                   </TableCell>
                   <TableCell>{moduloLabel(u)}</TableCell>
+                  <TableCell>
+                    {(() => {
+                      const papel = (u as any).papel_rotinas ?? "nenhum";
+                      const opt = PAPEL_ROTINAS_OPTIONS.find(o => o.value === papel);
+                      if (!opt || papel === "nenhum") return <span className="text-xs text-muted-foreground italic">—</span>;
+                      return (
+                        <Badge variant="outline" className="text-[10px]">
+                          {opt.label}
+                        </Badge>
+                      );
+                    })()}
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1 justify-end">
                       <Button variant="ghost" size="icon" onClick={() => handleEdit(u)}>
@@ -351,7 +396,7 @@ export default function Usuarios() {
                 </TableRow>
               )) : (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                     <Users className="mx-auto h-8 w-8 mb-2 opacity-40" />
                     Nenhum membro cadastrado na equipe
                   </TableCell>

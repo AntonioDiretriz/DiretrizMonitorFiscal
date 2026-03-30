@@ -52,7 +52,7 @@ interface NovaRotinaDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   empresas: { id: string; razao_social: string }[];
-  equipe: { id: string; nome: string }[];
+  equipe: { id: string; nome: string; papel_rotinas?: string }[];
 }
 
 function NovaRotinaDialog({ open, onOpenChange, empresas, equipe }: NovaRotinaDialogProps) {
@@ -70,7 +70,6 @@ function NovaRotinaDialog({ open, onOpenChange, empresas, equipe }: NovaRotinaDi
     data_vencimento_interno: "",
     responsavel_id: "",
     revisor_id: "",
-    valor: "",
     observacao: "",
   });
 
@@ -135,7 +134,6 @@ function NovaRotinaDialog({ open, onOpenChange, empresas, equipe }: NovaRotinaDi
         data_vencimento_interno: form.data_vencimento_interno || null,
         responsavel_id: form.responsavel_id || null,
         revisor_id: form.revisor_id || null,
-        valor: form.valor ? parseFloat(form.valor) : null,
         observacao: form.observacao || null,
       });
       toast({ title: "Rotina criada com sucesso!" });
@@ -144,7 +142,7 @@ function NovaRotinaDialog({ open, onOpenChange, empresas, equipe }: NovaRotinaDi
         empresa_id: "", catalogo_id: "", titulo: "", tipo: "",
         competencia: format(startOfMonth(new Date()), "yyyy-MM"),
         data_vencimento: "", data_vencimento_interno: "",
-        responsavel_id: "", revisor_id: "", valor: "", observacao: "",
+        responsavel_id: "", revisor_id: "", observacao: "",
       });
     } catch (err: any) {
       toast({ title: "Erro ao criar rotina", description: err.message, variant: "destructive" });
@@ -257,9 +255,10 @@ function NovaRotinaDialog({ open, onOpenChange, empresas, equipe }: NovaRotinaDi
               <Select value={form.responsavel_id} onValueChange={v => set("responsavel_id", v)}>
                 <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
                 <SelectContent>
-                  {equipe.map(u => (
-                    <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
-                  ))}
+                  {equipe
+                    .filter(u => ["responsavel", "ambos"].includes(u.papel_rotinas ?? ""))
+                    .map(u => <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>)
+                  }
                 </SelectContent>
               </Select>
             </div>
@@ -268,28 +267,15 @@ function NovaRotinaDialog({ open, onOpenChange, empresas, equipe }: NovaRotinaDi
               <Select value={form.revisor_id} onValueChange={v => set("revisor_id", v)}>
                 <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
                 <SelectContent>
-                  {equipe.map(u => (
-                    <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
-                  ))}
+                  {equipe
+                    .filter(u => ["revisor", "ambos"].includes(u.papel_rotinas ?? ""))
+                    .map(u => <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>)
+                  }
                 </SelectContent>
               </Select>
             </div>
           </div>
 
-          {/* Valor + Observação */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Valor (R$)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={form.valor}
-                onChange={e => set("valor", e.target.value)}
-                placeholder="0,00"
-              />
-            </div>
-          </div>
           <div>
             <Label>Observação</Label>
             <Textarea
@@ -374,14 +360,14 @@ export default function Rotinas() {
 
   // Aux data
   const [empresas, setEmpresas] = useState<{ id: string; razao_social: string }[]>([]);
-  const [equipe, setEquipe] = useState<{ id: string; nome: string }[]>([]);
+  const [equipe, setEquipe] = useState<{ id: string; nome: string; papel_rotinas?: string }[]>([]);
 
   useEffect(() => {
     if (!user) return;
     supabase.from("empresas").select("id, razao_social").eq("user_id", user.id).order("razao_social")
       .then(({ data }) => setEmpresas(data ?? []));
-    supabase.from("usuarios_perfil").select("id, nome").eq("user_id", user.id).order("nome")
-      .then(({ data }) => setEquipe(data ?? []));
+    supabase.from("usuarios_perfil").select("id, nome, papel_rotinas").eq("user_id", user.id).order("nome")
+      .then(({ data }) => setEquipe((data ?? []) as { id: string; nome: string; papel_rotinas?: string }[]));
   }, [user]);
 
   // ── KPIs ──
