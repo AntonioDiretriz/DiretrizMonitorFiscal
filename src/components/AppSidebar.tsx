@@ -65,7 +65,7 @@ export function AppSidebar() {
     { title: "Visão Geral",    url: "/financeiro",   icon: Banknote   },
     { title: "Contas a Pagar", url: "/contas-pagar", icon: CreditCard },
     { title: "Conciliação",    url: "/conciliacao",  icon: ListChecks },
-    { title: "Obrigações",     url: "#",             icon: ListChecks, soon: true },
+    { title: "Obrigações",     url: "/obrigacoes",   icon: ListChecks },
   ];
 
   const configItems = [
