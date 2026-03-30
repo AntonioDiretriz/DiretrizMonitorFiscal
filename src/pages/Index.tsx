@@ -589,59 +589,64 @@ export default function Index() {
         </CardHeader>
         <CardContent>
           {dddData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={dddData}
-                  cx="40%"
-                  cy="50%"
-                  innerRadius={75}
-                  outerRadius={110}
-                  dataKey="count"
-                  paddingAngle={3}
-                  strokeWidth={0}
-                >
-                  {dddData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                  <Label
-                    content={({ viewBox }: any) => {
-                      const { cx, cy } = viewBox;
+            <div className="space-y-4">
+              <ResponsiveContainer width="100%" height={240}>
+                <PieChart>
+                  <Pie
+                    data={dddData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={70}
+                    outerRadius={105}
+                    dataKey="count"
+                    paddingAngle={3}
+                    strokeWidth={0}
+                  >
+                    {dddData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                    <Label
+                      content={({ viewBox }: any) => {
+                        const { cx, cy } = viewBox;
+                        return (
+                          <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle">
+                            <tspan x={cx} dy="-0.5em" fontSize="28" fontWeight="700" fill={NAVY}>{totalDdd}</tspan>
+                            <tspan x={cx} dy="1.6em" fontSize="11" fill="#6b7280">clientes</tspan>
+                          </text>
+                        );
+                      }}
+                    />
+                  </Pie>
+                  <Tooltip
+                    content={({ active, payload }: any) => {
+                      if (!active || !payload?.length) return null;
+                      const d = payload[0].payload;
+                      const pct = totalDdd > 0 ? ((d.count / totalDdd) * 100).toFixed(1) : "0";
                       return (
-                        <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle">
-                          <tspan x={cx} dy="-0.5em" fontSize="28" fontWeight="700" fill={NAVY}>{totalDdd}</tspan>
-                          <tspan x={cx} dy="1.6em" fontSize="11" fill="#6b7280">clientes</tspan>
-                        </text>
+                        <div className="bg-white border border-border shadow-lg rounded-lg p-3 text-sm">
+                          <p className="font-semibold text-foreground">{d.name}</p>
+                          <p style={{ color: d.color }}>Clientes: <strong>{d.count}</strong></p>
+                          <p className="text-muted-foreground">{pct}% do total</p>
+                        </div>
                       );
                     }}
                   />
-                </Pie>
-                <Legend
-                  iconType="circle"
-                  iconSize={8}
-                  layout="vertical"
-                  align="right"
-                  verticalAlign="middle"
-                  formatter={(value, entry: any) => (
-                    <span className="text-xs text-foreground">
-                      {UF_NAMES[value] || value} <strong>({entry.payload.count})</strong>
-                    </span>
-                  )}
-                />
-                <Tooltip
-                  content={({ active, payload }: any) => {
-                    if (!active || !payload?.length) return null;
-                    const d = payload[0].payload;
-                    const pct = totalDdd > 0 ? ((d.count / totalDdd) * 100).toFixed(1) : "0";
-                    return (
-                      <div className="bg-white border border-border shadow-lg rounded-lg p-3 text-sm">
-                        <p className="font-semibold text-foreground">{d.name}</p>
-                        <p style={{ color: d.color }}>Clientes: <strong>{d.count}</strong></p>
-                        <p className="text-muted-foreground">{pct}% do total</p>
-                      </div>
-                    );
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+                </PieChart>
+              </ResponsiveContainer>
+
+              {/* Legenda em grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-1.5 pt-2 border-t">
+                {dddData.map((d) => {
+                  const pct = totalDdd > 0 ? ((d.count / totalDdd) * 100).toFixed(1) : "0";
+                  return (
+                    <div key={d.uf} className="flex items-center gap-1.5 min-w-0">
+                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+                      <span className="text-xs text-foreground truncate">{d.name}</span>
+                      <span className="text-xs font-semibold ml-auto shrink-0" style={{ color: d.color }}>{d.count}</span>
+                      <span className="text-[10px] text-muted-foreground shrink-0">({pct}%)</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-10 text-muted-foreground text-sm gap-2">
               <MapPin className="h-8 w-8 opacity-30" />
