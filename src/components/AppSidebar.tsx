@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   LayoutDashboard, Building2, FileCheck, Bell, Settings, LogOut,
   Users, KeyRound, MailOpen, ChevronRight, Stethoscope,
-  Banknote, CreditCard, ListChecks, Package,
+  Banknote, CreditCard, ListChecks, Package, UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NavLink } from "@/components/NavLink";
@@ -64,13 +64,14 @@ export function AppSidebar() {
   const financeiroItems: { title: string; url: string; icon: React.ElementType; soon?: boolean }[] = [
     { title: "Visão Geral",    url: "/financeiro",   icon: Banknote   },
     { title: "Contas a Pagar", url: "/contas-pagar", icon: CreditCard },
-    { title: "Conciliação",    url: "#",             icon: ListChecks, soon: true },
+    { title: "Conciliação",    url: "/conciliacao",  icon: ListChecks },
     { title: "Obrigações",     url: "#",             icon: ListChecks, soon: true },
   ];
 
   const configItems = [
-    { title: "Empresas",       url: "/empresas",      icon: Building2 },
-    { title: "Equipe",         url: "/usuarios",      icon: Users,    adminOnly: true },
+    { title: "Empresas",       url: "/empresas",      icon: Building2  },
+    { title: "Fornecedores",   url: "/fornecedores",  icon: UserCheck  },
+    { title: "Equipe",         url: "/usuarios",      icon: Users,     adminOnly: true },
     { title: "Plano de Contas",url: "/plano-contas",  icon: ListChecks },
   ].filter(item => !("adminOnly" in item && item.adminOnly) || isAdmin);
 

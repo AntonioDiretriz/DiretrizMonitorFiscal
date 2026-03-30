@@ -1,7 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { format, differenceInDays, addDays } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import {
   Plus, Search, CreditCard, Trash2, Pencil, CheckCircle,
   AlertTriangle, Clock, XCircle, DollarSign, Filter,
@@ -17,6 +16,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import {
   useContasPagar, useCreateContaPagar, useUpdateContaPagar, useDeleteContaPagar,
   type ContaPagar, type ContaPagarInsert, type ContaPagarStatus,
@@ -55,14 +55,18 @@ const EMPTY_FORM: ContaPagarInsert = {
   valor: 0,
   data_emissao: "",
   data_vencimento: "",
-  categoria: "",
+  empresa_id: null,
+  plano_conta_id: null,
   forma_pagamento: "",
   descricao: "",
   observacao: "",
 };
 
+interface Empresa { id: string; razao_social: string; }
+interface PlanoConta { id: string; codigo: string; nome: string; tipo: string; }
+
 export default function ContasPagar() {
-  const { podeIncluir, podeEditar, podeExcluir } = useAuth();
+  const { user, podeIncluir, podeEditar, podeExcluir } = useAuth();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState("");
@@ -72,11 +76,21 @@ export default function ContasPagar() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ContaPagarInsert>(EMPTY_FORM);
   const [dataPagamento, setDataPagamento] = useState("");
+  const [empresas, setEmpresas] = useState<Empresa[]>([]);
+  const [planoContas, setPlanoContas] = useState<PlanoConta[]>([]);
 
   const { data: contas = [], isLoading } = useContasPagar();
   const createConta = useCreateContaPagar();
   const updateConta = useUpdateContaPagar();
   const deleteConta = useDeleteContaPagar();
+
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("empresas").select("id, razao_social").eq("user_id", user.id).order("razao_social")
+      .then(({ data }) => setEmpresas(data ?? []));
+    supabase.from("plano_contas").select("id, codigo, nome, tipo").eq("user_id", user.id).order("codigo")
+      .then(({ data }) => setPlanoContas(data ?? []));
+  }, [user]);
 
   const today = new Date();
   const in7   = addDays(today, 7);
@@ -135,7 +149,8 @@ export default function ContasPagar() {
       valor: c.valor,
       data_emissao: c.data_emissao ?? "",
       data_vencimento: c.data_vencimento,
-      categoria: c.categoria ?? "",
+      empresa_id: c.empresa_id ?? null,
+      plano_conta_id: c.plano_conta_id ?? null,
       forma_pagamento: c.forma_pagamento ?? "",
       descricao: c.descricao ?? "",
       observacao: c.observacao ?? "",
@@ -170,6 +185,11 @@ export default function ContasPagar() {
     { label: "Vencidas",            value: String(vencidas),              icon: AlertTriangle,color: RED,   bg: "#fff1f1", filtro: "vencidas" },
     { label: "Pago no mês",         value: formatCurrency(pagoMes),       icon: CheckCircle,  color: GREEN, bg: "#f0fdf4", filtro: null },
   ];
+
+  const planoContaLabel = (id: string | null) => {
+    const p = planoContas.find(p => p.id === id);
+    return p ? `${p.codigo} — ${p.nome}` : null;
+  };
 
   return (
     <div className="space-y-6">
@@ -212,10 +232,45 @@ export default function ContasPagar() {
                   <Label>Data de Vencimento *</Label>
                   <Input type="date" value={form.data_vencimento} onChange={e => setForm({ ...form, data_vencimento: e.target.value })} required />
                 </div>
-                <div className="space-y-2">
-                  <Label>Categoria</Label>
-                  <Input placeholder="Ex: Fornecedores, Impostos..." value={form.categoria ?? ""} onChange={e => setForm({ ...form, categoria: e.target.value })} />
-                </div>
+
+                {/* Empresa */}
+                {empresas.length > 0 && (
+                  <div className="space-y-2 col-span-2">
+                    <Label>Empresa</Label>
+                    <Select
+                      value={form.empresa_id ?? "none"}
+                      onValueChange={v => setForm({ ...form, empresa_id: v === "none" ? null : v })}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Nenhuma" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Nenhuma</SelectItem>
+                        {empresas.map(e => (
+                          <SelectItem key={e.id} value={e.id}>{e.razao_social}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {/* Plano de contas */}
+                {planoContas.length > 0 && (
+                  <div className="space-y-2 col-span-2">
+                    <Label>Categoria (Plano de Contas)</Label>
+                    <Select
+                      value={form.plano_conta_id ?? "none"}
+                      onValueChange={v => setForm({ ...form, plano_conta_id: v === "none" ? null : v })}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Nenhuma categoria" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Nenhuma categoria</SelectItem>
+                        {planoContas.map(p => (
+                          <SelectItem key={p.id} value={p.id}>{p.codigo} — {p.nome}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <Label>Forma de Pagamento</Label>
                   <Select value={form.forma_pagamento ?? ""} onValueChange={v => setForm({ ...form, forma_pagamento: v })}>
@@ -229,7 +284,7 @@ export default function ContasPagar() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2 col-span-2">
+                <div className="space-y-2">
                   <Label>Descrição</Label>
                   <Input placeholder="Descrição opcional" value={form.descricao ?? ""} onChange={e => setForm({ ...form, descricao: e.target.value })} />
                 </div>
@@ -299,19 +354,20 @@ export default function ContasPagar() {
             <TableHeader>
               <TableRow>
                 <TableHead>Fornecedor</TableHead>
+                <TableHead>Empresa</TableHead>
+                <TableHead>Categoria</TableHead>
                 <TableHead>Vencimento</TableHead>
                 <TableHead>Valor</TableHead>
-                <TableHead>Categoria</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-28"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                     <CreditCard className="mx-auto h-8 w-8 mb-2 opacity-40" />
                     Nenhuma conta encontrada
                   </TableCell>
@@ -321,11 +377,18 @@ export default function ContasPagar() {
                 const dias = differenceInDays(venc, today);
                 const vencendoHoje = dias === 0 && c.status !== "pago";
                 const atrasado = dias < 0 && c.status !== "pago" && c.status !== "cancelado";
+                const categoriaLabel = planoContaLabel(c.plano_conta_id);
                 return (
                   <TableRow key={c.id} className={atrasado ? "bg-red-50/50" : vencendoHoje ? "bg-amber-50/50" : ""}>
                     <TableCell>
                       <div className="font-medium">{c.fornecedor}</div>
                       {c.descricao && <div className="text-xs text-muted-foreground">{c.descricao}</div>}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {c.empresas?.razao_social || "—"}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {categoriaLabel || "—"}
                     </TableCell>
                     <TableCell>
                       <div className={atrasado ? "text-red-600 font-medium" : vencendoHoje ? "text-amber-600 font-medium" : ""}>
@@ -338,7 +401,6 @@ export default function ContasPagar() {
                       )}
                     </TableCell>
                     <TableCell className="font-medium">{formatCurrency(Number(c.valor))}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{c.categoria || "—"}</TableCell>
                     <TableCell><StatusBadge status={c.status} /></TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1 justify-end">
