@@ -2,7 +2,8 @@ import { useState } from "react";
 import {
   LayoutDashboard, Building2, FileCheck, Bell, Settings, LogOut,
   Users, KeyRound, MailOpen, ChevronRight, Stethoscope,
-  Banknote, CreditCard, ListChecks, Package, UserCheck,
+  Banknote, CreditCard, ListChecks, Package, UserCheck, ClipboardList,
+  CalendarDays, BarChart2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NavLink } from "@/components/NavLink";
@@ -181,6 +182,33 @@ export function AppSidebar() {
                           </SidebarMenuSub>
                         </NavSection>
                       </SidebarMenuItem>
+
+                      {/* ── Rotinas ── */}
+                      <SidebarMenuItem>
+                        <NavSection icon={ClipboardList} label="Rotinas">
+                          <SidebarMenuSub>
+                            {[
+                              { title: "Tarefas",    url: "/rotinas",             icon: ClipboardList },
+                              { title: "Calendário", url: "/rotinas/calendario",  icon: CalendarDays  },
+                              { title: "Dashboard",  url: "/rotinas/dashboard",   icon: BarChart2     },
+                            ].map((item) => (
+                              <SidebarMenuSubItem key={item.title}>
+                                <SidebarMenuSubButton asChild>
+                                  <NavLink
+                                    to={item.url}
+                                    className="hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-foreground"
+                                    activeClassName="text-sidebar-foreground font-medium"
+                                  >
+                                    <item.icon className="h-3.5 w-3.5 shrink-0" />
+                                    <span>{item.title}</span>
+                                  </NavLink>
+                                </SidebarMenuSubButton>
+                              </SidebarMenuSubItem>
+                            ))}
+                          </SidebarMenuSub>
+                        </NavSection>
+                      </SidebarMenuItem>
+
                     </div>
                   </NavSection>
                 </SidebarMenuItem>

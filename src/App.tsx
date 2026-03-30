@@ -22,6 +22,9 @@ import PlanoContas from "./pages/PlanoContas";
 import Conciliacao from "./pages/Conciliacao";
 import Fornecedores from "./pages/Fornecedores";
 import Obrigacoes from "./pages/Obrigacoes";
+import Rotinas from "./pages/Rotinas";
+import CalendarioRotinas from "./pages/CalendarioRotinas";
+import DashboardRotinas from "./pages/DashboardRotinas";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -57,6 +60,9 @@ const App = () => (
               <Route path="/conciliacao" element={<Conciliacao />} />
               <Route path="/fornecedores" element={<Fornecedores />} />
               <Route path="/obrigacoes" element={<Obrigacoes />} />
+              <Route path="/rotinas" element={<Rotinas />} />
+              <Route path="/rotinas/calendario" element={<CalendarioRotinas />} />
+              <Route path="/rotinas/dashboard" element={<DashboardRotinas />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
