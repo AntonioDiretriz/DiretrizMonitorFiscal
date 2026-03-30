@@ -425,12 +425,10 @@ export default function Index() {
       {/* ── KPI strip (contextual por módulo) ── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {(activeModule === "todos" ? [
-          { label: "Empresas Monitoradas",   value: totalEmpresas,        icon: Building2,     color: NAVY,      bg: "#f0f1f8", to: "/empresas"      },
-          { label: "Certidões Regulares",    value: certRegulares,        icon: CheckCircle,   color: GREEN,     bg: "#f0fdf4", to: "/certidoes"     },
-          { label: "Irregulares / Vencendo", value: certIrreg + certVenc, icon: AlertTriangle, color: RED,       bg: "#fff1f1", to: "/certidoes"     },
-          caixasAVencer > 0
-            ? { label: "Caixas A Vencer (30d)", value: caixasAVencer, icon: MailOpen, color: AMBER,     bg: "#fffbeb", to: "/caixas-postais?filtro=a_vencer" }
-            : { label: "Caixas Postais Ativas", value: caixasAtivas,  icon: MailOpen, color: "#0ea5e9", bg: "#eff6ff", to: "/caixas-postais?filtro=ativa" },
+          { label: "Certidões com Problema", value: certIrreg + certVenc,                                                                  icon: AlertTriangle, color: RED,       bg: "#fff1f1", to: "/certidoes"                        },
+          { label: "Certificados Vencendo",  value: (certDigVencData.find(d => d.name === "Vencendo")?.value || 0) + (certDigVencData.find(d => d.name === "Vencidos")?.value || 0), icon: KeyRound, color: AMBER, bg: "#fffbeb", to: "/certificados" },
+          { label: "Caixas A Vencer (30d)",  value: caixasAVencer,                                                                         icon: MailOpen,      color: AMBER,     bg: "#fffbeb", to: "/caixas-postais?filtro=a_vencer"   },
+          { label: "Empresas sem Dados",     value: camposEmBranco.semRegime + camposEmBranco.semEmail + camposEmBranco.semTelefone + camposEmBranco.semMunicipio, icon: Building2, color: NAVY, bg: "#f0f1f8", to: "/empresas" },
         ] : activeModule === "certidoes" ? [
           { label: "Total de Certidões",     value: totalCerts,           icon: FileCheck,     color: NAVY,      bg: "#f0f1f8", to: "/certidoes" },
           { label: "Regulares",              value: certRegulares,        icon: CheckCircle,   color: GREEN,     bg: "#f0fdf4", to: "/certidoes" },
