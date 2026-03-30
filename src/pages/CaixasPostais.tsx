@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -85,6 +86,13 @@ export default function CaixasPostais() {
   const [loadingCnpj, setLoadingCnpj]         = useState(false);
   const [statusFilter, setStatusFilter]       = useState<string | null>(null);
   const [search, setSearch]                   = useState("");
+  const [searchParams]                        = useSearchParams();
+
+  // Aplica filtro vindo da URL (?filtro=a_vencer)
+  useEffect(() => {
+    const f = searchParams.get("filtro");
+    if (f) setStatusFilter(f);
+  }, [searchParams]);
 
   const [form, setForm]               = useState(EMPTY_FORM);
   const [renovacaoForm, setRenovacaoForm] = useState(EMPTY_RENOVACAO);

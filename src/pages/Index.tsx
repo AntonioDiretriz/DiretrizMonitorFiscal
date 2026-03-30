@@ -429,8 +429,8 @@ export default function Index() {
           { label: "Certidões Regulares",    value: certRegulares,        icon: CheckCircle,   color: GREEN,     bg: "#f0fdf4", to: "/certidoes"     },
           { label: "Irregulares / Vencendo", value: certIrreg + certVenc, icon: AlertTriangle, color: RED,       bg: "#fff1f1", to: "/certidoes"     },
           caixasAVencer > 0
-            ? { label: "Caixas A Vencer (30d)", value: caixasAVencer, icon: MailOpen, color: AMBER,     bg: "#fffbeb", to: "/caixas-postais" }
-            : { label: "Caixas Postais Ativas", value: caixasAtivas,  icon: MailOpen, color: "#0ea5e9", bg: "#eff6ff", to: "/caixas-postais" },
+            ? { label: "Caixas A Vencer (30d)", value: caixasAVencer, icon: MailOpen, color: AMBER,     bg: "#fffbeb", to: "/caixas-postais?filtro=a_vencer" }
+            : { label: "Caixas Postais Ativas", value: caixasAtivas,  icon: MailOpen, color: "#0ea5e9", bg: "#eff6ff", to: "/caixas-postais?filtro=ativa" },
         ] : activeModule === "certidoes" ? [
           { label: "Total de Certidões",     value: totalCerts,           icon: FileCheck,     color: NAVY,      bg: "#f0f1f8", to: "/certidoes" },
           { label: "Regulares",              value: certRegulares,        icon: CheckCircle,   color: GREEN,     bg: "#f0fdf4", to: "/certidoes" },
@@ -443,11 +443,11 @@ export default function Index() {
           { label: "Vencidos",               value: certDigVencData.find(d => d.name === "Vencidos")?.value || 0, icon: AlertTriangle, color: RED,   bg: "#fff1f1", to: "/certificados" },
         ] : /* caixas */ [
           { label: "Total de Caixas",        value: totalCaixas,          icon: MailOpen,      color: "#0ea5e9", bg: "#eff6ff", to: "/caixas-postais" },
-          { label: "Ativas",                 value: caixasAtivas,         icon: CheckCircle,   color: GREEN,     bg: "#f0fdf4", to: "/caixas-postais" },
+          { label: "Ativas",                 value: caixasAtivas,         icon: CheckCircle,   color: GREEN,     bg: "#f0fdf4", to: "/caixas-postais?filtro=ativa" },
           caixasAVencer > 0
-            ? { label: "A Vencer (30d)",     value: caixasAVencer,        icon: AlertTriangle, color: AMBER,     bg: "#fffbeb", to: "/caixas-postais" }
-            : { label: "A Vencer (30d)",     value: 0,                    icon: AlertTriangle, color: AMBER,     bg: "#fffbeb", to: "/caixas-postais" },
-          { label: "Vencidas",               value: caixasStatusData.find(d => d.name === "Vencidas")?.value || 0, icon: AlertTriangle, color: RED, bg: "#fff1f1", to: "/caixas-postais" },
+            ? { label: "A Vencer (30d)",     value: caixasAVencer,        icon: AlertTriangle, color: AMBER,     bg: "#fffbeb", to: "/caixas-postais?filtro=a_vencer" }
+            : { label: "A Vencer (30d)",     value: 0,                    icon: AlertTriangle, color: AMBER,     bg: "#fffbeb", to: "/caixas-postais?filtro=a_vencer" },
+          { label: "Vencidas",               value: caixasStatusData.find(d => d.name === "Vencidas")?.value || 0, icon: AlertTriangle, color: RED, bg: "#fff1f1", to: "/caixas-postais?filtro=vencida" },
         ]).map(({ label, value, icon: Icon, color, bg, to }) => (
           <Card key={label} className="border-0 shadow-sm cursor-pointer transition-transform hover:scale-[1.02] hover:shadow-md" style={{ backgroundColor: bg }} onClick={() => navigate(to)}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
