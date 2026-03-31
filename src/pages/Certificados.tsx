@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, KeyRound, AlertTriangle, XCircle, CheckCircle2, Trash2, Pencil, FileKey2, Printer } from "lucide-react";
+import { ExportButton } from "@/components/ExportButton";
 import { useToast } from "@/hooks/use-toast";
 import { format, differenceInDays } from "date-fns";
 import type { Tables } from "@/integrations/supabase/types";
@@ -269,6 +270,17 @@ export default function Certificados() {
           <p className="text-muted-foreground">Controle rigoroso dos vencimentos de A1 e A3.</p>
         </div>
         <div className="flex items-center gap-2">
+          <ExportButton
+            data={certificadosFiltrados}
+            filename="certificados_digitais"
+            title="Certificados Digitais"
+            columns={[
+              { header: "Empresa",    value: r => r.empresa, width: 2 },
+              { header: "Tipo",       value: r => r.tipo, width: 0.5 },
+              { header: "Vencimento", value: r => r.data_vencimento ? format(new Date(r.data_vencimento + "T12:00:00"), "dd/MM/yyyy") : "—" },
+              { header: "E-mail",     value: r => r.email_cliente, width: 1.5 },
+            ]}
+          />
           <Button variant="outline" onClick={handleExportPDF} disabled={certificadosFiltrados.length === 0}>
             <Printer className="mr-2 h-4 w-4" /> Imprimir / PDF
           </Button>

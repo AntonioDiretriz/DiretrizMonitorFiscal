@@ -5,6 +5,7 @@ import {
   Plus, ChevronLeft, ChevronRight, CheckCircle, AlertTriangle,
   Clock, Pencil, Trash2, Search, Filter,
 } from "lucide-react";
+import { ExportButton } from "@/components/ExportButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -311,7 +312,21 @@ export default function Obrigacoes() {
           <h1 className="text-2xl font-bold text-foreground">Obrigações</h1>
           <p className="text-muted-foreground">Calendário de obrigações fiscais e trabalhistas</p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={o => { if (!o) { setEditingId(null); setForm(EMPTY_FORM); } setDialogOpen(o); }}>
+        <div className="flex items-center gap-2">
+          <ExportButton
+            data={filtered}
+            filename="obrigacoes"
+            title="Obrigações"
+            columns={[
+              { header: "Empresa",     value: r => r.empresas?.razao_social, width: 2 },
+              { header: "Tipo",        value: r => r.tipo.toUpperCase(), width: 0.7 },
+              { header: "Competência", value: r => r.competencia ? format(new Date(r.competencia + "T12:00:00"), "MM/yyyy") : "—" },
+              { header: "Vencimento",  value: r => r.data_vencimento ? format(new Date(r.data_vencimento + "T12:00:00"), "dd/MM/yyyy") : "—" },
+              { header: "Status",      value: r => r.status },
+              { header: "Valor",       value: r => r.valor != null ? Number(r.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—" },
+            ]}
+          />
+          <Dialog open={dialogOpen} onOpenChange={o => { if (!o) { setEditingId(null); setForm(EMPTY_FORM); } setDialogOpen(o); }}>
           {podeIncluir && (
             <DialogTrigger asChild>
               <Button><Plus className="mr-2 h-4 w-4" /> Nova Obrigação</Button>
@@ -376,6 +391,7 @@ export default function Obrigacoes() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* KPIs */}

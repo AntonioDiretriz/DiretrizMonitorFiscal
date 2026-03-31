@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Search, FileCheck, Trash2, ExternalLink, Download, Pencil, History, Eye, Printer, RefreshCw, Zap } from "lucide-react";
+import { ExportButton } from "@/components/ExportButton";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { StatusBadge, tipoLabels, tipoGrupos, tipoParaGrupo, certidoesComConsultaOnline } from "@/components/StatusBadge";
@@ -408,9 +409,20 @@ export default function Certidoes() {
               {atualizandoFgts ? "Consultando FGTS..." : "Atualizar FGTS"}
             </Button>
           )}
-          <Button variant="outline" onClick={handleExportCSV} disabled={filtered.length === 0}>
-            <Download className="mr-2 h-4 w-4" /> Exportar CSV
-          </Button>
+          <ExportButton
+            data={filtered}
+            filename="certidoes"
+            title="Certidões"
+            columns={[
+              { header: "Empresa",   value: r => r.empresas?.razao_social, width: 2 },
+              { header: "CNPJ",      value: r => r.empresas?.cnpj },
+              { header: "Tipo",      value: r => tipoLabels[r.tipo] || r.tipo, width: 1.5 },
+              { header: "Status",    value: r => r.status },
+              { header: "Emissão",   value: r => r.data_emissao  ? format(toDate(r.data_emissao),  "dd/MM/yyyy") : "—" },
+              { header: "Validade",  value: r => r.data_validade ? format(toDate(r.data_validade), "dd/MM/yyyy") : "—" },
+              { header: "Observação",value: r => r.observacao, width: 2 },
+            ]}
+          />
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             {PODE_INCLUIR && (
               <DialogTrigger asChild>

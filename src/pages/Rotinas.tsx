@@ -24,6 +24,7 @@ import {
   useRotinas, useCreateRotina, useDeleteRotina, useCatalogoObrigacoes,
   type Rotina, type RotinaStatus,
 } from "@/hooks/useRotinas";
+import { ExportButton } from "@/components/ExportButton";
 import RotinaDetalhe, { STATUS_CONFIG, StatusBadge } from "@/pages/RotinaDetalhe";
 
 // ── Palette ───────────────────────────────────────────────────────────────────
@@ -456,10 +457,26 @@ export default function Rotinas() {
           <h1 className="text-2xl font-bold" style={{ color: NAVY }}>Rotinas</h1>
           <p className="text-sm text-muted-foreground">Gestão de obrigações e tarefas contábeis</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} style={{ backgroundColor: NAVY }} className="text-white">
-          <Plus className="h-4 w-4 mr-2" />
-          Nova Rotina
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportButton
+            data={filtered}
+            filename="rotinas"
+            title="Rotinas"
+            columns={[
+              { header: "Título",      value: r => r.titulo, width: 2 },
+              { header: "Empresa",     value: r => r.empresas?.razao_social, width: 1.5 },
+              { header: "Tipo",        value: r => r.tipo.toUpperCase(), width: 0.6 },
+              { header: "Competência", value: r => r.competencia ? format(parseISO(r.competencia), "MM/yyyy") : "—" },
+              { header: "Vencimento",  value: r => format(parseISO(r.data_vencimento), "dd/MM/yyyy") },
+              { header: "Responsável", value: r => r.responsavel?.nome ?? "—" },
+              { header: "Status",      value: r => STATUS_CONFIG[r.status]?.label ?? r.status },
+            ]}
+          />
+          <Button onClick={() => setCreateOpen(true)} style={{ backgroundColor: NAVY }} className="text-white">
+            <Plus className="h-4 w-4 mr-2" />
+            Nova Rotina
+          </Button>
+        </div>
       </div>
 
       {/* KPIs */}

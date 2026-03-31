@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Search, Pencil, Trash2, Users } from "lucide-react";
+import { ExportButton } from "@/components/ExportButton";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -94,7 +95,21 @@ export default function Fornecedores() {
           <h1 className="text-2xl font-bold text-foreground">Fornecedores</h1>
           <p className="text-muted-foreground">Cadastro de fornecedores e prestadores</p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={o => { if (!o) { setEditingId(null); setForm(EMPTY_FORM); } setDialogOpen(o); }}>
+        <div className="flex items-center gap-2">
+          <ExportButton
+            data={filtered}
+            filename="fornecedores"
+            title="Fornecedores"
+            columns={[
+              { header: "Nome",       value: r => r.nome, width: 2 },
+              { header: "CNPJ/CPF",   value: r => r.cnpj_cpf },
+              { header: "E-mail",     value: r => r.email, width: 1.5 },
+              { header: "Telefone",   value: r => r.telefone },
+              { header: "Categoria",  value: r => r.categoria },
+              { header: "Ativo",      value: r => r.ativo ? "Sim" : "Não", width: 0.5 },
+            ]}
+          />
+          <Dialog open={dialogOpen} onOpenChange={o => { if (!o) { setEditingId(null); setForm(EMPTY_FORM); } setDialogOpen(o); }}>
           {podeIncluir && (
             <DialogTrigger asChild>
               <Button><Plus className="mr-2 h-4 w-4" /> Novo Fornecedor</Button>
@@ -135,6 +150,7 @@ export default function Fornecedores() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Busca */}

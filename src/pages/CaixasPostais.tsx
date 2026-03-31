@@ -26,6 +26,7 @@ import {
   Plus, MailOpen, AlertTriangle, XCircle, CheckCircle2,
   Pencil, RefreshCw, History, Ban, Loader2,
 } from "lucide-react";
+import { ExportButton } from "@/components/ExportButton";
 import { useToast } from "@/hooks/use-toast";
 import { format, addDays, differenceInDays } from "date-fns";
 import type { Tables } from "@/integrations/supabase/types";
@@ -349,9 +350,26 @@ export default function CaixasPostais() {
           <h1 className="text-2xl font-bold text-foreground">Caixas Postais</h1>
           <p className="text-muted-foreground">Controle de contratos e vencimentos anuais.</p>
         </div>
-        <Button onClick={handleOpenNew}>
-          <Plus className="mr-2 h-4 w-4" /> Nova Caixa Postal
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExportButton
+            data={caixasFiltradas}
+            filename="caixas_postais"
+            title="Caixas Postais"
+            columns={[
+              { header: "Número",       value: r => r.numero },
+              { header: "CNPJ",         value: r => r.cnpj, width: 1.2 },
+              { header: "Responsável",  value: r => r.nome_responsavel, width: 1.5 },
+              { header: "E-mail",       value: r => r.email_responsavel, width: 1.5 },
+              { header: "Tel",          value: r => r.telefone ?? "—" },
+              { header: "Início",       value: r => r.data_inicio ? format(new Date(r.data_inicio + "T12:00:00"), "dd/MM/yyyy") : "—" },
+              { header: "Valor (R$)",   value: r => r.valor_atual != null ? Number(r.valor_atual).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—" },
+              { header: "Status",       value: r => r.contrato_status },
+            ]}
+          />
+          <Button onClick={handleOpenNew}>
+            <Plus className="mr-2 h-4 w-4" /> Nova Caixa Postal
+          </Button>
+        </div>
       </div>
 
       {/* Summary cards */}

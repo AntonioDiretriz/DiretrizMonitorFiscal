@@ -5,6 +5,7 @@ import {
   Plus, Search, CreditCard, Trash2, Pencil, CheckCircle,
   AlertTriangle, Clock, XCircle, DollarSign, Filter,
 } from "lucide-react";
+import { ExportButton } from "@/components/ExportButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -198,6 +199,20 @@ export default function ContasPagar() {
           <h1 className="text-2xl font-bold text-foreground">Contas a Pagar</h1>
           <p className="text-muted-foreground">Gerencie seus títulos e vencimentos</p>
         </div>
+        <div className="flex items-center gap-2">
+          <ExportButton
+            data={filtered}
+            filename="contas_pagar"
+            title="Contas a Pagar"
+            columns={[
+              { header: "Fornecedor",  value: r => r.fornecedor, width: 2 },
+              { header: "CNPJ",        value: r => r.cnpj_fornecedor },
+              { header: "Valor",       value: r => r.valor?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) },
+              { header: "Vencimento",  value: r => r.data_vencimento ? format(new Date(r.data_vencimento + "T12:00:00"), "dd/MM/yyyy") : "—" },
+              { header: "Status",      value: r => STATUS_CONFIG[r.status as ContaPagarStatus]?.label ?? r.status },
+              { header: "Descrição",   value: r => r.descricao, width: 1.5 },
+            ]}
+          />
         <Dialog open={dialogOpen} onOpenChange={(o) => { if (!o) { setEditingId(null); setForm(EMPTY_FORM); } setDialogOpen(o); }}>
           {podeIncluir && (
             <DialogTrigger asChild>
@@ -295,6 +310,7 @@ export default function ContasPagar() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* KPIs */}

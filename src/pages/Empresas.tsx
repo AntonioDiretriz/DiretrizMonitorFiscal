@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Search, Building2, Trash2, Loader2, Pencil, Download } from "lucide-react";
+import { ExportButton } from "@/components/ExportButton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -252,9 +253,20 @@ export default function Empresas() {
           <p className="text-muted-foreground">Gerencie as empresas monitoradas</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={handleExportCSV} disabled={filtered.length === 0}>
-            <Download className="mr-2 h-4 w-4" /> Exportar CSV
-          </Button>
+          <ExportButton
+            data={filtered}
+            filename="empresas"
+            title="Empresas"
+            columns={[
+              { header: "CNPJ",          value: r => r.cnpj, width: 1.2 },
+              { header: "Razão Social",   value: r => r.razao_social, width: 2 },
+              { header: "Município",      value: r => r.municipio },
+              { header: "UF",            value: r => r.uf, width: 0.4 },
+              { header: "Regime",        value: r => r.regime_tributario },
+              { header: "Responsável",   value: r => r.responsavel },
+              { header: "E-mail",        value: r => r.email_responsavel, width: 1.5 },
+            ]}
+          />
           <Dialog open={dialogOpen} onOpenChange={(open) => {
             if (!open) { setEditingId(null); setForm(EMPTY_FORM); }
             setDialogOpen(open);
