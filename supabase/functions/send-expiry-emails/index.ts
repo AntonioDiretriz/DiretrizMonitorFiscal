@@ -170,8 +170,75 @@ serve(async () => {
     }
   }
 
+  // ── Aniversários de Sócios ────────────────────────────────────────────────
+  const todayMM = String(today.getMonth() + 1).padStart(2, "0");
+  const todayDD = String(today.getDate()).padStart(2, "0");
+
+  const { data: todosSocios } = await supabase
+    .from("socios")
+    .select("*, empresas(razao_social, email_responsavel)")
+    .not("data_nascimento", "is", null);
+
+  const aniversariantes = (todosSocios ?? []).filter((s: any) => {
+    if (!s.data_nascimento) return false;
+    const [, mm, dd] = (s.data_nascimento as string).split("-");
+    return mm === todayMM && dd === todayDD;
+  });
+
+  for (const socio of aniversariantes) {
+    const tituloAlerta = `Aniversário hoje: ${socio.nome}`;
+
+    // Evita duplicar alerta no mesmo dia
+    const { data: jaExiste } = await supabase
+      .from("alertas")
+      .select("id")
+      .eq("user_id", socio.user_id)
+      .eq("titulo", tituloAlerta)
+      .gte("created_at", fmt(today))
+      .limit(1);
+
+    if (jaExiste && jaExiste.length > 0) continue;
+
+    // Insere alerta no sistema
+    await supabase.from("alertas").insert({
+      user_id:            socio.user_id,
+      empresa_id:         socio.empresa_id,
+      nivel:              "info",
+      titulo:             tituloAlerta,
+      mensagem:           `Hoje é aniversário de ${socio.nome}, sócio de ${socio.empresas?.razao_social}. Não se esqueça de parabenizá-lo!`,
+      acao_recomendada:   "Envie uma mensagem de parabéns ao sócio.",
+    });
+
+    // Envia e-mail para o dono do escritório
+    const { data: ownerData } = await supabase.auth.admin.getUserById(socio.user_id);
+    const ownerEmail = ownerData?.user?.email;
+    if (ownerEmail) {
+      const idade = today.getFullYear() - Number((socio.data_nascimento as string).split("-")[0]);
+      await sendEmail(
+        ownerEmail,
+        `[Diretriz] Aniversário hoje: ${socio.nome} (${socio.empresas?.razao_social})`,
+        `<p>Olá,</p>
+         <p>Hoje é aniversário de <strong>${socio.nome}</strong> 🎂, sócio de
+         <strong>${socio.empresas?.razao_social}</strong>
+         ${socio.cargo ? `(${socio.cargo})` : ""} — <strong>${idade} anos</strong>.</p>
+         ${socio.email
+           ? `<p>E-mail do sócio: <a href="mailto:${socio.email}">${socio.email}</a></p>`
+           : ""}
+         <p>Não se esqueça de enviar os parabéns!</p>
+         <p style="color:#888;font-size:12px">Diretriz — Sistema de Gestão Contábil</p>`
+      );
+    }
+  }
+
   return new Response(
-    JSON.stringify({ ok: true, certidoes: certidoes?.length ?? 0, certificados: certificados?.length ?? 0, caixas: caixas?.length ?? 0, contas_pagar: contasPagar?.length ?? 0 }),
+    JSON.stringify({
+      ok: true,
+      certidoes:      certidoes?.length      ?? 0,
+      certificados:   certificados?.length   ?? 0,
+      caixas:         caixas?.length         ?? 0,
+      contas_pagar:   contasPagar?.length    ?? 0,
+      aniversariantes: aniversariantes.length,
+    }),
     { headers: { "Content-Type": "application/json" } }
   );
 });
