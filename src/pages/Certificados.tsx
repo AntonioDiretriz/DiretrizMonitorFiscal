@@ -229,7 +229,10 @@ export default function Certificados() {
       const digits = search.replace(/\D/g, "");
       return (
         c.empresa.toLowerCase().includes(s) ||
-        (digits.length > 0 && ((c as any).cnpj || "").includes(digits))
+        (c.email_cliente || "").toLowerCase().includes(s) ||
+        (digits.length > 0 && ((c as any).cnpj || "").includes(digits)) ||
+        // busca pelo CNPJ/CPF formatado também (ex: "11.696" encontra registros)
+        formatDocumento((c as any).cnpj || "").includes(s)
       );
     })
     .sort((a, b) => {
@@ -609,7 +612,7 @@ export default function Certificados() {
       <div className="flex flex-col sm:flex-row gap-4 items-center justify-between mt-8 mb-4">
         <div className="relative w-full sm:w-96">
           <Input
-            placeholder="Buscar por empresa, CNPJ ou CPF..."
+            placeholder="Buscar por empresa, CNPJ, CPF ou e-mail..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full bg-white"
