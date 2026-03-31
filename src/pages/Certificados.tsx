@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, KeyRound, AlertTriangle, XCircle, CheckCircle2, Trash2, Pencil, FileKey2, Printer, ScanSearch } from "lucide-react";
+import { Plus, KeyRound, AlertTriangle, XCircle, CheckCircle2, Trash2, Pencil, FileKey2, Printer, ScanSearch, ChevronsUpDown, ChevronUp, ChevronDown } from "lucide-react";
 import { ExportButton } from "@/components/ExportButton";
 import { useToast } from "@/hooks/use-toast";
 import { format, differenceInDays } from "date-fns";
@@ -42,6 +42,16 @@ export default function Certificados() {
   const [isReading, setIsReading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+
+  type SortCol = "empresa" | "cnpj" | "tipo" | "data_vencimento" | "dias" | "status";
+  type SortDir = "asc" | "desc";
+  const [sortCol, setSortCol] = useState<SortCol>("data_vencimento");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const handleSort = (col: SortCol) => {
+    if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortCol(col); setSortDir("asc"); }
+  };
 
   const loadCertificados = useCallback(async () => {
     if (!user) return;
@@ -205,6 +215,18 @@ export default function Certificados() {
     .filter(c => {
       const s = search.toLowerCase();
       return c.empresa.toLowerCase().includes(s) || ((c as any).cnpj || "").includes(search.replace(/\D/g, ""));
+    })
+    .sort((a, b) => {
+      let va: any, vb: any;
+      if (sortCol === "empresa") { va = a.empresa.toLowerCase(); vb = b.empresa.toLowerCase(); }
+      else if (sortCol === "cnpj") { va = ((a as any).cnpj || "").replace(/\D/g, ""); vb = ((b as any).cnpj || "").replace(/\D/g, ""); }
+      else if (sortCol === "tipo") { va = a.tipo; vb = b.tipo; }
+      else if (sortCol === "data_vencimento") { va = a.data_vencimento; vb = b.data_vencimento; }
+      else if (sortCol === "dias") { va = getDiasRestantes(a.data_vencimento); vb = getDiasRestantes(b.data_vencimento); }
+      else if (sortCol === "status") { va = getStatus(a.data_vencimento).id; vb = getStatus(b.data_vencimento).id; }
+      if (va < vb) return sortDir === "asc" ? -1 : 1;
+      if (va > vb) return sortDir === "asc" ? 1 : -1;
+      return 0;
     });
 
   const handleExportPDF = () => {
@@ -305,6 +327,21 @@ export default function Certificados() {
     }
     win.document.write(html);
     win.document.close();
+  };
+
+  const SortHeader = ({ col, children }: { col: SortCol; children: React.ReactNode }) => {
+    const active = sortCol === col;
+    const Icon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
+    return (
+      <button
+        type="button"
+        onClick={() => handleSort(col)}
+        className={`flex items-center gap-1 group select-none whitespace-nowrap ${active ? "text-foreground font-semibold" : "text-muted-foreground hover:text-foreground"}`}
+      >
+        {children}
+        <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? "opacity-100" : "opacity-40 group-hover:opacity-70"}`} />
+      </button>
+    );
   };
 
   return (
@@ -582,12 +619,12 @@ export default function Certificados() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Empresa</TableHead>
-                <TableHead>CNPJ</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Vencimento</TableHead>
-                <TableHead>Dias Restantes</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead><SortHeader col="empresa">Empresa</SortHeader></TableHead>
+                <TableHead><SortHeader col="cnpj">CNPJ</SortHeader></TableHead>
+                <TableHead><SortHeader col="tipo">Tipo</SortHeader></TableHead>
+                <TableHead><SortHeader col="data_vencimento">Vencimento</SortHeader></TableHead>
+                <TableHead><SortHeader col="dias">Dias Restantes</SortHeader></TableHead>
+                <TableHead><SortHeader col="status">Status</SortHeader></TableHead>
                 <TableHead className="w-12 text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
