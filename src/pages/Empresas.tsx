@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Building2, Trash2, Loader2, Pencil, MapPin, UserPlus, Cake, Users2 } from "lucide-react";
+import { Plus, Search, Building2, Trash2, Loader2, Pencil, MapPin, UserPlus, Cake, Users2, Banknote } from "lucide-react";
 import { ExportButton } from "@/components/ExportButton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -85,6 +85,8 @@ const EMPTY_FORM = {
   regime_tributario: "",
   telefone_ddd: "", telefone_numero: "", email_responsavel: "",
   inscricao_municipal: "", inscricao_estadual: "", isento_ie: false,
+  // financeiro / integração Domínio
+  codigo_dominio: "", plano_contas_dominio: "", codigo_contabil: "",
 };
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -213,6 +215,9 @@ export default function Empresas() {
       inscricao_municipal: emp.inscricao_municipal || "",
       inscricao_estadual:  emp.inscricao_estadual  || "",
       isento_ie:         emp.inscricao_estadual === "ISENTO",
+      codigo_dominio:       (e as any).codigo_dominio       || "",
+      plano_contas_dominio: (e as any).plano_contas_dominio || "",
+      codigo_contabil:      (e as any).codigo_contabil      || "",
     });
     const { data: sd } = await supabase.from("socios").select("*").eq("empresa_id", emp.id).order("nome");
     setSocios((sd || []).map(s => ({
@@ -258,8 +263,11 @@ export default function Empresas() {
       regime_tributario:   form.regime_tributario   || null,
       telefone,
       email_responsavel:   form.email_responsavel.trim()    || null,
-      inscricao_municipal: form.inscricao_municipal.trim()  || null,
-      inscricao_estadual:  form.isento_ie ? "ISENTO" : form.inscricao_estadual.trim() || null,
+      inscricao_municipal:  form.inscricao_municipal.trim()  || null,
+      inscricao_estadual:   form.isento_ie ? "ISENTO" : form.inscricao_estadual.trim() || null,
+      codigo_dominio:       form.codigo_dominio.trim()       || null,
+      plano_contas_dominio: form.plano_contas_dominio.trim() || null,
+      codigo_contabil:      form.codigo_contabil.trim()      || null,
     };
 
     let empresaId: string | null = editingId;
@@ -398,13 +406,16 @@ export default function Empresas() {
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <Tabs value={activeTab} onValueChange={setActiveTab}>
-                  <TabsList className="grid w-full grid-cols-3">
+                  <TabsList className="grid w-full grid-cols-4">
                     <TabsTrigger value="empresa">Empresa</TabsTrigger>
                     <TabsTrigger value="endereco" className="flex items-center gap-1">
                       <MapPin className="h-3.5 w-3.5" /> Endereço
                     </TabsTrigger>
                     <TabsTrigger value="socios" className="flex items-center gap-1">
                       <Users2 className="h-3.5 w-3.5" /> Sócios {socios.length > 0 && `(${socios.length})`}
+                    </TabsTrigger>
+                    <TabsTrigger value="financeiro" className="flex items-center gap-1">
+                      <Banknote className="h-3.5 w-3.5" /> Financeiro
                     </TabsTrigger>
                   </TabsList>
 
@@ -626,6 +637,54 @@ export default function Empresas() {
                     <p className="text-xs text-muted-foreground">
                       Sócios com data de nascimento receberão alertas automáticos de aniversário no sistema e por e-mail.
                     </p>
+                  </TabsContent>
+
+                  {/* ── Tab: Financeiro ── */}
+                  <TabsContent value="financeiro" className="space-y-4 pt-4">
+                    <div className="flex items-center gap-3 p-3 rounded-lg border bg-blue-50/50 border-blue-200">
+                      <Banknote className="h-5 w-5 text-blue-600 shrink-0" />
+                      <div>
+                        <p className="text-sm font-semibold text-blue-800">Integração com Sistema Contábil Domínio</p>
+                        <p className="text-xs text-blue-600">Preencha os códigos para amarração automática com o Domínio</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Código da Empresa no Domínio</Label>
+                        <Input
+                          placeholder="Ex: 117"
+                          value={form.codigo_dominio}
+                          onChange={e => setForm(p => ({ ...p, codigo_dominio: e.target.value }))}
+                        />
+                        <p className="text-xs text-muted-foreground">Código de identificação da empresa no Domínio</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Código Contábil</Label>
+                        <Input
+                          placeholder="Ex: 001.001"
+                          value={form.codigo_contabil}
+                          onChange={e => setForm(p => ({ ...p, codigo_contabil: e.target.value }))}
+                        />
+                        <p className="text-xs text-muted-foreground">Código para lançamentos contábeis</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Plano de Contas (Domínio)</Label>
+                      <Input
+                        placeholder="Ex: PLANO_PADRAO ou código do plano"
+                        value={form.plano_contas_dominio}
+                        onChange={e => setForm(p => ({ ...p, plano_contas_dominio: e.target.value }))}
+                      />
+                      <p className="text-xs text-muted-foreground">Plano de contas utilizado por esta empresa no Domínio para amarração das contas a pagar</p>
+                    </div>
+
+                    <div className="border-t pt-4">
+                      <p className="text-xs text-muted-foreground bg-muted/30 rounded p-3 leading-relaxed">
+                        <strong>Como funciona:</strong> Os códigos acima são utilizados para identificar a empresa e vincular automaticamente os lançamentos financeiros (contas a pagar, recebimentos) ao plano de contas correto no sistema Domínio, evitando retrabalho de digitação.
+                      </p>
+                    </div>
                   </TabsContent>
                 </Tabs>
 
