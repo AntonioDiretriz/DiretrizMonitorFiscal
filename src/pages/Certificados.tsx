@@ -18,9 +18,19 @@ import type { Tables } from "@/integrations/supabase/types";
 
 type Certificado = Tables<"certificados">;
 
-function formatCNPJ(v: string) {
-  const d = v.replace(/\D/g, "").slice(0, 14);
+function formatDocumento(v: string) {
+  const d = v.replace(/\D/g, "");
+  if (d.length <= 11) {
+    // CPF: 000.000.000-00
+    return d
+      .slice(0, 11)
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+  }
+  // CNPJ: 00.000.000/0000-00
   return d
+    .slice(0, 14)
     .replace(/^(\d{2})(\d)/, "$1.$2")
     .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
     .replace(/\.(\d{3})(\d)/, ".$1/$2")
@@ -104,7 +114,8 @@ export default function Certificados() {
         // CN format: "NOME DA EMPRESA:12345678000100" ou "NOME DA EMPRESA"
         const parts = cnValue.split(":");
         const nomeLimpo = parts[0].trim();
-        const cnpjExtraido = parts[1] ? formatCNPJ(parts[1].trim()) : "";
+        // Armazena apenas dígitos; formatDocumento aplica a máscara correta na exibição
+        const cnpjExtraido = parts[1] ? parts[1].trim().replace(/\D/g, "") : "";
         const validadeStr = format(foundCert.validity.notAfter, "yyyy-MM-dd");
 
         setForm(prev => ({ ...prev, empresa: nomeLimpo, cnpj: cnpjExtraido || prev.cnpj, data_vencimento: validadeStr }));
@@ -242,7 +253,7 @@ export default function Certificados() {
       const diasStr = dias < 0 ? "Vencido" : `${dias} dias`;
       const diasColor = dias < 0 ? "#dc2626" : dias <= 30 ? "#d97706" : "#16a34a";
       const statusColor = status.id === "ativo" ? "#16a34a" : status.id === "a_expirar" ? "#d97706" : "#dc2626";
-      const cnpjFormatado = (cert as any).cnpj ? formatCNPJ((cert as any).cnpj) : "—";
+      const cnpjFormatado = (cert as any).cnpj ? formatDocumento((cert as any).cnpj) : "—";
       return `<tr>
         <td>${cert.empresa}</td>
         <td style="text-align:center;font-family:monospace">${cnpjFormatado}</td>
@@ -312,7 +323,7 @@ export default function Certificados() {
   <table>
     <thead><tr>
       <th>Empresa</th>
-      <th style="text-align:center">CNPJ</th>
+      <th style="text-align:center">CNPJ / CPF</th>
       <th style="text-align:center">Tipo</th>
       <th style="text-align:center">Vencimento</th>
       <th style="text-align:center">Dias Restantes</th>
@@ -363,7 +374,7 @@ export default function Certificados() {
             title="Certificados Digitais"
             columns={[
               { header: "Empresa",    value: r => r.empresa, width: 2 },
-              { header: "CNPJ",       value: r => (r as any).cnpj ? formatCNPJ((r as any).cnpj) : "—", width: 1.2 },
+              { header: "CNPJ/CPF",   value: r => (r as any).cnpj ? formatDocumento((r as any).cnpj) : "—", width: 1.2 },
               { header: "Tipo",       value: r => r.tipo, width: 0.5 },
               { header: "Vencimento", value: r => format(new Date(r.data_vencimento + "T12:00:00"), "dd/MM/yyyy") },
               { header: "E-mail",     value: r => r.email_cliente, width: 1.5 },
@@ -472,8 +483,8 @@ export default function Certificados() {
                             <p className="font-medium truncate">{form.empresa}</p>
                           </div>
                           <div>
-                            <span className="text-xs text-muted-foreground">CNPJ</span>
-                            <p className="font-mono">{form.cnpj || "—"}</p>
+                            <span className="text-xs text-muted-foreground">CNPJ / CPF</span>
+                            <p className="font-mono">{form.cnpj ? formatDocumento(form.cnpj) : "—"}</p>
                           </div>
                           <div>
                             <span className="text-xs text-muted-foreground">Vencimento</span>
@@ -506,11 +517,11 @@ export default function Certificados() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>CNPJ</Label>
+                      <Label>CNPJ / CPF</Label>
                       <Input
-                        value={formatCNPJ(form.cnpj)}
+                        value={formatDocumento(form.cnpj)}
                         onChange={e => setForm(prev => ({ ...prev, cnpj: e.target.value.replace(/\D/g, "").slice(0, 14) }))}
-                        placeholder="00.000.000/0000-00"
+                        placeholder="00.000.000/0000-00 ou 000.000.000-00"
                       />
                     </div>
                     <div className="space-y-2">
@@ -528,11 +539,11 @@ export default function Certificados() {
                 {/* CNPJ editável para A1 já lido (caso CN não tenha CNPJ) */}
                 {!editingId && form.tipo === "A1" && form.empresa && !form.cnpj && (
                   <div className="space-y-2">
-                    <Label>CNPJ (não encontrado no certificado — opcional)</Label>
+                    <Label>CNPJ / CPF (não encontrado no certificado — opcional)</Label>
                     <Input
-                      value={formatCNPJ(form.cnpj)}
+                      value={formatDocumento(form.cnpj)}
                       onChange={e => setForm(prev => ({ ...prev, cnpj: e.target.value.replace(/\D/g, "").slice(0, 14) }))}
-                      placeholder="00.000.000/0000-00"
+                      placeholder="00.000.000/0000-00 ou 000.000.000-00"
                     />
                   </div>
                 )}
@@ -598,7 +609,7 @@ export default function Certificados() {
       <div className="flex flex-col sm:flex-row gap-4 items-center justify-between mt-8 mb-4">
         <div className="relative w-full sm:w-96">
           <Input
-            placeholder="Buscar por empresa ou CNPJ..."
+            placeholder="Buscar por empresa, CNPJ ou CPF..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full bg-white"
@@ -625,7 +636,7 @@ export default function Certificados() {
             <TableHeader>
               <TableRow>
                 <TableHead><SortHeader col="empresa">Empresa</SortHeader></TableHead>
-                <TableHead><SortHeader col="cnpj">CNPJ</SortHeader></TableHead>
+                <TableHead><SortHeader col="cnpj">CNPJ / CPF</SortHeader></TableHead>
                 <TableHead><SortHeader col="tipo">Tipo</SortHeader></TableHead>
                 <TableHead><SortHeader col="data_vencimento">Vencimento</SortHeader></TableHead>
                 <TableHead><SortHeader col="dias">Dias Restantes</SortHeader></TableHead>
@@ -643,7 +654,7 @@ export default function Certificados() {
                   <TableRow key={cert.id}>
                     <TableCell className="font-medium">{cert.empresa}</TableCell>
                     <TableCell className="font-mono text-sm text-muted-foreground">
-                      {cnpj ? formatCNPJ(cnpj) : <span className="text-muted-foreground/40">—</span>}
+                      {cnpj ? formatDocumento(cnpj) : <span className="text-muted-foreground/40">—</span>}
                     </TableCell>
                     <TableCell>
                       <span className="inline-flex items-center px-1.5 py-0.5 rounded-md border text-xs font-semibold uppercase text-muted-foreground bg-muted/30">
