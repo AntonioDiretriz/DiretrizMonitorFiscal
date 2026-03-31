@@ -213,8 +213,13 @@ export default function Certificados() {
   const certificadosFiltrados = certificados
     .filter(c => !statusFilter || statusFilter === "todos" || getStatus(c.data_vencimento).id === statusFilter)
     .filter(c => {
+      if (!search.trim()) return true;
       const s = search.toLowerCase();
-      return c.empresa.toLowerCase().includes(s) || ((c as any).cnpj || "").includes(search.replace(/\D/g, ""));
+      const digits = search.replace(/\D/g, "");
+      return (
+        c.empresa.toLowerCase().includes(s) ||
+        (digits.length > 0 && ((c as any).cnpj || "").includes(digits))
+      );
     })
     .sort((a, b) => {
       let va: any, vb: any;
