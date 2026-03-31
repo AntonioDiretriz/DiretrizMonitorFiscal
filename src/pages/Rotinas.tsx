@@ -346,7 +346,7 @@ function GerarRotinasPerfilDialog({ open, onOpenChange, empresas, equipe }: Gera
       const { data: perfil } = await (supabase as any)
         .from("perfil_modelo")
         .select("id")
-        .eq("codigo", perfilCodigo)
+        .eq("codigo_perfil", perfilCodigo)
         .single();
 
       if (!perfil) { setPreview([]); setLoading(false); return; }
@@ -354,9 +354,9 @@ function GerarRotinasPerfilDialog({ open, onOpenChange, empresas, equipe }: Gera
       // Busca rotinas do catálogo vinculadas ao perfil
       const { data: links } = await (supabase as any)
         .from("perfil_rotina")
-        .select("ordem, condicional, rotina_modelo(id, nome, tipo, dia_vencimento, meses_offset, margem_seguranca, periodicidade)")
-        .eq("perfil_id", perfil.id)
-        .order("ordem");
+        .select("ordem_execucao, condicional, rotina_modelo(id, nome_rotina, tipo_rotina, dia_vencimento, meses_offset, margem_seguranca, periodicidade)")
+        .eq("perfil_modelo_id", perfil.id)
+        .order("ordem_execucao");
 
       const refMes = parseISO(competencia + "-01");
 
@@ -377,9 +377,9 @@ function GerarRotinasPerfilDialog({ open, onOpenChange, empresas, equipe }: Gera
         }
 
         return {
-          catalogo_id: rm.id,
-          titulo: `${rm.nome} — ${format(refMes, "MMM/yyyy", { locale: ptBR })}`,
-          tipo: rm.tipo,
+          catalogo_id: null,   // rotina_modelo ≠ catalogo_obrigacoes
+          titulo: `${rm.nome_rotina} — ${format(refMes, "MMM/yyyy", { locale: ptBR })}`,
+          tipo: rm.tipo_rotina ?? "outro",
           data_vencimento: dataVencimento,
           data_vencimento_interno: dataInterno,
           condicional: l.condicional,
