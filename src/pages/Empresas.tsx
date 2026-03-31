@@ -82,7 +82,7 @@ const EMPTY_FORM = {
   cep: "", logradouro: "", numero: "", complemento: "", bairro: "",
   municipio: "", uf: "",
   // dados
-  regime_tributario: "", responsavel: "",
+  regime_tributario: "",
   telefone_ddd: "", telefone_numero: "", email_responsavel: "",
   inscricao_municipal: "", inscricao_estadual: "", isento_ie: false,
 };
@@ -207,7 +207,6 @@ export default function Empresas() {
       municipio:         emp.municipio  || "",
       uf:                emp.uf         || "",
       regime_tributario: emp.regime_tributario  || "",
-      responsavel:       emp.responsavel        || "",
       telefone_ddd:      ddd,
       telefone_numero:   numero,
       email_responsavel: emp.email_responsavel  || "",
@@ -257,7 +256,6 @@ export default function Empresas() {
       municipio:           form.municipio.trim()    || null,
       uf:                  form.uf                  || null,
       regime_tributario:   form.regime_tributario   || null,
-      responsavel:         form.responsavel.trim()  || null,
       telefone,
       email_responsavel:   form.email_responsavel.trim()    || null,
       inscricao_municipal: form.inscricao_municipal.trim()  || null,
@@ -380,7 +378,7 @@ export default function Empresas() {
               { header: "Endereço",      value: r => [(r as any).logradouro, (r as any).numero, (r as any).bairro].filter(Boolean).join(", "), width: 2 },
               { header: "Município/UF",  value: r => [r.municipio, r.uf].filter(Boolean).join("/") },
               { header: "Regime",        value: r => r.regime_tributario },
-              { header: "Responsável",   value: r => r.responsavel },
+
               { header: "E-mail",        value: r => r.email_responsavel, width: 1.5 },
               { header: "Sócios",        value: r => (sociosMap[r.id] ?? []).map(s => s.nome).join(", "), width: 2 },
             ]}
@@ -448,10 +446,6 @@ export default function Empresas() {
                             <SelectItem value="mei">MEI</SelectItem>
                           </SelectContent>
                         </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Responsável</Label>
-                        <Input placeholder="Nome do responsável" value={form.responsavel} onChange={e => setForm(p => ({ ...p, responsavel: e.target.value }))} />
                       </div>
                     </div>
 
