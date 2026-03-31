@@ -128,16 +128,17 @@ export default function Usuarios() {
       ({ error } = await supabase.from("usuarios_perfil").insert(payload));
     }
 
-    // Se a coluna modulos ainda não existe no banco, salva sem ela
-    if (error && error.message.includes("modulos")) {
-      const { modulos: _m, ...payloadSemModulos } = payload;
+    // Fallback: se coluna modulos ou papel_rotinas não existe no banco, salva sem ela
+    if (error && (error.message.includes("modulos") || error.message.includes("papel_rotinas"))) {
+      const { modulos: _m, papel_rotinas: _p, ...payloadBase } = payload;
+      const payloadFallback = error.message.includes("modulos") ? payloadBase : { ...payloadBase, modulos: payload.modulos };
       if (editingId) {
-        ({ error } = await supabase.from("usuarios_perfil").update(payloadSemModulos).eq("id", editingId));
+        ({ error } = await supabase.from("usuarios_perfil").update(payloadFallback).eq("id", editingId));
       } else {
-        ({ error } = await supabase.from("usuarios_perfil").insert(payloadSemModulos));
+        ({ error } = await supabase.from("usuarios_perfil").insert(payloadFallback));
       }
       if (!error) {
-        toast({ title: "Atenção", description: "Execute o SQL de migração no Supabase para habilitar o controle de módulos.", variant: "destructive" });
+        toast({ title: "Atenção", description: "Execute o SQL abaixo no Supabase para habilitar o campo Papel nas Rotinas:\n\nALTER TABLE public.usuarios_perfil ADD COLUMN IF NOT EXISTS papel_rotinas TEXT NOT NULL DEFAULT 'nenhum';", variant: "destructive" });
       }
     }
 
