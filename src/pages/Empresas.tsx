@@ -76,6 +76,14 @@ type Socio = {
 
 const EMPTY_SOCIO: Socio = { nome: "", cpf: "", data_nascimento: "", email: "", cargo: "" };
 
+// Resolve código do perfil baseado nos atributos da empresa
+function resolvePerfilCodigo(regime: string, atividade: string, prolabore: boolean, funcionario: boolean): string {
+  const r = regime === "simples" ? "SN" : regime === "presumido" ? "LP" : regime === "real" ? "LR" : null;
+  const a = atividade === "servico" ? "SERV" : atividade === "comercio" ? "COM" : atividade === "misto" ? "MIX" : null;
+  if (!r || !a) return "—";
+  return `${r}-${a}-PL-${funcionario ? "CF" : "SF"}`;
+}
+
 const EMPTY_FORM = {
   cnpj: "", razao_social: "",
   // endereço
@@ -85,6 +93,12 @@ const EMPTY_FORM = {
   regime_tributario: "",
   telefone_ddd: "", telefone_numero: "", email_responsavel: "",
   inscricao_municipal: "", inscricao_estadual: "", isento_ie: false,
+  // perfil operacional
+  atividade: "servico",
+  possui_prolabore: true,
+  possui_funcionario: false,
+  tem_retencoes: false,
+  tem_reinf: false,
   // financeiro / integração Domínio
   codigo_dominio: "", plano_contas_dominio: "", codigo_contabil: "",
 };
@@ -130,7 +144,7 @@ export default function Empresas() {
 
     if (data && data.length > 0) {
       const ids = data.map(e => e.id);
-      const { data: sd } = await supabase.from("socios").select("*").in("empresa_id", ids);
+      const { data: sd } = await (supabase as any).from("socios").select("*").in("empresa_id", ids);
       const map: Record<string, Socio[]> = {};
       for (const s of sd ?? []) {
         if (!map[s.empresa_id]) map[s.empresa_id] = [];
@@ -214,12 +228,17 @@ export default function Empresas() {
       email_responsavel: emp.email_responsavel  || "",
       inscricao_municipal: emp.inscricao_municipal || "",
       inscricao_estadual:  emp.inscricao_estadual  || "",
-      isento_ie:         emp.inscricao_estadual === "ISENTO",
-      codigo_dominio:       (e as any).codigo_dominio       || "",
-      plano_contas_dominio: (e as any).plano_contas_dominio || "",
-      codigo_contabil:      (e as any).codigo_contabil      || "",
+      isento_ie:            emp.inscricao_estadual === "ISENTO",
+      atividade:            e.atividade         || "servico",
+      possui_prolabore:     e.possui_prolabore  ?? true,
+      possui_funcionario:   e.possui_funcionario ?? false,
+      tem_retencoes:        e.tem_retencoes     ?? false,
+      tem_reinf:            e.tem_reinf         ?? false,
+      codigo_dominio:       e.codigo_dominio       || "",
+      plano_contas_dominio: e.plano_contas_dominio || "",
+      codigo_contabil:      e.codigo_contabil      || "",
     });
-    const { data: sd } = await supabase.from("socios").select("*").eq("empresa_id", emp.id).order("nome");
+    const { data: sd } = await (supabase as any).from("socios").select("*").eq("empresa_id", emp.id).order("nome");
     setSocios((sd || []).map(s => ({
       nome:            s.nome,
       cpf:             s.cpf             || "",
@@ -268,6 +287,11 @@ export default function Empresas() {
       codigo_dominio:       form.codigo_dominio.trim()       || null,
       plano_contas_dominio: form.plano_contas_dominio.trim() || null,
       codigo_contabil:      form.codigo_contabil.trim()      || null,
+      atividade:            form.atividade,
+      possui_prolabore:     form.possui_prolabore,
+      possui_funcionario:   form.possui_funcionario,
+      tem_retencoes:        form.tem_retencoes,
+      tem_reinf:            form.tem_reinf,
     };
 
     let empresaId: string | null = editingId;
@@ -293,9 +317,9 @@ export default function Empresas() {
 
     // Sync socios
     if (empresaId) {
-      await supabase.from("socios").delete().eq("empresa_id", empresaId);
+      await (supabase as any).from("socios").delete().eq("empresa_id", empresaId);
       if (socios.length > 0) {
-        const { error: se } = await supabase.from("socios").insert(
+        const { error: se } = await (supabase as any).from("socios").insert(
           socios.map(s => ({
             empresa_id:      empresaId,
             user_id:         user!.id,
@@ -458,6 +482,51 @@ export default function Empresas() {
                           </SelectContent>
                         </Select>
                       </div>
+                      <div className="space-y-2">
+                        <Label>Atividade Principal</Label>
+                        <Select value={form.atividade} onValueChange={v => setForm(p => ({ ...p, atividade: v }))}>
+                          <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="servico">Serviço</SelectItem>
+                            <SelectItem value="comercio">Comércio</SelectItem>
+                            <SelectItem value="misto">Misto (Serv + Com)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Perfil Operacional</Label>
+                      <div className="flex flex-wrap gap-4 pt-1">
+                        <div className="flex items-center gap-2">
+                          <Checkbox id="possui_prolabore" checked={form.possui_prolabore}
+                            onCheckedChange={v => setForm(p => ({ ...p, possui_prolabore: !!v }))} />
+                          <label htmlFor="possui_prolabore" className="text-sm cursor-pointer select-none">Pró-labore</label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Checkbox id="possui_funcionario" checked={form.possui_funcionario}
+                            onCheckedChange={v => setForm(p => ({ ...p, possui_funcionario: !!v }))} />
+                          <label htmlFor="possui_funcionario" className="text-sm cursor-pointer select-none">Funcionários CLT</label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Checkbox id="tem_retencoes" checked={form.tem_retencoes}
+                            onCheckedChange={v => setForm(p => ({ ...p, tem_retencoes: !!v }))} />
+                          <label htmlFor="tem_retencoes" className="text-sm cursor-pointer select-none">Retenções na fonte</label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Checkbox id="tem_reinf" checked={form.tem_reinf}
+                            onCheckedChange={v => setForm(p => ({ ...p, tem_reinf: !!v }))} />
+                          <label htmlFor="tem_reinf" className="text-sm cursor-pointer select-none">e-Social / EFD-Reinf</label>
+                        </div>
+                      </div>
+                      {form.regime_tributario && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Perfil:{" "}
+                          <Badge variant="outline" className="text-xs font-mono">
+                            {resolvePerfilCodigo(form.regime_tributario, form.atividade, form.possui_prolabore, form.possui_funcionario)}
+                          </Badge>
+                        </p>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -753,7 +822,12 @@ export default function Empresas() {
                     <TableCell className="font-mono text-sm">{formatCNPJ(emp.cnpj)}</TableCell>
                     <TableCell>
                       {emp.regime_tributario
-                        ? <Badge variant="secondary" className="capitalize">{emp.regime_tributario}</Badge>
+                        ? <div className="space-y-1">
+                            <Badge variant="secondary" className="capitalize">{emp.regime_tributario}</Badge>
+                            <div className="font-mono text-xs text-muted-foreground">
+                              {resolvePerfilCodigo(emp.regime_tributario, e.atividade || "servico", e.possui_prolabore ?? true, e.possui_funcionario ?? false)}
+                            </div>
+                          </div>
                         : "—"}
                     </TableCell>
                     <TableCell className="text-sm">

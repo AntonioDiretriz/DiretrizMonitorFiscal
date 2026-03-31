@@ -4,7 +4,7 @@ import { ptBR } from "date-fns/locale";
 import {
   Plus, Search, Filter, ClipboardList, Clock, AlertTriangle,
   CheckCircle, LayoutGrid, List, ChevronRight, Building2, User,
-  CalendarDays, Trash2,
+  CalendarDays, Trash2, Sparkles,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -298,6 +298,228 @@ function NovaRotinaDialog({ open, onOpenChange, empresas, equipe }: NovaRotinaDi
   );
 }
 
+// ── Helpers (shared) ─────────────────────────────────────────────────────────
+function resolvePerfilCodigo(regime: string, atividade: string, prolabore: boolean, funcionario: boolean): string {
+  const r = regime === "simples" ? "SN" : regime === "presumido" ? "LP" : regime === "real" ? "LR" : null;
+  const a = atividade === "servico" ? "SERV" : atividade === "comercio" ? "COM" : atividade === "misto" ? "MIX" : null;
+  if (!r || !a) return "—";
+  return `${r}-${a}-PL-${funcionario ? "CF" : "SF"}`;
+}
+
+// ── Gerar Rotinas do Perfil Dialog ────────────────────────────────────────────
+interface GerarDialogProps {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  empresas: { id: string; razao_social: string; regime_tributario?: string; atividade?: string; possui_prolabore?: boolean; possui_funcionario?: boolean }[];
+  equipe: { id: string; nome: string; papel_rotinas?: string }[];
+}
+
+function GerarRotinasPerfilDialog({ open, onOpenChange, empresas, equipe }: GerarDialogProps) {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const createRotina = useCreateRotina();
+
+  const [empresaId, setEmpresaId] = useState("");
+  const [competencia, setCompetencia] = useState(format(startOfMonth(new Date()), "yyyy-MM"));
+  const [responsavelId, setResponsavelId] = useState("");
+  const [preview, setPreview] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+
+  const empresa = empresas.find(e => e.id === empresaId);
+  const perfilCodigo = empresa
+    ? resolvePerfilCodigo(
+        empresa.regime_tributario ?? "",
+        empresa.atividade ?? "servico",
+        empresa.possui_prolabore ?? true,
+        empresa.possui_funcionario ?? false,
+      )
+    : "—";
+
+  // Carrega rotinas do perfil quando empresa ou competência muda
+  useEffect(() => {
+    if (!empresa || perfilCodigo === "—") { setPreview([]); return; }
+    setLoading(true);
+
+    const load = async () => {
+      // Busca o perfil_modelo pelo código
+      const { data: perfil } = await (supabase as any)
+        .from("perfil_modelo")
+        .select("id")
+        .eq("codigo", perfilCodigo)
+        .single();
+
+      if (!perfil) { setPreview([]); setLoading(false); return; }
+
+      // Busca rotinas do catálogo vinculadas ao perfil
+      const { data: links } = await (supabase as any)
+        .from("perfil_rotina")
+        .select("ordem, condicional, rotina_modelo(id, nome, tipo, dia_vencimento, meses_offset, margem_seguranca, periodicidade)")
+        .eq("perfil_id", perfil.id)
+        .order("ordem");
+
+      const refMes = parseISO(competencia + "-01");
+
+      const items = (links ?? []).map((l: any) => {
+        const rm = l.rotina_modelo;
+        if (!rm) return null;
+
+        let dataVencimento = "";
+        let dataInterno = "";
+        if (rm.dia_vencimento) {
+          const mesPag = addMonths(refMes, rm.meses_offset ?? 1);
+          const maxDia = getDaysInMonth(mesPag);
+          const dia = Math.min(rm.dia_vencimento, maxDia);
+          const vencLegal = setDate(mesPag, dia);
+          const vencInt = subDays(vencLegal, rm.margem_seguranca ?? 3);
+          dataVencimento = format(vencLegal, "yyyy-MM-dd");
+          dataInterno = format(vencInt, "yyyy-MM-dd");
+        }
+
+        return {
+          catalogo_id: rm.id,
+          titulo: `${rm.nome} — ${format(refMes, "MMM/yyyy", { locale: ptBR })}`,
+          tipo: rm.tipo,
+          data_vencimento: dataVencimento,
+          data_vencimento_interno: dataInterno,
+          condicional: l.condicional,
+        };
+      }).filter(Boolean);
+
+      setPreview(items);
+      setLoading(false);
+    };
+
+    load();
+  }, [empresaId, competencia, perfilCodigo]);
+
+  async function handleGerar() {
+    if (!empresa || preview.length === 0) return;
+    setGenerating(true);
+    let created = 0;
+    try {
+      for (const item of preview) {
+        if (!item.data_vencimento) continue;
+        await createRotina.mutateAsync({
+          empresa_id: empresa.id,
+          catalogo_id: item.catalogo_id,
+          titulo: item.titulo,
+          tipo: item.tipo,
+          competencia: competencia + "-01",
+          data_vencimento: item.data_vencimento,
+          data_vencimento_interno: item.data_vencimento_interno || null,
+          responsavel_id: responsavelId || null,
+          revisor_id: null,
+          observacao: item.condicional ? `Condição: ${item.condicional}` : null,
+        });
+        created++;
+      }
+      toast({ title: `${created} rotinas geradas com sucesso!` });
+      onOpenChange(false);
+    } catch (err: any) {
+      toast({ title: "Erro ao gerar rotinas", description: err.message, variant: "destructive" });
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { onOpenChange(v); if (!v) { setEmpresaId(""); setPreview([]); } }}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle style={{ color: NAVY }} className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-amber-500" />
+            Gerar Rotinas do Perfil
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 pt-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Empresa *</Label>
+              <Select value={empresaId} onValueChange={setEmpresaId}>
+                <SelectTrigger><SelectValue placeholder="Selecionar empresa" /></SelectTrigger>
+                <SelectContent>
+                  {empresas.map(e => (
+                    <SelectItem key={e.id} value={e.id}>{e.razao_social}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Competência *</Label>
+              <Input type="month" value={competencia} onChange={e => setCompetencia(e.target.value)} />
+            </div>
+          </div>
+
+          {empresa && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/40 text-sm">
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+              <span>Perfil detectado:</span>
+              <Badge variant="outline" className="font-mono text-xs">{perfilCodigo}</Badge>
+              {perfilCodigo === "—" && (
+                <span className="text-amber-600 text-xs ml-1">Configure regime e atividade no cadastro da empresa.</span>
+              )}
+            </div>
+          )}
+
+          <div>
+            <Label>Responsável (opcional)</Label>
+            <Select value={responsavelId} onValueChange={setResponsavelId}>
+              <SelectTrigger><SelectValue placeholder="Selecionar responsável" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">— Nenhum —</SelectItem>
+                {equipe.filter(u => ["responsavel", "ambos"].includes(u.papel_rotinas ?? "")).map(u => (
+                  <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Preview */}
+          {loading && <p className="text-sm text-muted-foreground text-center py-4">Carregando rotinas do perfil...</p>}
+          {!loading && empresa && perfilCodigo !== "—" && preview.length === 0 && (
+            <p className="text-sm text-amber-600 text-center py-4">Nenhuma rotina encontrada para o perfil {perfilCodigo}. Verifique se a migration foi executada.</p>
+          )}
+          {!loading && preview.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">{preview.length} rotinas a gerar</Label>
+              <div className="max-h-60 overflow-y-auto space-y-1.5 rounded-lg border p-2">
+                {preview.map((item, i) => (
+                  <div key={i} className="flex items-center justify-between text-sm px-2 py-1 rounded hover:bg-muted/30">
+                    <div>
+                      <span className="font-medium">{item.titulo}</span>
+                      {item.condicional && (
+                        <span className="ml-2 text-xs text-muted-foreground italic">({item.condicional})</span>
+                      )}
+                    </div>
+                    {item.data_vencimento
+                      ? <span className="text-xs text-muted-foreground shrink-0">{format(parseISO(item.data_vencimento), "dd/MM/yyyy")}</span>
+                      : <span className="text-xs text-amber-500">sem data</span>
+                    }
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+            <Button
+              onClick={handleGerar}
+              disabled={!empresaId || preview.length === 0 || generating}
+              style={{ backgroundColor: NAVY }}
+              className="text-white"
+            >
+              {generating ? "Gerando..." : `Gerar ${preview.length} Rotinas`}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Kanban Card ───────────────────────────────────────────────────────────────
 function KanbanCard({ rotina, onClick }: { rotina: Rotina; onClick: () => void }) {
   const hoje = new Date();
@@ -360,13 +582,19 @@ export default function Rotinas() {
   const [filterMes, setFilterMes] = useState(format(new Date(), "yyyy-MM"));
 
   // Aux data
-  const [empresas, setEmpresas] = useState<{ id: string; razao_social: string }[]>([]);
+  const [empresas, setEmpresas] = useState<{
+    id: string; razao_social: string; regime_tributario?: string;
+    atividade?: string; possui_prolabore?: boolean; possui_funcionario?: boolean;
+  }[]>([]);
   const [equipe, setEquipe] = useState<{ id: string; nome: string; papel_rotinas?: string }[]>([]);
+  const [gerarOpen, setGerarOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("empresas").select("id, razao_social").eq("user_id", user.id).order("razao_social")
-      .then(({ data }) => setEmpresas(data ?? []));
+    supabase.from("empresas")
+      .select("id, razao_social, regime_tributario, atividade, possui_prolabore, possui_funcionario")
+      .eq("user_id", user.id).order("razao_social")
+      .then(({ data }) => setEmpresas((data ?? []) as any[]));
     supabase.from("usuarios_perfil").select("id, nome, papel_rotinas").eq("user_id", user.id).order("nome")
       .then(({ data }) => setEquipe((data ?? []) as { id: string; nome: string; papel_rotinas?: string }[]));
   }, [user]);
@@ -472,6 +700,10 @@ export default function Rotinas() {
               { header: "Status",      value: r => STATUS_CONFIG[r.status]?.label ?? r.status },
             ]}
           />
+          <Button onClick={() => setGerarOpen(true)} variant="outline">
+            <ClipboardList className="h-4 w-4 mr-2" />
+            Gerar do Perfil
+          </Button>
           <Button onClick={() => setCreateOpen(true)} style={{ backgroundColor: NAVY }} className="text-white">
             <Plus className="h-4 w-4 mr-2" />
             Nova Rotina
@@ -608,6 +840,14 @@ export default function Rotinas() {
       <NovaRotinaDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
+        empresas={empresas}
+        equipe={equipe}
+      />
+
+      {/* Gerar rotinas do perfil */}
+      <GerarRotinasPerfilDialog
+        open={gerarOpen}
+        onOpenChange={setGerarOpen}
         empresas={empresas}
         equipe={equipe}
       />
