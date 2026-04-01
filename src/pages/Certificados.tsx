@@ -218,6 +218,20 @@ export default function Certificados() {
       return;
     }
 
+    // Bloqueia cadastro de certificado já vencido (apenas no novo cadastro, não na edição)
+    if (!editingId) {
+      const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+      const venc = new Date(form.data_vencimento + "T00:00:00");
+      if (venc < hoje) {
+        toast({
+          title: "Certificado vencido",
+          description: "Não é permitido cadastrar um certificado com data de vencimento no passado.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     const payload: Record<string, any> = {
       user_id:         ownerUserId!,
       empresa:         form.empresa.trim(),
