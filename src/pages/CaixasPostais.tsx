@@ -108,7 +108,7 @@ export default function CaixasPostais() {
       .eq("user_id", ownerUserId!)
       .order("numero", { ascending: true });
     setCaixas(data || []);
-  }, [user]);
+  }, [user, ownerUserId]);
 
   const loadEmpresas = useCallback(async () => {
     if (!user) return;
@@ -117,9 +117,18 @@ export default function CaixasPostais() {
       .select("id, cnpj, razao_social")
       .eq("user_id", ownerUserId!);
     setEmpresas(data || []);
-  }, [user]);
+  }, [user, ownerUserId]);
 
   useEffect(() => { loadCaixas(); loadEmpresas(); }, [loadCaixas, loadEmpresas]);
+
+  useEffect(() => {
+    if (!ownerUserId) return;
+    const channel = supabase
+      .channel("caixas-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "caixas_postais" }, () => { loadCaixas(); })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [ownerUserId, loadCaixas]);
 
   // ── Status helpers ─────────────────────────────────────────────────────────
 
@@ -240,7 +249,7 @@ export default function CaixasPostais() {
     const existente = caixas.find(c => c.numero === numero && c.contrato_status === "rescindido");
 
     const payload = {
-      user_id:          user.id,
+      user_id:          ownerUserId!,
       numero,
       cnpj:             form.cnpj,
       empresa:          form.empresa.trim(),
@@ -301,7 +310,7 @@ export default function CaixasPostais() {
 
     const { error: histErr } = await supabase.from("caixas_postais_historico").insert({
       caixa_postal_id: selectedId,
-      user_id:         user.id,
+      user_id:         ownerUserId!,
       data_renovacao:  renovacaoForm.data_renovacao,
       valor_pago:      renovacaoForm.valor_pago ? parseFloat(renovacaoForm.valor_pago) : null,
       observacao:      renovacaoForm.observacao || null,

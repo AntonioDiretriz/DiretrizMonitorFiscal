@@ -91,7 +91,7 @@ export default function ContasPagar() {
       .then(({ data }) => setEmpresas(data ?? []));
     supabase.from("plano_contas").select("id, codigo, nome, tipo").eq("user_id", ownerUserId!).order("codigo")
       .then(({ data }) => setPlanoContas(data ?? []));
-  }, [user]);
+  }, [user, ownerUserId]);
 
   const today = new Date();
   const in7   = addDays(today, 7);

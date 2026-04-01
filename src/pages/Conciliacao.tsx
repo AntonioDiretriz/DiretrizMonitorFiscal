@@ -242,7 +242,7 @@ export default function Conciliacao() {
     setContasPagar((cpRes.data ?? []) as ContaPagar[]);
     setEmpresas((empRes.data ?? []) as Empresa[]);
     setLoading(false);
-  }, [user]);
+  }, [user, ownerUserId]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 

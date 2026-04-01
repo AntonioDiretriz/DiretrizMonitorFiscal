@@ -72,7 +72,7 @@ export default function Certidoes() {
     if (!user) return;
     const { data } = await supabase.from("empresas").select("id, razao_social").eq("user_id", ownerUserId!).order("razao_social");
     setEmpresas(data || []);
-  }, [user]);
+  }, [user, ownerUserId]);
 
   useEffect(() => { loadCertidoes(); loadEmpresas(); }, [loadCertidoes, loadEmpresas]);
 

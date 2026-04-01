@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { Plus, Pencil, Trash2, ChevronRight, ChevronDown } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Plus, Pencil, Trash2, ChevronRight, ChevronDown, Upload } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -107,6 +107,40 @@ function PlanoRow({ item, depth = 0, onEdit, onDelete, podeEditar, podeExcluir }
   );
 }
 
+// Detecta tipo de conta pelo código
+function detectTipo(codigo: string, nome: string): PlanoContaTipo {
+  const n = nome.toLowerCase();
+  if (n.includes("receita") || n.includes("faturamento") || n.includes("venda")) return "receita";
+  if (n.includes("imposto") || n.includes("tributo") || n.includes("das") || n.includes("irpj") || n.includes("csll") || n.includes("pis") || n.includes("cofins") || n.includes("iss") || n.includes("inss") || n.includes("fgts")) return "imposto";
+  if (n.includes("investimento") || n.includes("ativo") || n.includes("imobilizado")) return "investimento";
+  return "despesa";
+}
+
+// Parser flexível para TXT de plano de contas
+function parseTxtPlanoContas(txt: string): { codigo: string; nome: string; tipo: PlanoContaTipo }[] {
+  const lines = txt.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+  const result: { codigo: string; nome: string; tipo: PlanoContaTipo }[] = [];
+  for (const line of lines) {
+    // Tenta separadores: ; | \t | espaços múltiplos
+    let parts: string[] = [];
+    if (line.includes(";"))      parts = line.split(";").map(p => p.trim());
+    else if (line.includes("|")) parts = line.split("|").map(p => p.trim());
+    else if (line.includes("\t")) parts = line.split("\t").map(p => p.trim());
+    else {
+      // Formato: código numérico seguido de descrição (ex: "1.1.001 CAIXA E BANCOS")
+      const m = line.match(/^([\d.]+)\s+(.+)$/);
+      if (m) parts = [m[1], m[2]];
+    }
+    if (parts.length < 2) continue;
+    const codigo = parts[0].replace(/\D/g, "") ? parts[0] : "";
+    const nome   = parts[1] || "";
+    if (!codigo || !nome) continue;
+    const tipo = detectTipo(codigo, nome);
+    result.push({ codigo, nome, tipo });
+  }
+  return result;
+}
+
 export default function PlanoContas() {
   const { user, podeIncluir, podeEditar, podeExcluir, ownerUserId } = useAuth();
   const { toast } = useToast();
@@ -115,6 +149,10 @@ export default function PlanoContas() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [importPreview, setImportPreview] = useState<{ codigo: string; nome: string; tipo: PlanoContaTipo }[]>([]);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -161,6 +199,36 @@ export default function PlanoContas() {
     toast({ title: "Conta removida" }); load();
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const txt = ev.target?.result as string;
+      const parsed = parseTxtPlanoContas(txt);
+      if (parsed.length === 0) {
+        toast({ title: "Nenhuma conta encontrada", description: "Verifique o formato do arquivo TXT.", variant: "destructive" });
+        return;
+      }
+      setImportPreview(parsed);
+      setImportDialogOpen(true);
+    };
+    reader.readAsText(file, "latin1");
+    e.target.value = "";
+  };
+
+  const handleImportConfirm = async () => {
+    setImporting(true);
+    const payload = importPreview.map(c => ({ user_id: ownerUserId!, codigo: c.codigo, nome: c.nome, tipo: c.tipo, parent_id: null }));
+    const { error } = await supabase.from("plano_contas").insert(payload);
+    setImporting(false);
+    if (error) { toast({ title: "Erro ao importar", description: error.message, variant: "destructive" }); return; }
+    toast({ title: `${payload.length} contas importadas com sucesso!` });
+    setImportDialogOpen(false);
+    setImportPreview([]);
+    load();
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -168,6 +236,15 @@ export default function PlanoContas() {
           <h1 className="text-2xl font-bold text-foreground">Plano de Contas</h1>
           <p className="text-muted-foreground">Categorias para classificação de lançamentos</p>
         </div>
+        <div className="flex gap-2">
+          {podeIncluir && (
+            <>
+              <input ref={fileInputRef} type="file" accept=".txt,.csv" className="hidden" onChange={handleFileSelect} />
+              <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+                <Upload className="mr-2 h-4 w-4" /> Importar TXT
+              </Button>
+            </>
+          )}
         <Dialog open={dialogOpen} onOpenChange={o => { if (!o) { setEditingId(null); setForm(EMPTY_FORM); } setDialogOpen(o); }}>
           {podeIncluir && (
             <DialogTrigger asChild>
@@ -215,6 +292,47 @@ export default function PlanoContas() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
+
+      {/* Dialog de preview da importação */}
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Importar Plano de Contas</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">{importPreview.length} contas encontradas no arquivo. Confirme para importar:</p>
+          <div className="overflow-y-auto flex-1 border rounded-md">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 sticky top-0">
+                <tr>
+                  <th className="text-left px-3 py-2">Código</th>
+                  <th className="text-left px-3 py-2">Nome</th>
+                  <th className="text-left px-3 py-2">Tipo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {importPreview.map((c, i) => (
+                  <tr key={i} className="border-t">
+                    <td className="px-3 py-1.5 font-mono text-xs">{c.codigo}</td>
+                    <td className="px-3 py-1.5">{c.nome}</td>
+                    <td className="px-3 py-1.5">
+                      <Badge style={{ backgroundColor: TIPO_CONFIG[c.tipo].color + "20", color: TIPO_CONFIG[c.tipo].color, border: `1px solid ${TIPO_CONFIG[c.tipo].color}30` }}>
+                        {TIPO_CONFIG[c.tipo].label}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={() => setImportDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleImportConfirm} disabled={importing}>
+              {importing ? "Importando..." : `Importar ${importPreview.length} contas`}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       </div>
 
       <Card>

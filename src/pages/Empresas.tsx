@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Building2, Trash2, Loader2, Pencil, MapPin, UserPlus, Cake, Users2, Banknote } from "lucide-react";
+import { Plus, Search, Building2, Trash2, Loader2, Pencil, MapPin, UserPlus, Cake, Users2, Banknote, Upload } from "lucide-react";
 import { ExportButton } from "@/components/ExportButton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -63,6 +63,78 @@ function formatCEP(v: string) {
 }
 
 const UF_LIST = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
+
+// ── Plano de Contas TXT helpers ───────────────────────────────────────────────
+
+type PlanoContaTipo = "receita" | "despesa" | "investimento" | "imposto";
+
+function detectTipoPC(nome: string): PlanoContaTipo {
+  const n = nome.toLowerCase();
+  if (n.includes("receita") || n.includes("faturamento") || n.includes("venda")) return "receita";
+  if (n.includes("imposto") || n.includes("tributo") || n.includes("das") || n.includes("irpj") || n.includes("csll") || n.includes("pis") || n.includes("cofins") || n.includes("iss") || n.includes("inss") || n.includes("fgts")) return "imposto";
+  if (n.includes("investimento") || n.includes("ativo") || n.includes("imobilizado")) return "investimento";
+  return "despesa";
+}
+
+// Verifica se um valor parece um código contábil (tem dígito, curto, não é número sequencial puro)
+function isCodigoContabil(v: string): boolean {
+  if (!v || !/\d/.test(v) || v.length > 20) return false;
+  // Aceita formatos: "1", "1.1", "1.01.001", "101001", "1-01-001"
+  return /^[\d][.\d-]*$/.test(v);
+}
+
+// Verifica se um valor parece um nome de conta (texto com letras, comprimento razoável)
+function isNomeConta(v: string): boolean {
+  return v.length >= 2 && /[A-Za-zÀ-ú]/.test(v);
+}
+
+function parseTxtPC(txt: string): { codigo: string; nome: string; tipo: PlanoContaTipo }[] {
+  const lines = txt.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+  if (lines.length === 0) return [];
+
+  // Detecta separador dominante
+  const sep = lines[0].includes("\t") ? "\t"
+    : lines[0].includes(";") ? ";"
+    : lines[0].includes("|") ? "|"
+    : null;
+
+  // Converte todas as linhas em arrays de colunas
+  const rows: string[][] = lines.map(line => {
+    if (sep) return line.split(sep).map(p => p.trim());
+    // Sem separador: tenta "código espaços nome"
+    const m = line.match(/^([\d][.\d-]*)\s+(.+)$/);
+    if (m) return [m[1], m[2]];
+    return [line];
+  });
+
+  const maxCols = Math.max(...rows.map(r => r.length));
+  if (maxCols < 2) return [];
+
+  // Testa todos os pares (codeCol, nameCol) e escolhe o que produz mais linhas válidas
+  let bestCode = 0, bestName = 1, bestCount = 0;
+
+  for (let ci = 0; ci < maxCols; ci++) {
+    for (let ni = 0; ni < maxCols; ni++) {
+      if (ci === ni) continue;
+      let count = 0;
+      for (const row of rows) {
+        if (isCodigoContabil(row[ci] ?? "") && isNomeConta(row[ni] ?? "")) count++;
+      }
+      if (count > bestCount) { bestCount = count; bestCode = ci; bestName = ni; }
+    }
+  }
+
+  if (bestCount === 0) return [];
+
+  const result: { codigo: string; nome: string; tipo: PlanoContaTipo }[] = [];
+  for (const row of rows) {
+    const codigo = row[bestCode] ?? "";
+    const nome   = row[bestName] ?? "";
+    if (!isCodigoContabil(codigo) || !isNomeConta(nome)) continue;
+    result.push({ codigo, nome, tipo: detectTipoPC(nome) });
+  }
+  return result;
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -126,6 +198,11 @@ export default function Empresas() {
   const [loadingCnpj, setLoadingCnpj] = useState(false);
   const [loadingCep,  setLoadingCep]  = useState(false);
 
+  const [pcPreview,       setPcPreview]       = useState<{ codigo: string; nome: string; tipo: PlanoContaTipo }[]>([]);
+  const [pcDialogOpen,    setPcDialogOpen]    = useState(false);
+  const [pcImporting,     setPcImporting]     = useState(false);
+  const pcFileRef = useRef<HTMLInputElement>(null);
+
   const PAGE_SIZE = 20;
 
   // ── Load ──────────────────────────────────────────────────────────────────
@@ -152,9 +229,18 @@ export default function Empresas() {
       }
       setSociosMap(map);
     }
-  }, [user, page]);
+  }, [user, ownerUserId, page]);
 
   useEffect(() => { loadEmpresas(); }, [loadEmpresas]);
+
+  useEffect(() => {
+    if (!ownerUserId) return;
+    const channel = supabase
+      .channel("empresas-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "empresas" }, () => { loadEmpresas(); })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [ownerUserId, loadEmpresas]);
 
   // ── CNPJ lookup (BrasilAPI) ───────────────────────────────────────────────
 
@@ -269,7 +355,7 @@ export default function Empresas() {
       : null;
 
     const payload: Record<string, any> = {
-      user_id:             user!.id,
+      user_id:             ownerUserId!,
       cnpj:                currentCnpj,
       razao_social:        form.razao_social.trim(),
       cep:                 form.cep.replace(/\D/g, "") || null,
@@ -322,7 +408,7 @@ export default function Empresas() {
         const { error: se } = await (supabase as any).from("socios").insert(
           socios.map(s => ({
             empresa_id:      empresaId,
-            user_id:         user!.id,
+            user_id:         ownerUserId!,
             nome:            s.nome,
             cpf:             s.cpf             || null,
             data_nascimento: s.data_nascimento || null,
@@ -338,6 +424,35 @@ export default function Empresas() {
     setForm(EMPTY_FORM); setSocios([]); setSocioForm(EMPTY_SOCIO);
     setEditingId(null); setDialogOpen(false);
     loadEmpresas();
+  };
+
+  const handlePcFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const txt = ev.target?.result as string;
+      const parsed = parseTxtPC(txt);
+      if (parsed.length === 0) {
+        toast({ title: "Nenhuma conta encontrada", description: "Verifique o formato do arquivo. Cada linha deve ter: código e nome separados por ; | tab ou espaço.", variant: "destructive" });
+        return;
+      }
+      setPcPreview(parsed);
+      setPcDialogOpen(true);
+    };
+    reader.readAsText(file, "UTF-8");
+    e.target.value = "";
+  };
+
+  const handlePcImportConfirm = async () => {
+    setPcImporting(true);
+    const payload = pcPreview.map(c => ({ user_id: ownerUserId!, codigo: c.codigo, nome: c.nome, tipo: c.tipo, parent_id: null }));
+    const { error } = await supabase.from("plano_contas").insert(payload);
+    setPcImporting(false);
+    if (error) { toast({ title: "Erro ao importar", description: error.message, variant: "destructive" }); return; }
+    toast({ title: `${pcPreview.length} contas importadas com sucesso!` });
+    setPcDialogOpen(false);
+    setPcPreview([]);
   };
 
   const handleDelete = async (id: string) => {
@@ -749,9 +864,19 @@ export default function Empresas() {
                       <p className="text-xs text-muted-foreground">Plano de contas utilizado por esta empresa no Domínio para amarração das contas a pagar</p>
                     </div>
 
-                    <div className="border-t pt-4">
+                    <div className="border-t pt-4 space-y-3">
+                      <div>
+                        <p className="text-sm font-medium mb-1">Importar Plano de Contas (TXT)</p>
+                        <p className="text-xs text-muted-foreground mb-2">
+                          Faça upload de um arquivo TXT exportado do Domínio para importar automaticamente as contas no sistema.
+                        </p>
+                        <input ref={pcFileRef} type="file" accept=".txt,.csv" className="hidden" onChange={handlePcFile} />
+                        <Button type="button" variant="outline" size="sm" onClick={() => pcFileRef.current?.click()}>
+                          <Upload className="mr-2 h-3.5 w-3.5" /> Importar TXT
+                        </Button>
+                      </div>
                       <p className="text-xs text-muted-foreground bg-muted/30 rounded p-3 leading-relaxed">
-                        <strong>Como funciona:</strong> Os códigos acima são utilizados para identificar a empresa e vincular automaticamente os lançamentos financeiros (contas a pagar, recebimentos) ao plano de contas correto no sistema Domínio, evitando retrabalho de digitação.
+                        <strong>Como funciona:</strong> Os códigos acima identificam a empresa e vinculam automaticamente os lançamentos financeiros ao plano de contas correto no sistema Domínio, evitando retrabalho de digitação.
                       </p>
                     </div>
                   </TabsContent>
@@ -891,6 +1016,42 @@ export default function Empresas() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Plano de Contas TXT import preview dialog */}
+      <Dialog open={pcDialogOpen} onOpenChange={open => { if (!open) { setPcDialogOpen(false); setPcPreview([]); } }}>
+        <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Importar Plano de Contas</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">{pcPreview.length} contas encontradas. Confirme para importar:</p>
+          <div className="overflow-y-auto flex-1 border rounded-md">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 sticky top-0">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Código</th>
+                  <th className="px-3 py-2 text-left font-medium">Nome</th>
+                  <th className="px-3 py-2 text-left font-medium">Tipo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pcPreview.map((c, i) => (
+                  <tr key={i} className="border-t">
+                    <td className="px-3 py-1.5 font-mono text-xs">{c.codigo}</td>
+                    <td className="px-3 py-1.5">{c.nome}</td>
+                    <td className="px-3 py-1.5 capitalize text-xs text-muted-foreground">{c.tipo}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={() => { setPcDialogOpen(false); setPcPreview([]); }}>Cancelar</Button>
+            <Button onClick={handlePcImportConfirm} disabled={pcImporting}>
+              {pcImporting ? <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Importando...</> : `Importar ${pcPreview.length} contas`}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Pagination */}
       {totalCount > PAGE_SIZE && (

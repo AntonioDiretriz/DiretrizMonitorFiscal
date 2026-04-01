@@ -62,28 +62,35 @@ export function AppSidebar() {
     : email.slice(0, 2).toUpperCase();
   const role = isOwner ? "Proprietário" : isAdmin ? "Administrador" : "Colaborador";
 
-  const monitoramentoItems: {
-    title: string; url?: string; icon: React.ElementType; moduleId?: ModuleId; soon?: boolean;
-  }[] = [
-    { title: "Certidões",          url: "/certidoes",      icon: FileCheck,   moduleId: "certidoes"    },
-    { title: "Caixas Postais",     url: "/caixas-postais", icon: MailOpen,    moduleId: "caixas"       },
-    { title: "Diagnóstico Fiscal", icon: Stethoscope,      soon: true                                  },
-    { title: "Certificados",       url: "/certificados",   icon: KeyRound,    moduleId: "certificados" },
-  ].filter(item => item.soon || !item.moduleId || temModulo(item.moduleId));
+  const monitoramentoItems = [
+    { title: "Certidões",          url: "/certidoes",      icon: FileCheck,   moduleId: "certidoes"    as ModuleId },
+    { title: "Caixas Postais",     url: "/caixas-postais", icon: MailOpen,    moduleId: "caixas"       as ModuleId },
+    { title: "Diagnóstico Fiscal", icon: Stethoscope,      soon: true,        url: ""                              },
+    { title: "Certificados",       url: "/certificados",   icon: KeyRound,    moduleId: "certificados" as ModuleId },
+  ].filter(item => item.soon || temModulo(item.moduleId as ModuleId));
 
-  const financeiroItems: { title: string; url: string; icon: React.ElementType; soon?: boolean }[] = [
+  const financeiroItems = temModulo("financeiro") ? [
     { title: "Visão Geral",    url: "/financeiro",   icon: Banknote   },
     { title: "Contas a Pagar", url: "/contas-pagar", icon: CreditCard },
     { title: "Conciliação",    url: "/conciliacao",  icon: ListChecks },
     { title: "Obrigações",     url: "/obrigacoes",   icon: ListChecks },
-  ];
+  ] : [];
+
+  const rotinasItems = temModulo("rotinas") ? [
+    { title: "Tarefas",    url: "/rotinas",            icon: ClipboardList },
+    { title: "Calendário", url: "/rotinas/calendario", icon: CalendarDays  },
+    { title: "Dashboard",  url: "/rotinas/dashboard",  icon: BarChart2     },
+  ] : [];
 
   const configItems = [
-    { title: "Empresas",       url: "/empresas",      icon: Building2  },
-    { title: "Fornecedores",   url: "/fornecedores",  icon: UserCheck  },
-    { title: "Equipe",         url: "/usuarios",      icon: Users,     adminOnly: true },
-    { title: "Plano de Contas",url: "/plano-contas",  icon: ListChecks },
-  ].filter(item => !("adminOnly" in item && item.adminOnly) || isAdmin);
+    { title: "Empresas",        url: "/empresas",      icon: Building2,  adminOnly: false },
+    { title: "Fornecedores",    url: "/fornecedores",  icon: UserCheck,  adminOnly: true  },
+    { title: "Equipe",          url: "/usuarios",      icon: Users,      adminOnly: true  },
+    { title: "Plano de Contas", url: "/plano-contas",  icon: ListChecks, adminOnly: true  },
+  ].filter(item => !item.adminOnly || isAdmin);
+
+  const showMonitoramento = monitoramentoItems.length > 0;
+  const showModulo = showMonitoramento || financeiroItems.length > 0 || rotinasItems.length > 0;
 
   return (
     <Sidebar collapsible="icon">
@@ -130,51 +137,50 @@ export function AppSidebar() {
               </SidebarMenuItem>
 
               {/* ── Módulo ── */}
-              {!collapsed && (
+              {!collapsed && showModulo && (
                 <SidebarMenuItem>
                   <NavSection icon={Package} label="Módulo" defaultOpen>
                     <div className="pl-2">
-                      <SidebarMenuItem>
-                        <NavSection icon={FileCheck} label="Monitoramento" defaultOpen>
-                          <SidebarMenuSub>
-                            {monitoramentoItems.map((item) => (
-                              <SidebarMenuSubItem key={item.title}>
-                                {item.soon ? (
-                                  <SidebarMenuSubButton disabled className="opacity-50 cursor-default">
-                                    <item.icon className="h-3.5 w-3.5 shrink-0" />
-                                    <span className="flex-1">{item.title}</span>
-                                    <span className="ml-auto text-[10px] text-muted-foreground">Em breve</span>
-                                  </SidebarMenuSubButton>
-                                ) : (
-                                  <SidebarMenuSubButton asChild>
-                                    <NavLink
-                                      to={item.url!}
-                                      className="hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-foreground"
-                                      activeClassName="text-sidebar-foreground font-medium"
-                                    >
-                                      <item.icon className="h-3.5 w-3.5 shrink-0" />
-                                      <span>{item.title}</span>
-                                    </NavLink>
-                                  </SidebarMenuSubButton>
-                                )}
-                              </SidebarMenuSubItem>
-                            ))}
-                          </SidebarMenuSub>
-                        </NavSection>
-                      </SidebarMenuItem>
 
-                      <SidebarMenuItem>
-                        <NavSection icon={Banknote} label="Financeiro">
-                          <SidebarMenuSub>
-                            {financeiroItems.map((item) => (
-                              <SidebarMenuSubItem key={item.title}>
-                                {item.soon ? (
-                                  <SidebarMenuSubButton disabled className="opacity-50 cursor-default">
-                                    <item.icon className="h-3.5 w-3.5 shrink-0" />
-                                    <span className="flex-1">{item.title}</span>
-                                    <span className="ml-auto text-[10px] text-muted-foreground">Em breve</span>
-                                  </SidebarMenuSubButton>
-                                ) : (
+                      {/* Monitoramento */}
+                      {showMonitoramento && (
+                        <SidebarMenuItem>
+                          <NavSection icon={FileCheck} label="Monitoramento" defaultOpen>
+                            <SidebarMenuSub>
+                              {monitoramentoItems.map((item) => (
+                                <SidebarMenuSubItem key={item.title}>
+                                  {item.soon ? (
+                                    <SidebarMenuSubButton disabled className="opacity-50 cursor-default">
+                                      <item.icon className="h-3.5 w-3.5 shrink-0" />
+                                      <span className="flex-1">{item.title}</span>
+                                      <span className="ml-auto text-[10px] text-muted-foreground">Em breve</span>
+                                    </SidebarMenuSubButton>
+                                  ) : (
+                                    <SidebarMenuSubButton asChild>
+                                      <NavLink
+                                        to={item.url!}
+                                        className="hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-foreground"
+                                        activeClassName="text-sidebar-foreground font-medium"
+                                      >
+                                        <item.icon className="h-3.5 w-3.5 shrink-0" />
+                                        <span>{item.title}</span>
+                                      </NavLink>
+                                    </SidebarMenuSubButton>
+                                  )}
+                                </SidebarMenuSubItem>
+                              ))}
+                            </SidebarMenuSub>
+                          </NavSection>
+                        </SidebarMenuItem>
+                      )}
+
+                      {/* Financeiro */}
+                      {financeiroItems.length > 0 && (
+                        <SidebarMenuItem>
+                          <NavSection icon={Banknote} label="Financeiro">
+                            <SidebarMenuSub>
+                              {financeiroItems.map((item) => (
+                                <SidebarMenuSubItem key={item.title}>
                                   <SidebarMenuSubButton asChild>
                                     <NavLink
                                       to={item.url}
@@ -185,38 +191,36 @@ export function AppSidebar() {
                                       <span>{item.title}</span>
                                     </NavLink>
                                   </SidebarMenuSubButton>
-                                )}
-                              </SidebarMenuSubItem>
-                            ))}
-                          </SidebarMenuSub>
-                        </NavSection>
-                      </SidebarMenuItem>
+                                </SidebarMenuSubItem>
+                              ))}
+                            </SidebarMenuSub>
+                          </NavSection>
+                        </SidebarMenuItem>
+                      )}
 
-                      {/* ── Rotinas ── */}
-                      <SidebarMenuItem>
-                        <NavSection icon={ClipboardList} label="Rotinas">
-                          <SidebarMenuSub>
-                            {[
-                              { title: "Tarefas",    url: "/rotinas",             icon: ClipboardList },
-                              { title: "Calendário", url: "/rotinas/calendario",  icon: CalendarDays  },
-                              { title: "Dashboard",  url: "/rotinas/dashboard",   icon: BarChart2     },
-                            ].map((item) => (
-                              <SidebarMenuSubItem key={item.title}>
-                                <SidebarMenuSubButton asChild>
-                                  <NavLink
-                                    to={item.url}
-                                    className="hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-foreground"
-                                    activeClassName="text-sidebar-foreground font-medium"
-                                  >
-                                    <item.icon className="h-3.5 w-3.5 shrink-0" />
-                                    <span>{item.title}</span>
-                                  </NavLink>
-                                </SidebarMenuSubButton>
-                              </SidebarMenuSubItem>
-                            ))}
-                          </SidebarMenuSub>
-                        </NavSection>
-                      </SidebarMenuItem>
+                      {/* Rotinas */}
+                      {rotinasItems.length > 0 && (
+                        <SidebarMenuItem>
+                          <NavSection icon={ClipboardList} label="Rotinas">
+                            <SidebarMenuSub>
+                              {rotinasItems.map((item) => (
+                                <SidebarMenuSubItem key={item.title}>
+                                  <SidebarMenuSubButton asChild>
+                                    <NavLink
+                                      to={item.url}
+                                      className="hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-foreground"
+                                      activeClassName="text-sidebar-foreground font-medium"
+                                    >
+                                      <item.icon className="h-3.5 w-3.5 shrink-0" />
+                                      <span>{item.title}</span>
+                                    </NavLink>
+                                  </SidebarMenuSubButton>
+                                </SidebarMenuSubItem>
+                              ))}
+                            </SidebarMenuSub>
+                          </NavSection>
+                        </SidebarMenuItem>
+                      )}
 
                     </div>
                   </NavSection>

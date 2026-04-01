@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import * as forge from "node-forge";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -42,6 +43,7 @@ const EMPTY_FORM = { empresa: "", cnpj: "", tipo: "A1", data_vencimento: "", sen
 export default function Certificados() {
   const { user, ownerUserId } = useAuth();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
   const [certificados, setCertificados] = useState<Certificado[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -50,7 +52,7 @@ export default function Certificados() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [fileParaLer, setFileParaLer] = useState<File | null>(null);
   const [isReading, setIsReading] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string | null>(() => searchParams.get("filtro"));
   const [search, setSearch] = useState("");
 
   type SortCol = "empresa" | "cnpj" | "tipo" | "data_vencimento" | "dias" | "status";
@@ -71,9 +73,27 @@ export default function Certificados() {
       .eq("user_id", ownerUserId!)
       .order("data_vencimento", { ascending: true });
     setCertificados(data || []);
-  }, [user]);
+  }, [user, ownerUserId]);
 
   useEffect(() => { loadCertificados(); }, [loadCertificados]);
+
+  // Realtime: recarrega para todos os usuários quando há insert/update/delete
+  useEffect(() => {
+    if (!ownerUserId) return;
+    const channel = supabase
+      .channel("certificados-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "certificados" }, () => {
+        loadCertificados();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [ownerUserId, loadCertificados]);
+
+  // Sincroniza filtro com parâmetro da URL (?filtro=a_expirar | vencido | ativo)
+  useEffect(() => {
+    const filtro = searchParams.get("filtro");
+    setStatusFilter(filtro);
+  }, [searchParams]);
 
   // ── Leitura do certificado A1 ────────────────────────────────────────────
   const lerCertificado = () => {
@@ -199,7 +219,7 @@ export default function Certificados() {
     }
 
     const payload: Record<string, any> = {
-      user_id:         user!.id,
+      user_id:         ownerUserId!,
       empresa:         form.empresa.trim(),
       cnpj:            cnpjNorm || null,
       tipo:            form.tipo as "A1" | "A3",
@@ -394,12 +414,12 @@ export default function Certificados() {
               </Button>
             </DialogTrigger>
 
-            <DialogContent className="max-w-md">
-              <DialogHeader>
+            <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
+              <DialogHeader className="shrink-0">
                 <DialogTitle>{editingId ? "Atualizar Certificado" : "Lançar Novo Certificado"}</DialogTitle>
               </DialogHeader>
 
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form id="cert-form" onSubmit={handleSubmit} className="space-y-4 overflow-y-auto flex-1 pr-1">
                 {/* 1. Tipo */}
                 <div className="space-y-2">
                   <Label>Tipo de Certificado</Label>
@@ -422,49 +442,40 @@ export default function Certificados() {
                 {/* ── A1: upload → senha → ler ── */}
                 {!editingId && form.tipo === "A1" && (
                   <>
-                    {/* 2. Upload do arquivo */}
-                    <div className="space-y-2">
-                      <Label>1. Selecione o arquivo do certificado</Label>
-                      <div
-                        className={`border-2 border-dashed rounded-lg p-5 flex flex-col items-center gap-2 text-center transition-colors ${fileParaLer ? "border-green-400 bg-green-50/40" : "border-muted-foreground/30 bg-muted/10"}`}
-                      >
-                        <FileKey2 className={`h-7 w-7 ${fileParaLer ? "text-green-600" : "text-primary opacity-60"}`} />
-                        {fileParaLer
-                          ? <p className="text-sm font-medium text-green-700">{fileParaLer.name}</p>
-                          : <p className="text-sm text-muted-foreground">Arquivo .PFX / .P12</p>
-                        }
-                        <input
-                          type="file"
-                          ref={fileInputRef}
-                          className="hidden"
-                          accept=".pfx,.p12"
+                    {/* Arquivo + Senha lado a lado */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">1. Arquivo (.pfx/.p12)</Label>
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-dashed text-sm transition-colors ${fileParaLer ? "border-green-400 bg-green-50/40 text-green-700" : "border-muted-foreground/30 bg-muted/10 text-muted-foreground hover:border-primary/40"}`}
+                        >
+                          <FileKey2 className={`h-4 w-4 shrink-0 ${fileParaLer ? "text-green-600" : "opacity-60"}`} />
+                          <span className="truncate text-xs">{fileParaLer ? fileParaLer.name : "Selecionar arquivo"}</span>
+                        </button>
+                        <input type="file" ref={fileInputRef} className="hidden" accept=".pfx,.p12"
                           onChange={e => {
                             const f = e.target.files?.[0] ?? null;
                             setFileParaLer(f);
-                            // Reset campos extraídos ao trocar arquivo
                             setForm(prev => ({ ...prev, empresa: "", cnpj: "", data_vencimento: "" }));
                           }}
                         />
-                        <Button type="button" variant="outline" size="sm" className="w-full mt-1"
-                          onClick={() => fileInputRef.current?.click()}>
-                          {fileParaLer ? "Trocar Arquivo" : "Selecionar Arquivo"}
-                        </Button>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">2. Senha do certificado</Label>
+                        <Input
+                          type="password"
+                          value={form.senha_certificado}
+                          onChange={e => setForm(prev => ({ ...prev, senha_certificado: e.target.value }))}
+                          placeholder="Senha..."
+                          disabled={!fileParaLer}
+                          className="h-[38px]"
+                        />
                       </div>
                     </div>
 
-                    {/* 3. Senha */}
-                    <div className="space-y-2">
-                      <Label>2. Senha do certificado</Label>
-                      <Input
-                        type="password"
-                        value={form.senha_certificado}
-                        onChange={e => setForm(prev => ({ ...prev, senha_certificado: e.target.value }))}
-                        placeholder="Digite a senha do certificado..."
-                        disabled={!fileParaLer}
-                      />
-                    </div>
-
-                    {/* 4. Botão Ler */}
+                    {/* Botão Ler */}
                     <Button
                       type="button"
                       variant="outline"
@@ -476,21 +487,21 @@ export default function Certificados() {
                       {isReading ? "Lendo certificado..." : "3. Ler e Extrair Dados do Certificado"}
                     </Button>
 
-                    {/* Dados extraídos */}
+                    {/* Dados extraídos — linha horizontal compacta */}
                     {form.empresa && (
-                      <div className="rounded-lg border bg-muted/20 p-3 space-y-2 text-sm">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Dados extraídos</p>
-                        <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-lg border bg-muted/20 p-3">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Dados Extraídos</p>
+                        <div className="grid grid-cols-3 gap-2 text-sm">
                           <div>
-                            <span className="text-xs text-muted-foreground">Empresa</span>
+                            <span className="text-xs text-muted-foreground block">Empresa</span>
                             <p className="font-medium truncate">{form.empresa}</p>
                           </div>
                           <div>
-                            <span className="text-xs text-muted-foreground">CNPJ / CPF</span>
-                            <p className="font-mono">{form.cnpj ? formatDocumento(form.cnpj) : "—"}</p>
+                            <span className="text-xs text-muted-foreground block">CNPJ / CPF</span>
+                            <p className="font-mono text-xs">{form.cnpj ? formatDocumento(form.cnpj) : "—"}</p>
                           </div>
                           <div>
-                            <span className="text-xs text-muted-foreground">Vencimento</span>
+                            <span className="text-xs text-muted-foreground block">Vencimento</span>
                             <p>{form.data_vencimento ? format(new Date(form.data_vencimento + "T12:00:00"), "dd/MM/yyyy") : "—"}</p>
                           </div>
                         </div>
@@ -563,14 +574,17 @@ export default function Certificados() {
                   <p className="text-xs text-muted-foreground">Enviaremos alertas quando faltarem 30 dias para o vencimento.</p>
                 </div>
 
+              </form>
+              <div className="shrink-0 pt-2 border-t">
                 <Button
                   type="submit"
-                  className="w-full mt-2"
+                  form="cert-form"
+                  className="w-full"
                   disabled={!form.empresa || !form.data_vencimento || isReading}
                 >
                   {editingId ? "Salvar Atualização" : "Confirmar e Salvar Certificado"}
                 </Button>
-              </form>
+              </div>
             </DialogContent>
           </Dialog>
         </div>
@@ -615,7 +629,7 @@ export default function Certificados() {
             placeholder="Buscar por empresa, CNPJ, CPF ou e-mail..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full bg-white"
+            className="w-full"
           />
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">

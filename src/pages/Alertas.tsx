@@ -27,7 +27,7 @@ export default function Alertas() {
       .order("created_at", { ascending: false });
     setAlertas(data || []);
     setIsLoading(false);
-  }, [user]);
+  }, [user, ownerUserId]);
 
   useEffect(() => { loadAlertas(); }, [loadAlertas]);
 

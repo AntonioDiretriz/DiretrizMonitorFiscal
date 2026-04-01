@@ -186,7 +186,7 @@ function DonutChart({
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function Index() {
-  const { user, ownerUserId } = useAuth();
+  const { user, ownerUserId, temModulo } = useAuth();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
   const [activeModule, setActiveModule] = useState<ModuleId>("todos");
@@ -283,6 +283,29 @@ export default function Index() {
       { name: "Vencidos", value: certDigs.filter(c => toDate(c.data_vencimento) <= today).length,                                       color: RED   },
     ].filter(d => d.value > 0));
 
+    // Certificados digitais — gera alertas para os que vencem em até 30 dias ou já venceram
+    for (const c of certDigs) {
+      const venc = toDate(c.data_vencimento);
+      const dias = differenceInDays(venc, toDate(format(today, "yyyy-MM-dd")));
+      if (dias > 30) continue; // válido, sem alerta
+      const titulo = `Certificado ${c.tipo} — ${c.empresa} ${dias < 0 ? "vencido" : "vencendo"}`;
+      const { data: jaExiste } = await supabase
+        .from("alertas").select("id")
+        .eq("user_id", ownerUserId!).eq("titulo", titulo).eq("resolvida", false).limit(1);
+      if (!jaExiste || jaExiste.length === 0) {
+        const nivel = dias < 0 ? "critico" : dias <= 7 ? "critico" : "aviso";
+        await supabase.from("alertas").insert({
+          user_id: ownerUserId!,
+          nivel,
+          titulo,
+          mensagem: dias < 0
+            ? `O certificado ${c.tipo} de ${c.empresa} venceu há ${Math.abs(dias)} dias (${c.data_vencimento}).`
+            : `O certificado ${c.tipo} de ${c.empresa} vence em ${dias} dias (${c.data_vencimento}).`,
+          acao_recomendada: "Renove o certificado digital antes do vencimento para evitar interrupções.",
+        });
+      }
+    }
+
     // Caixas postais — gera alertas automaticamente para as que vencem em até 30 dias
     const caixasStatus = { ativa: 0, a_vencer: 0, vencida: 0, rescindido: 0 };
     for (const c of caixas) {
@@ -347,7 +370,7 @@ export default function Index() {
     setAlertas(alertasData || []);
 
     setIsLoading(false);
-  }, [user]);
+  }, [user, ownerUserId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -363,11 +386,11 @@ export default function Index() {
   const caixasAtivas   = caixasStatusData.find(d => d.name === "Ativas")?.value || 0;
   const caixasAVencer  = caixasStatusData.find(d => d.name === "A Vencer")?.value || 0;
 
-  // Visibility per module
+  // Visibility per module — respects both active tab AND user permissions
   const show = {
-    certidoes:    activeModule === "todos" || activeModule === "certidoes",
-    certificados: activeModule === "todos" || activeModule === "certificados",
-    caixas:       activeModule === "todos" || activeModule === "caixas",
+    certidoes:    temModulo("certidoes")    && (activeModule === "todos" || activeModule === "certidoes"),
+    certificados: temModulo("certificados") && (activeModule === "todos" || activeModule === "certificados"),
+    caixas:       temModulo("caixas")       && (activeModule === "todos" || activeModule === "caixas"),
     regime:       activeModule === "todos",
     campos:       activeModule === "todos",
   };
@@ -398,9 +421,9 @@ export default function Index() {
           <p className="text-muted-foreground">Visão geral de todos os módulos</p>
         </div>
 
-        {/* Filter tabs */}
+        {/* Filter tabs — só mostra abas dos módulos permitidos */}
         <div className="flex flex-wrap gap-2">
-          {MODULES.map(({ id, label, icon: Icon, color }) => {
+          {MODULES.filter(m => m.id === "todos" || temModulo(m.id as any)).map(({ id, label, icon: Icon, color }) => {
             const active = activeModule === id;
             return (
               <Button
@@ -425,10 +448,10 @@ export default function Index() {
       {/* ── KPI strip (contextual por módulo) ── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {(activeModule === "todos" ? [
-          { label: "Certidões com Problema", value: certIrreg + certVenc,                                                                  icon: AlertTriangle, color: RED,       bg: "#fff1f1", to: "/certidoes"                        },
-          { label: "Certificados Vencendo",  value: (certDigVencData.find(d => d.name === "Vencendo")?.value || 0) + (certDigVencData.find(d => d.name === "Vencidos")?.value || 0), icon: KeyRound, color: AMBER, bg: "#fffbeb", to: "/certificados" },
-          { label: "Caixas A Vencer (30d)",  value: caixasAVencer,                                                                         icon: MailOpen,      color: AMBER,     bg: "#fffbeb", to: "/caixas-postais?filtro=a_vencer"   },
-          { label: "Empresas sem Dados",     value: camposEmBranco.semRegime + camposEmBranco.semEmail + camposEmBranco.semTelefone + camposEmBranco.semMunicipio, icon: Building2, color: NAVY, bg: "#f0f1f8", to: "/empresas" },
+          ...(temModulo("certidoes")    ? [{ label: "Certidões com Problema", value: certIrreg + certVenc,                                                                                                                                   icon: AlertTriangle, color: RED,       bg: "#fff1f1", to: "/certidoes"                      }] : []),
+          ...(temModulo("certificados") ? [{ label: "Certificados Vencendo",  value: (certDigVencData.find(d => d.name === "Vencendo")?.value || 0) + (certDigVencData.find(d => d.name === "Vencidos")?.value || 0), icon: KeyRound, color: AMBER, bg: "#fffbeb", to: "/certificados?filtro=a_expirar" }] : []),
+          ...(temModulo("caixas")       ? [{ label: "Caixas A Vencer (30d)",  value: caixasAVencer,                                                                                                                                         icon: MailOpen,      color: AMBER,     bg: "#fffbeb", to: "/caixas-postais?filtro=a_vencer" }] : []),
+          { label: "Empresas sem Dados", value: camposEmBranco.semRegime + camposEmBranco.semEmail + camposEmBranco.semTelefone + camposEmBranco.semMunicipio, icon: Building2, color: NAVY, bg: "#f0f1f8", to: "/empresas" },
         ] : activeModule === "certidoes" ? [
           { label: "Total de Certidões",     value: totalCerts,           icon: FileCheck,     color: NAVY,      bg: "#f0f1f8", to: "/certidoes" },
           { label: "Regulares",              value: certRegulares,        icon: CheckCircle,   color: GREEN,     bg: "#f0fdf4", to: "/certidoes" },
@@ -437,8 +460,8 @@ export default function Index() {
         ] : activeModule === "certificados" ? [
           { label: "Total de Certificados",  value: totalCertDig,         icon: KeyRound,      color: BLUE,      bg: "#eff6ff", to: "/certificados" },
           { label: "Válidos",                value: certDigVencData.find(d => d.name === "Válidos")?.value  || 0, icon: CheckCircle,   color: GREEN, bg: "#f0fdf4", to: "/certificados" },
-          { label: "Vencendo (30d)",         value: certDigVencData.find(d => d.name === "Vencendo")?.value || 0, icon: AlertTriangle, color: AMBER, bg: "#fffbeb", to: "/certificados" },
-          { label: "Vencidos",               value: certDigVencData.find(d => d.name === "Vencidos")?.value || 0, icon: AlertTriangle, color: RED,   bg: "#fff1f1", to: "/certificados" },
+          { label: "Vencendo (30d)",         value: certDigVencData.find(d => d.name === "Vencendo")?.value || 0, icon: AlertTriangle, color: AMBER, bg: "#fffbeb", to: "/certificados?filtro=a_expirar" },
+          { label: "Vencidos",               value: certDigVencData.find(d => d.name === "Vencidos")?.value || 0, icon: AlertTriangle, color: RED,   bg: "#fff1f1", to: "/certificados?filtro=vencido" },
         ] : /* caixas */ [
           { label: "Total de Caixas",        value: totalCaixas,          icon: MailOpen,      color: "#0ea5e9", bg: "#eff6ff", to: "/caixas-postais" },
           { label: "Ativas",                 value: caixasAtivas,         icon: CheckCircle,   color: GREEN,     bg: "#f0fdf4", to: "/caixas-postais?filtro=ativa" },
