@@ -197,10 +197,17 @@ export default function Usuarios() {
       if (error) { toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" }); return; }
 
       const { error: fnErr } = await supabase.functions.invoke("manage-team-member", {
-        body: { action: "create", perfil_id: created?.id, email: payload.email, password: form.senha, nome: payload.nome },
+        body: {
+          action: "create",
+          perfil_id: created?.id,
+          email: payload.email,
+          password: form.senha,
+          nome: payload.nome,
+          escritorio_nome: user?.email?.split("@")[1]?.replace(/\..+/, "") || "Diretriz",
+        },
       });
       if (fnErr) toast({ title: "Perfil criado, mas erro ao criar acesso", description: fnErr.message, variant: "destructive" });
-      else toast({ title: "Membro adicionado à equipe!" });
+      else toast({ title: "Membro adicionado! E-mail de acesso enviado automaticamente." });
     }
 
     setDialogOpen(false);
