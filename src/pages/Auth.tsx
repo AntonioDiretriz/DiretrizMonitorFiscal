@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -13,14 +13,46 @@ import { Navigate } from "react-router-dom";
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [isResetting, setIsResetting] = useState(false);
+  const [isSettingNewPassword, setIsSettingNewPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const { toast } = useToast();
   const { session } = useAuth();
+  const navigate = useNavigate();
 
-  if (session) return <Navigate to="/" replace />;
+  // Detecta quando o usuário volta do link de redefinição de senha
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.includes("type=recovery")) {
+      setIsSettingNewPassword(true);
+    }
+  }, []);
+
+  if (session && !isSettingNewPassword) return <Navigate to="/" replace />;
+
+  const handleNewPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 6) {
+      toast({ title: "Erro", description: "A senha deve ter pelo menos 6 caracteres.", variant: "destructive" });
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      toast({ title: "Senha atualizada!", description: "Sua nova senha foi salva com sucesso." });
+      setIsSettingNewPassword(false);
+      navigate("/");
+    } catch (error: any) {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,7 +61,7 @@ export default function Auth() {
     try {
       if (isResetting) {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: window.location.origin,
+          redirectTo: `${window.location.origin}/auth`,
         });
         if (error) throw error;
         toast({
@@ -62,6 +94,63 @@ export default function Auth() {
       setLoading(false);
     }
   };
+
+  // Tela de definir nova senha (após clicar no link do e-mail)
+  if (isSettingNewPassword) {
+    return (
+      <div className="min-h-screen flex">
+        <div className="hidden lg:flex lg:w-1/2 bg-[#10143D] items-center justify-center relative overflow-hidden">
+          <div className="relative z-10 text-center px-12">
+            <img src="/logo-white.svg" alt="Diretriz" className="h-14 w-auto mx-auto mb-8" />
+            <p className="text-white/70 text-lg font-light leading-relaxed">
+              Sistema de Monitoramento Fiscal
+            </p>
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center bg-background p-4">
+          <Card className="w-full max-w-md border-0 shadow-none">
+            <CardHeader className="text-center">
+              <div className="flex justify-center mb-4 lg:hidden">
+                <img src="/logo.svg" alt="Diretriz Monitor Fiscal" className="h-14 w-auto object-contain" />
+              </div>
+              <CardTitle className="text-2xl font-semibold">Criar nova senha</CardTitle>
+              <CardDescription>Digite sua nova senha de acesso ao sistema</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleNewPassword} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="newPassword">Nova senha</Label>
+                  <div className="relative">
+                    <Input
+                      id="newPassword"
+                      type={showNewPassword ? "text" : "password"}
+                      placeholder="Mínimo 6 caracteres"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                      minLength={6}
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowNewPassword((v) => !v)}
+                      tabIndex={-1}
+                    >
+                      {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? "Salvando..." : "Salvar nova senha"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex">

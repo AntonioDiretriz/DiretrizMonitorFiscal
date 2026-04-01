@@ -67,7 +67,7 @@ interface Empresa { id: string; razao_social: string; }
 interface PlanoConta { id: string; codigo: string; nome: string; tipo: string; }
 
 export default function ContasPagar() {
-  const { user, podeIncluir, podeEditar, podeExcluir } = useAuth();
+  const { user, podeIncluir, podeEditar, podeExcluir, ownerUserId } = useAuth();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState("");
@@ -87,9 +87,9 @@ export default function ContasPagar() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("empresas").select("id, razao_social").eq("user_id", user.id).order("razao_social")
+    supabase.from("empresas").select("id, razao_social").eq("user_id", ownerUserId!).order("razao_social")
       .then(({ data }) => setEmpresas(data ?? []));
-    supabase.from("plano_contas").select("id, codigo, nome, tipo").eq("user_id", user.id).order("codigo")
+    supabase.from("plano_contas").select("id, codigo, nome, tipo").eq("user_id", ownerUserId!).order("codigo")
       .then(({ data }) => setPlanoContas(data ?? []));
   }, [user]);
 

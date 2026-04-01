@@ -106,7 +106,7 @@ const EMPTY_FORM = {
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function Empresas() {
-  const { user, podeIncluir: PODE_INCLUIR, podeEditar: PODE_EDITAR, podeExcluir: PODE_EXCLUIR } = useAuth();
+  const { user, podeIncluir: PODE_INCLUIR, podeEditar: PODE_EDITAR, podeExcluir: PODE_EXCLUIR, ownerUserId } = useAuth();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -136,7 +136,7 @@ export default function Empresas() {
     const { data, count } = await supabase
       .from("empresas")
       .select("*", { count: "exact" })
-      .eq("user_id", user.id)
+      .eq("user_id", ownerUserId!)
       .order("razao_social")
       .range(from, from + PAGE_SIZE - 1);
     setEmpresas(data || []);

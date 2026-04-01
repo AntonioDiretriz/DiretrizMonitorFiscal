@@ -186,7 +186,7 @@ function DonutChart({
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function Index() {
-  const { user } = useAuth();
+  const { user, ownerUserId } = useAuth();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
   const [activeModule, setActiveModule] = useState<ModuleId>("todos");
@@ -218,10 +218,10 @@ export default function Index() {
     setIsLoading(true);
 
     const [empRes, certRes, certDigRes, caixasRes] = await Promise.all([
-      supabase.from("empresas").select("*").eq("user_id", user.id),
-      supabase.from("certidoes").select("*").eq("user_id", user.id),
-      supabase.from("certificados").select("*").eq("user_id", user.id),
-      supabase.from("caixas_postais").select("*").eq("user_id", user.id),
+      supabase.from("empresas").select("*").eq("user_id", ownerUserId!),
+      supabase.from("certidoes").select("*").eq("user_id", ownerUserId!),
+      supabase.from("certificados").select("*").eq("user_id", ownerUserId!),
+      supabase.from("caixas_postais").select("*").eq("user_id", ownerUserId!),
     ]);
 
     const emps     = empRes.data     || [];
@@ -296,7 +296,7 @@ export default function Index() {
         const { data: jaExiste } = await supabase
           .from("alertas")
           .select("id")
-          .eq("user_id", user.id)
+          .eq("user_id", ownerUserId!)
           .eq("titulo", titulo)
           .eq("resolvida", false)
           .limit(1);
@@ -340,7 +340,7 @@ export default function Index() {
     const { data: alertasData } = await supabase
       .from("alertas")
       .select("*, empresas(razao_social)")
-      .eq("user_id", user.id)
+      .eq("user_id", ownerUserId!)
       .eq("lida", false)
       .order("created_at", { ascending: false })
       .limit(5);

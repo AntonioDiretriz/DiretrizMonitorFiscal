@@ -186,7 +186,7 @@ function CalendarioMes({
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Obrigacoes() {
-  const { user, podeIncluir, podeEditar, podeExcluir } = useAuth();
+  const { user, podeIncluir, podeEditar, podeExcluir, ownerUserId } = useAuth();
   const { toast } = useToast();
 
   const [obrigacoes, setObrigacoes] = useState<Obrigacao[]>([]);
@@ -211,9 +211,9 @@ export default function Obrigacoes() {
     const [obRes, empRes] = await Promise.all([
       supabase.from("obrigacoes")
         .select("*, empresas(razao_social)")
-        .eq("user_id", user.id)
+        .eq("user_id", ownerUserId!)
         .order("data_vencimento", { ascending: true }),
-      supabase.from("empresas").select("id, razao_social").eq("user_id", user.id).order("razao_social"),
+      supabase.from("empresas").select("id, razao_social").eq("user_id", ownerUserId!).order("razao_social"),
     ]);
     setObrigacoes((obRes.data ?? []) as Obrigacao[]);
     setEmpresas((empRes.data ?? []) as Empresa[]);
@@ -229,7 +229,7 @@ export default function Obrigacoes() {
       return;
     }
     const payload = {
-      user_id: user!.id,
+      user_id: ownerUserId!,
       tipo: form.tipo,
       empresa_id: form.empresa_id || null,
       competencia: form.competencia,

@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format, parseISO } from "date-fns";
 
 export default function Alertas() {
-  const { user } = useAuth();
+  const { user, ownerUserId } = useAuth();
   const { toast } = useToast();
   const [alertas, setAlertas] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -23,7 +23,7 @@ export default function Alertas() {
     const { data } = await supabase
       .from("alertas")
       .select("*, empresas(razao_social)")
-      .eq("user_id", user.id)
+      .eq("user_id", ownerUserId!)
       .order("created_at", { ascending: false });
     setAlertas(data || []);
     setIsLoading(false);

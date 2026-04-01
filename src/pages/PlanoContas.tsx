@@ -108,7 +108,7 @@ function PlanoRow({ item, depth = 0, onEdit, onDelete, podeEditar, podeExcluir }
 }
 
 export default function PlanoContas() {
-  const { user, podeIncluir, podeEditar, podeExcluir } = useAuth();
+  const { user, podeIncluir, podeEditar, podeExcluir, ownerUserId } = useAuth();
   const { toast } = useToast();
   const [contas, setContas] = useState<PlanoConta[]>([]);
   const [tree, setTree] = useState<PlanoConta[]>([]);
@@ -118,7 +118,7 @@ export default function PlanoContas() {
 
   const load = useCallback(async () => {
     if (!user) return;
-    const { data } = await supabase.from("plano_contas").select("*").eq("user_id", user.id).order("codigo");
+    const { data } = await supabase.from("plano_contas").select("*").eq("user_id", ownerUserId!).order("codigo");
     const items = (data ?? []) as PlanoConta[];
     setContas(items);
     setTree(buildTree(items));
@@ -130,7 +130,7 @@ export default function PlanoContas() {
     e.preventDefault();
     if (!form.codigo || !form.nome) { toast({ title: "Preencha código e nome", variant: "destructive" }); return; }
     const payload = {
-      user_id: user!.id,
+      user_id: ownerUserId!,
       codigo: form.codigo,
       nome: form.nome,
       tipo: form.tipo,

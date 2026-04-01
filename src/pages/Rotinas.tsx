@@ -315,7 +315,7 @@ interface GerarDialogProps {
 }
 
 function GerarRotinasPerfilDialog({ open, onOpenChange, empresas, equipe }: GerarDialogProps) {
-  const { user } = useAuth();
+  const { user, ownerUserId } = useAuth();
   const { toast } = useToast();
   const createRotina = useCreateRotina();
 
@@ -561,7 +561,7 @@ function KanbanCard({ rotina, onClick }: { rotina: Rotina; onClick: () => void }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function Rotinas() {
-  const { user } = useAuth();
+  const { user, ownerUserId } = useAuth();
   const { toast } = useToast();
   const { data: rotinas = [], isLoading } = useRotinas();
   const deleteRotina = useDeleteRotina();
@@ -593,9 +593,9 @@ export default function Rotinas() {
     if (!user) return;
     supabase.from("empresas")
       .select("id, razao_social, regime_tributario, atividade, possui_prolabore, possui_funcionario")
-      .eq("user_id", user.id).order("razao_social")
+      .eq("user_id", ownerUserId!).order("razao_social")
       .then(({ data }) => setEmpresas((data ?? []) as any[]));
-    supabase.from("usuarios_perfil").select("id, nome, papel_rotinas").eq("user_id", user.id).order("nome")
+    supabase.from("usuarios_perfil").select("id, nome, papel_rotinas").eq("user_id", ownerUserId!).order("nome")
       .then(({ data }) => setEquipe((data ?? []) as { id: string; nome: string; papel_rotinas?: string }[]));
   }, [user]);
 

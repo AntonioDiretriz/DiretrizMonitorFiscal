@@ -31,7 +31,7 @@ const CATEGORIAS = ["Fornecedor de Serviços", "Fornecedor de Produtos", "Presta
 const EMPTY_FORM = { nome: "", cnpj_cpf: "", email: "", telefone: "", categoria: "", ativo: true };
 
 export default function Fornecedores() {
-  const { user, podeIncluir, podeEditar, podeExcluir } = useAuth();
+  const { user, podeIncluir, podeEditar, podeExcluir, ownerUserId } = useAuth();
   const { toast } = useToast();
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [search, setSearch] = useState("");
@@ -43,7 +43,7 @@ export default function Fornecedores() {
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const { data } = await supabase.from("fornecedores").select("*").eq("user_id", user.id).order("nome");
+    const { data } = await supabase.from("fornecedores").select("*").eq("user_id", ownerUserId!).order("nome");
     setFornecedores(data ?? []);
     setLoading(false);
   }, [user]);
@@ -54,7 +54,7 @@ export default function Fornecedores() {
     e.preventDefault();
     if (!form.nome) { toast({ title: "Informe o nome do fornecedor", variant: "destructive" }); return; }
     const payload = {
-      user_id: user!.id,
+      user_id: ownerUserId!,
       nome: form.nome,
       cnpj_cpf: form.cnpj_cpf || null,
       email: form.email || null,

@@ -3,8 +3,12 @@ import {
   LayoutDashboard, Building2, FileCheck, Bell, Settings, LogOut,
   Users, KeyRound, MailOpen, ChevronRight, Stethoscope,
   Banknote, CreditCard, ListChecks, Package, UserCheck, ClipboardList,
-  CalendarDays, BarChart2,
+  CalendarDays, BarChart2, User,
 } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
@@ -51,7 +55,12 @@ function NavSection({
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
-  const { signOut, isAdmin, temModulo } = useAuth();
+  const { signOut, isAdmin, isOwner, temModulo, displayName, user } = useAuth();
+  const email = user?.email ?? "";
+  const initials = displayName
+    ? displayName.split(" ").map((n: string) => n[0]).slice(0, 2).join("").toUpperCase()
+    : email.slice(0, 2).toUpperCase();
+  const role = isOwner ? "Proprietário" : isAdmin ? "Administrador" : "Colaborador";
 
   const monitoramentoItems: {
     title: string; url?: string; icon: React.ElementType; moduleId?: ModuleId; soon?: boolean;
@@ -259,15 +268,49 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-3">
-        <Button
-          variant="ghost"
-          className="w-full justify-start text-sidebar-foreground/60 hover:text-red-400 hover:bg-sidebar-accent"
-          onClick={signOut}
-        >
-          <LogOut className="mr-2 h-4 w-4" />
-          {!collapsed && "Sair"}
-        </Button>
+      <SidebarFooter className="p-3 space-y-1">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              className="w-full justify-start text-sidebar-foreground/80 hover:bg-sidebar-accent px-2"
+            >
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#ED3237] text-white text-xs font-bold">
+                {initials}
+              </div>
+              {!collapsed && (
+                <div className="ml-2 flex flex-col items-start overflow-hidden">
+                  <span className="text-sm font-medium leading-tight truncate max-w-[140px]">{displayName}</span>
+                  <span className="text-[10px] text-sidebar-foreground/50 truncate max-w-[140px]">{role}</span>
+                </div>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="start" className="w-56">
+            <DropdownMenuLabel className="font-normal">
+              <div className="flex flex-col space-y-1">
+                <p className="text-sm font-medium">{displayName}</p>
+                <p className="text-xs text-muted-foreground truncate">{email}</p>
+                <p className="text-xs text-muted-foreground">{role}</p>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <a href="/configuracoes" className="cursor-pointer">
+                <User className="mr-2 h-4 w-4" />
+                Meu Perfil
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-red-500 focus:text-red-500 cursor-pointer"
+              onClick={signOut}
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              Sair
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </SidebarFooter>
     </Sidebar>
   );

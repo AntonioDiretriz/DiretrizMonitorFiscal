@@ -40,7 +40,7 @@ function formatDocumento(v: string) {
 const EMPTY_FORM = { empresa: "", cnpj: "", tipo: "A1", data_vencimento: "", senha_certificado: "", email_cliente: "" };
 
 export default function Certificados() {
-  const { user } = useAuth();
+  const { user, ownerUserId } = useAuth();
   const { toast } = useToast();
   const [certificados, setCertificados] = useState<Certificado[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -68,7 +68,7 @@ export default function Certificados() {
     const { data } = await supabase
       .from("certificados")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("user_id", ownerUserId!)
       .order("data_vencimento", { ascending: true });
     setCertificados(data || []);
   }, [user]);

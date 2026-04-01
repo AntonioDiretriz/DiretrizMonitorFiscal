@@ -28,7 +28,7 @@ function getStatusColor(status: RotinaStatus): string {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function CalendarioRotinas() {
-  const { user } = useAuth();
+  const { user, ownerUserId } = useAuth();
   const { data: rotinas = [], isLoading } = useRotinas();
   const [mesAtual, setMesAtual] = useState(new Date());
   const [filterEmpresa, setFilterEmpresa] = useState("_todos");
@@ -37,7 +37,7 @@ export default function CalendarioRotinas() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("empresas").select("id, razao_social").eq("user_id", user.id).order("razao_social")
+    supabase.from("empresas").select("id, razao_social").eq("user_id", ownerUserId!).order("razao_social")
       .then(({ data }) => setEmpresas(data ?? []));
   }, [user]);
 

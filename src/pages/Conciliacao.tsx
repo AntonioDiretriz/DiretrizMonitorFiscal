@@ -125,7 +125,7 @@ function ContaBancariaDialog({
   editingId: string | null; initial: typeof EMPTY_CB;
   empresas: Empresa[]; onSaved: () => void;
 }) {
-  const { user } = useAuth();
+  const { user, ownerUserId } = useAuth();
   const { toast } = useToast();
   const [form, setForm] = useState(initial);
   useEffect(() => setForm(initial), [initial]);
@@ -134,7 +134,7 @@ function ContaBancariaDialog({
     e.preventDefault();
     if (!form.banco) { toast({ title: "Informe o banco", variant: "destructive" }); return; }
     const payload = {
-      user_id: user!.id,
+      user_id: ownerUserId!,
       banco: form.banco,
       agencia: form.agencia || null,
       conta: form.conta || null,
@@ -211,7 +211,7 @@ function ContaBancariaDialog({
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function Conciliacao() {
-  const { user, podeIncluir, podeEditar, podeExcluir } = useAuth();
+  const { user, podeIncluir, podeEditar, podeExcluir, ownerUserId } = useAuth();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -232,10 +232,10 @@ export default function Conciliacao() {
     if (!user) return;
     setLoading(true);
     const [cbRes, tRes, cpRes, empRes] = await Promise.all([
-      supabase.from("contas_bancarias").select("*, empresas(razao_social)").eq("user_id", user.id).order("created_at"),
-      supabase.from("transacoes_bancarias").select("*").eq("user_id", user.id).order("data", { ascending: false }).limit(500),
-      supabase.from("contas_pagar").select("id, fornecedor, valor, data_vencimento, status").eq("user_id", user.id).in("status", ["pendente", "aprovado"]).order("data_vencimento"),
-      supabase.from("empresas").select("id, razao_social").eq("user_id", user.id).order("razao_social"),
+      supabase.from("contas_bancarias").select("*, empresas(razao_social)").eq("user_id", ownerUserId!).order("created_at"),
+      supabase.from("transacoes_bancarias").select("*").eq("user_id", ownerUserId!).order("data", { ascending: false }).limit(500),
+      supabase.from("contas_pagar").select("id, fornecedor, valor, data_vencimento, status").eq("user_id", ownerUserId!).in("status", ["pendente", "aprovado"]).order("data_vencimento"),
+      supabase.from("empresas").select("id, razao_social").eq("user_id", ownerUserId!).order("razao_social"),
     ]);
     setContas((cbRes.data ?? []) as ContaBancaria[]);
     setTransacoes((tRes.data ?? []) as Transacao[]);
@@ -291,7 +291,7 @@ export default function Conciliacao() {
 
     // Create importacao record
     const { data: impData, error: impErr } = await supabase.from("importacoes_bancarias").insert({
-      user_id: user!.id, conta_bancaria_id: selectedConta,
+      user_id: ownerUserId!, conta_bancaria_id: selectedConta,
       formato: ext, arquivo_nome: file.name, status: "processando",
       total_transacoes: parsed.length,
     }).select().single();
@@ -299,7 +299,7 @@ export default function Conciliacao() {
 
     // Insert transactions (ignore conflicts on hash_dedup)
     const rows = parsed.map(t => ({
-      user_id: user!.id,
+      user_id: ownerUserId!,
       conta_bancaria_id: selectedConta,
       importacao_id: impData.id,
       data: t.data,
@@ -337,7 +337,7 @@ export default function Conciliacao() {
   const handleConciliar = async () => {
     if (!matchDialogId || !selectedContaPagarId) return;
     const { error } = await supabase.from("conciliacoes").insert({
-      user_id: user!.id,
+      user_id: ownerUserId!,
       transacao_id: matchDialogId,
       conta_pagar_id: selectedContaPagarId,
       tipo: "manual",

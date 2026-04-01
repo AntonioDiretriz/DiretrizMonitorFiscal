@@ -70,7 +70,7 @@ const EMPTY_RENOVACAO = {
 };
 
 export default function CaixasPostais() {
-  const { user } = useAuth();
+  const { user, ownerUserId } = useAuth();
   const { toast } = useToast();
 
   const [caixas, setCaixas]       = useState<CaixaPostal[]>([]);
@@ -105,7 +105,7 @@ export default function CaixasPostais() {
     const { data } = await supabase
       .from("caixas_postais")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("user_id", ownerUserId!)
       .order("numero", { ascending: true });
     setCaixas(data || []);
   }, [user]);
@@ -115,7 +115,7 @@ export default function CaixasPostais() {
     const { data } = await supabase
       .from("empresas")
       .select("id, cnpj, razao_social")
-      .eq("user_id", user.id);
+      .eq("user_id", ownerUserId!);
     setEmpresas(data || []);
   }, [user]);
 

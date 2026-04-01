@@ -9,6 +9,8 @@ type UsuarioPerfil = Tables<"usuarios_perfil">;
 interface AuthContextType {
   session: Session | null;
   user: User | null;
+  ownerUserId: string | null;
+  displayName: string;
   loading: boolean;
   podeIncluir: boolean;
   podeEditar: boolean;
@@ -23,6 +25,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   session: null,
   user: null,
+  ownerUserId: null,
+  displayName: "",
   loading: true,
   podeIncluir: true,
   podeEditar: true,
@@ -75,6 +79,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Owner = no perfil record → full access to everything
   const isOwner = perfil === null;
+  // ownerUserId: team members use their boss's ID; owners use their own ID
+  const ownerUserId = perfil?.escritorio_owner_id ?? session?.user?.id ?? null;
+  const displayName = perfil?.nome || session?.user?.email?.split("@")[0] || "";
   const isAdmin = isOwner || perfil?.is_admin === true;
 
   const podeIncluir = isAdmin || perfil?.pode_incluir === true;
@@ -92,6 +99,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider value={{
       session,
       user: session?.user ?? null,
+      ownerUserId,
+      displayName,
       loading,
       podeIncluir,
       podeEditar,

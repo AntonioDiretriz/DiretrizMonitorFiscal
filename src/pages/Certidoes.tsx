@@ -22,7 +22,7 @@ const toDate = (s: string) => new Date(s + "T12:00:00");
 import type { Tables } from "@/integrations/supabase/types";
 
 export default function Certidoes() {
-  const { user, podeIncluir: PODE_INCLUIR, podeExcluir: PODE_EXCLUIR } = useAuth();
+  const { user, podeIncluir: PODE_INCLUIR, podeExcluir: PODE_EXCLUIR, ownerUserId } = useAuth();
   const { toast } = useToast();
   const [certidoes, setCertidoes] = useState<any[]>([]);
   const [empresas, setEmpresas] = useState<{ id: string; razao_social: string }[]>([]);
@@ -60,7 +60,7 @@ export default function Certidoes() {
     const { data, count } = await supabase
       .from("certidoes")
       .select("*, empresas(razao_social, cnpj)", { count: "exact" })
-      .eq("user_id", user.id)
+      .eq("user_id", ownerUserId!)
       .order("data_validade", { ascending: true })
       .range(from, to);
     setCertidoes(data || []);
@@ -70,7 +70,7 @@ export default function Certidoes() {
 
   const loadEmpresas = useCallback(async () => {
     if (!user) return;
-    const { data } = await supabase.from("empresas").select("id, razao_social").eq("user_id", user.id).order("razao_social");
+    const { data } = await supabase.from("empresas").select("id, razao_social").eq("user_id", ownerUserId!).order("razao_social");
     setEmpresas(data || []);
   }, [user]);
 
@@ -79,7 +79,7 @@ export default function Certidoes() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const { error } = await supabase.from("certidoes").insert({
-      user_id: user!.id,
+      user_id: ownerUserId!,
       empresa_id: form.empresa_id,
       tipo: form.tipo as any,
       status: form.status as any,
@@ -127,7 +127,7 @@ export default function Certidoes() {
     if (statusChanged) {
       await supabase.from("certidoes_historico").insert({
         certidao_id: editingCert.id,
-        user_id: user!.id,
+        user_id: ownerUserId!,
         status_anterior: editingCert.status as any,
         status_novo: editForm.status as any,
         observacao: editForm.observacao.trim() || null,
@@ -306,7 +306,7 @@ export default function Certidoes() {
     if (statusChanged) {
       await supabase.from("certidoes_historico").insert({
         certidao_id: consultaCert.id,
-        user_id: user!.id,
+        user_id: ownerUserId!,
         status_anterior: consultaCert.status as any,
         status_novo: consultaStatus as any,
         observacao: consultaCert.tipo === "cnd_fgts"
@@ -344,7 +344,7 @@ export default function Certidoes() {
         if (statusChanged) {
           await supabase.from("certidoes_historico").insert({
             certidao_id: cert.id,
-            user_id: user!.id,
+            user_id: ownerUserId!,
             status_anterior: cert.status as any,
             status_novo: novoStatus as any,
             observacao: "Atualizado automaticamente via consulta FGTS",
