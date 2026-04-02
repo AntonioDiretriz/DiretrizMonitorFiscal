@@ -525,8 +525,8 @@ export default function Index() {
         </div>
       )}
 
-      {/* ── Origem Geográfica dos Clientes (always visible) ── */}
-      {<Card className="shadow-sm">
+      {/* ── Origem Geográfica dos Clientes (só em Caixas Postais e Todos) ── */}
+      {(activeModule === "todos" || activeModule === "caixas") && <Card className="shadow-sm">
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
             <div className="w-1 h-6 rounded-full" style={{ backgroundColor: VIOLET }} />
