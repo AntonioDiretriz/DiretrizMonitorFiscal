@@ -186,7 +186,7 @@ function DonutChart({
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function Index() {
-  const { user, ownerUserId, temModulo } = useAuth();
+  const { user, temModulo } = useAuth();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
   const [activeModule, setActiveModule] = useState<ModuleId>("todos");
@@ -283,58 +283,14 @@ export default function Index() {
       { name: "Vencidos", value: certDigs.filter(c => toDate(c.data_vencimento) <= today).length,                                       color: RED   },
     ].filter(d => d.value > 0));
 
-    // Certificados digitais — gera alertas para os que vencem em até 30 dias ou já venceram
-    for (const c of certDigs) {
-      const venc = toDate(c.data_vencimento);
-      const dias = differenceInDays(venc, toDate(format(today, "yyyy-MM-dd")));
-      if (dias > 30) continue; // válido, sem alerta
-      const titulo = `Certificado ${c.tipo} — ${c.empresa} ${dias < 0 ? "vencido" : "vencendo"}`;
-      const { data: jaExiste } = await supabase
-        .from("alertas").select("id")
-        .eq("titulo", titulo).eq("resolvida", false).limit(1);
-      if (!jaExiste || jaExiste.length === 0) {
-        const nivel = dias < 0 ? "critico" : dias <= 7 ? "critico" : "aviso";
-        await supabase.from("alertas").insert({
-          nivel,
-          titulo,
-          mensagem: dias < 0
-            ? `O certificado ${c.tipo} de ${c.empresa} venceu há ${Math.abs(dias)} dias (${c.data_vencimento}).`
-            : `O certificado ${c.tipo} de ${c.empresa} vence em ${dias} dias (${c.data_vencimento}).`,
-          acao_recomendada: "Renove o certificado digital antes do vencimento para evitar interrupções.",
-        });
-      }
-    }
-
-    // Caixas postais — gera alertas automaticamente para as que vencem em até 30 dias
+    // Caixas postais — apenas contagem, sem gerar alertas (evita N queries no load)
     const caixasStatus = { ativa: 0, a_vencer: 0, vencida: 0, rescindido: 0 };
     for (const c of caixas) {
       if (c.contrato_status === "rescindido") { caixasStatus.rescindido++; continue; }
       const dias = differenceInDays(toDate(c.data_vencimento), toDate(format(today, "yyyy-MM-dd")));
       if (dias < 0)        caixasStatus.vencida++;
-      else if (dias <= 30) {
-        caixasStatus.a_vencer++;
-        // Cria alerta se ainda não existe um não-resolvido para esta caixa
-        const titulo = `Caixa Postal nº ${c.numero} vencendo`;
-        const { data: jaExiste } = await supabase
-          .from("alertas")
-          .select("id")
-          .eq("titulo", titulo)
-          .eq("resolvida", false)
-          .limit(1);
-        if (!jaExiste || jaExiste.length === 0) {
-          const nivel = dias <= 7 ? "critico" : "aviso";
-          await supabase.from("alertas").insert({
-            user_id: c.user_id,
-            empresa_id: c.empresa_id,
-            nivel,
-            titulo,
-            mensagem: `O contrato da Caixa Postal nº ${c.numero} de ${c.empresa} vence em ${dias} dias (${c.data_vencimento}).`,
-            acao_recomendada: "Renove o contrato da caixa postal antes do vencimento.",
-          });
-        }
-      } else {
-        caixasStatus.ativa++;
-      }
+      else if (dias <= 30) caixasStatus.a_vencer++;
+      else                 caixasStatus.ativa++;
     }
     setCaixasStatusData([
       { name: "Ativas",      value: caixasStatus.ativa,      color: GREEN },
