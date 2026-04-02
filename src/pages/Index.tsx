@@ -17,7 +17,7 @@ import {
   AlertTriangle, CheckCircle, LayoutDashboard,
   Phone, Mail, FileText, MapPin,
 } from "lucide-react";
-import { differenceInDays, addDays, format } from "date-fns";
+import { differenceInDays, format } from "date-fns";
 
 // ── Brand / palette ────────────────────────────────────────────────────────────
 const NAVY   = "#10143D";
@@ -272,15 +272,14 @@ export default function Index() {
 
     // Certificados digitais
     const today = new Date();
-    const in30  = addDays(today, 30);
     setCertDigTipoData([
       { name: "A1", value: certDigs.filter(c => c.tipo === "A1").length, color: BLUE   },
       { name: "A3", value: certDigs.filter(c => c.tipo === "A3").length, color: VIOLET },
     ].filter(d => d.value > 0));
     setCertDigVencData([
-      { name: "Válidos",  value: certDigs.filter(c => toDate(c.data_vencimento) > in30).length,                                         color: GREEN },
-      { name: "Vencendo", value: certDigs.filter(c => toDate(c.data_vencimento) > today && toDate(c.data_vencimento) <= in30).length,    color: AMBER },
-      { name: "Vencidos", value: certDigs.filter(c => toDate(c.data_vencimento) <= today).length,                                       color: RED   },
+      { name: "Válidos",  value: certDigs.filter(c => differenceInDays(toDate(c.data_vencimento), today) > 30).length,                                                        color: GREEN },
+      { name: "Vencendo", value: certDigs.filter(c => differenceInDays(toDate(c.data_vencimento), today) >= 0 && differenceInDays(toDate(c.data_vencimento), today) <= 30).length, color: AMBER },
+      { name: "Vencidos", value: certDigs.filter(c => differenceInDays(toDate(c.data_vencimento), today) < 0).length,                                                             color: RED   },
     ].filter(d => d.value > 0));
 
     // Caixas postais — apenas contagem, sem gerar alertas (evita N queries no load)
