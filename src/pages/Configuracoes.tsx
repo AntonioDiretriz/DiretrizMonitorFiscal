@@ -15,6 +15,8 @@ export default function Configuracoes() {
   const { theme, setTheme } = useTheme();
   const [profile, setProfile] = useState({ nome_escritorio: "", responsavel: "" });
   const [loading, setLoading] = useState(false);
+  const [senha, setSenha] = useState({ nova: "", confirmar: "" });
+  const [loadingSenha, setLoadingSenha] = useState(false);
 
   const loadProfile = useCallback(async () => {
     if (!user) return;
@@ -23,6 +25,24 @@ export default function Configuracoes() {
   }, [user]);
 
   useEffect(() => { loadProfile(); }, [loadProfile]);
+
+  const handleSenha = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (senha.nova.length < 6) {
+      toast({ title: "Senha muito curta", description: "A senha deve ter pelo menos 6 caracteres.", variant: "destructive" });
+      return;
+    }
+    if (senha.nova !== senha.confirmar) {
+      toast({ title: "Senhas não coincidem", description: "A nova senha e a confirmação devem ser iguais.", variant: "destructive" });
+      return;
+    }
+    setLoadingSenha(true);
+    const { error } = await supabase.auth.updateUser({ password: senha.nova });
+    setLoadingSenha(false);
+    if (error) { toast({ title: "Erro ao alterar senha", description: error.message, variant: "destructive" }); return; }
+    toast({ title: "Senha alterada com sucesso!" });
+    setSenha({ nova: "", confirmar: "" });
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,6 +92,38 @@ export default function Configuracoes() {
               />
             </div>
             <Button type="submit" disabled={loading}>{loading ? "Salvando..." : "Salvar"}</Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Alterar Senha</CardTitle>
+          <CardDescription>Defina uma nova senha para sua conta</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSenha} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nova Senha</Label>
+              <Input
+                type="password"
+                placeholder="Mínimo 6 caracteres"
+                value={senha.nova}
+                onChange={e => setSenha({ ...senha, nova: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Confirmar Nova Senha</Label>
+              <Input
+                type="password"
+                placeholder="Repita a nova senha"
+                value={senha.confirmar}
+                onChange={e => setSenha({ ...senha, confirmar: e.target.value })}
+              />
+            </div>
+            <Button type="submit" disabled={loadingSenha}>
+              {loadingSenha ? "Alterando..." : "Alterar Senha"}
+            </Button>
           </form>
         </CardContent>
       </Card>
