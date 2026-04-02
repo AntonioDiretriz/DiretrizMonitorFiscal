@@ -16,7 +16,6 @@ export function useEmpresas() {
       const { data, error } = await supabase
         .from("empresas")
         .select("*")
-        .eq("user_id", user.id)
         .order("razao_social");
       if (error) throw error;
       return data as Empresa[];

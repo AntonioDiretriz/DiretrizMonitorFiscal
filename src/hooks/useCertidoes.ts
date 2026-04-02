@@ -12,7 +12,6 @@ export function useCertidoes(filterStatus?: string) {
       let query = supabase
         .from("certidoes")
         .select("*, empresas(razao_social, cnpj)")
-        .eq("user_id", user.id)
         .order("data_validade", { ascending: true });
       if (filterStatus && filterStatus !== "all") {
         query = query.eq("status", filterStatus as any);

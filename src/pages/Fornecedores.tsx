@@ -43,7 +43,7 @@ export default function Fornecedores() {
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const { data } = await supabase.from("fornecedores").select("*").eq("user_id", ownerUserId!).order("nome");
+    const { data } = await supabase.from("fornecedores").select("*").order("nome");
     setFornecedores(data ?? []);
     setLoading(false);
   }, [user]);

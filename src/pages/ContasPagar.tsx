@@ -87,11 +87,11 @@ export default function ContasPagar() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("empresas").select("id, razao_social").eq("user_id", ownerUserId!).order("razao_social")
+    supabase.from("empresas").select("id, razao_social").order("razao_social")
       .then(({ data }) => setEmpresas(data ?? []));
-    supabase.from("plano_contas").select("id, codigo, nome, tipo").eq("user_id", ownerUserId!).order("codigo")
+    supabase.from("plano_contas").select("id, codigo, nome, tipo, empresa_id").order("codigo")
       .then(({ data }) => setPlanoContas(data ?? []));
-  }, [user, ownerUserId]);
+  }, [user]);
 
   const today = new Date();
   const in7   = addDays(today, 7);
@@ -267,24 +267,30 @@ export default function ContasPagar() {
                   </div>
                 )}
 
-                {/* Plano de contas */}
-                {planoContas.length > 0 && (
-                  <div className="space-y-2 col-span-2">
-                    <Label>Categoria (Plano de Contas)</Label>
-                    <Select
-                      value={form.plano_conta_id ?? "none"}
-                      onValueChange={v => setForm({ ...form, plano_conta_id: v === "none" ? null : v })}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Nenhuma categoria" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Nenhuma categoria</SelectItem>
-                        {planoContas.map(p => (
-                          <SelectItem key={p.id} value={p.id}>{p.codigo} — {p.nome}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+                {/* Plano de contas — filtrado pela empresa selecionada */}
+                {(() => {
+                  const contasFiltradas = form.empresa_id
+                    ? planoContas.filter((p: any) => p.empresa_id === form.empresa_id)
+                    : planoContas;
+                  if (contasFiltradas.length === 0) return null;
+                  return (
+                    <div className="space-y-2 col-span-2">
+                      <Label>Categoria (Plano de Contas)</Label>
+                      <Select
+                        value={form.plano_conta_id ?? "none"}
+                        onValueChange={v => setForm({ ...form, plano_conta_id: v === "none" ? null : v })}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Nenhuma categoria" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Nenhuma categoria</SelectItem>
+                          {contasFiltradas.map((p: any) => (
+                            <SelectItem key={p.id} value={p.id}>{p.codigo} — {p.nome}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  );
+                })()}
 
                 <div className="space-y-2">
                   <Label>Forma de Pagamento</Label>

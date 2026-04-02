@@ -211,9 +211,8 @@ export default function Obrigacoes() {
     const [obRes, empRes] = await Promise.all([
       supabase.from("obrigacoes")
         .select("*, empresas(razao_social)")
-        .eq("user_id", ownerUserId!)
         .order("data_vencimento", { ascending: true }),
-      supabase.from("empresas").select("id, razao_social").eq("user_id", ownerUserId!).order("razao_social"),
+      supabase.from("empresas").select("id, razao_social").order("razao_social"),
     ]);
     setObrigacoes((obRes.data ?? []) as Obrigacao[]);
     setEmpresas((empRes.data ?? []) as Empresa[]);

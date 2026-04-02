@@ -70,10 +70,9 @@ export default function Certificados() {
     const { data } = await supabase
       .from("certificados")
       .select("*")
-      .eq("user_id", ownerUserId!)
       .order("data_vencimento", { ascending: true });
     setCertificados(data || []);
-  }, [user, ownerUserId]);
+  }, [user]);
 
   useEffect(() => { loadCertificados(); }, [loadCertificados]);
 

@@ -201,6 +201,7 @@ export default function Empresas() {
   const [pcPreview,       setPcPreview]       = useState<{ codigo: string; nome: string; tipo: PlanoContaTipo }[]>([]);
   const [pcDialogOpen,    setPcDialogOpen]    = useState(false);
   const [pcImporting,     setPcImporting]     = useState(false);
+  const [pcContas,        setPcContas]        = useState<{ id: string; codigo: string; nome: string; tipo: string }[]>([]);
   const pcFileRef = useRef<HTMLInputElement>(null);
 
   const PAGE_SIZE = 20;
@@ -213,7 +214,6 @@ export default function Empresas() {
     const { data, count } = await supabase
       .from("empresas")
       .select("*", { count: "exact" })
-      .eq("user_id", ownerUserId!)
       .order("razao_social")
       .range(from, from + PAGE_SIZE - 1);
     setEmpresas(data || []);
@@ -229,7 +229,7 @@ export default function Empresas() {
       }
       setSociosMap(map);
     }
-  }, [user, ownerUserId, page]);
+  }, [user, page]);
 
   useEffect(() => { loadEmpresas(); }, [loadEmpresas]);
 
@@ -333,6 +333,7 @@ export default function Empresas() {
       cargo:           s.cargo           || "",
     })));
     setActiveTab("empresa");
+    loadPcContas(emp.id);
     setDialogOpen(true);
   };
 
@@ -426,6 +427,16 @@ export default function Empresas() {
     loadEmpresas();
   };
 
+  const loadPcContas = async (empresaId: string) => {
+    const { data } = await supabase.from("plano_contas").select("id, codigo, nome, tipo").eq("empresa_id", empresaId).order("codigo");
+    setPcContas(data ?? []);
+  };
+
+  const handlePcDeleteConta = async (id: string) => {
+    await supabase.from("plano_contas").delete().eq("id", id);
+    setPcContas(prev => prev.filter(c => c.id !== id));
+  };
+
   const handlePcFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -445,14 +456,21 @@ export default function Empresas() {
   };
 
   const handlePcImportConfirm = async () => {
+    if (!editingId) {
+      toast({ title: "Salve a empresa primeiro", description: "Cadastre a empresa antes de importar o plano de contas.", variant: "destructive" });
+      return;
+    }
     setPcImporting(true);
-    const payload = pcPreview.map(c => ({ user_id: ownerUserId!, codigo: c.codigo, nome: c.nome, tipo: c.tipo, parent_id: null }));
+    // Apaga plano anterior desta empresa antes de reimportar
+    await supabase.from("plano_contas").delete().eq("empresa_id", editingId);
+    const payload = pcPreview.map(c => ({ user_id: ownerUserId!, empresa_id: editingId, codigo: c.codigo, nome: c.nome, tipo: c.tipo, parent_id: null }));
     const { error } = await supabase.from("plano_contas").insert(payload);
     setPcImporting(false);
     if (error) { toast({ title: "Erro ao importar", description: error.message, variant: "destructive" }); return; }
     toast({ title: `${pcPreview.length} contas importadas com sucesso!` });
     setPcDialogOpen(false);
     setPcPreview([]);
+    loadPcContas(editingId);
   };
 
   const handleDelete = async (id: string) => {
@@ -502,6 +520,7 @@ export default function Empresas() {
   const resetDialog = () => {
     setEditingId(null); setForm(EMPTY_FORM);
     setSocios([]); setSocioForm(EMPTY_SOCIO); setActiveTab("empresa");
+    setPcContas([]);
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -544,7 +563,7 @@ export default function Empresas() {
               </DialogHeader>
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <Tabs value={activeTab} onValueChange={tab => { setActiveTab(tab); if (tab === "financeiro" && editingId) loadPcContas(editingId); }}>
                   <TabsList className="grid w-full grid-cols-4">
                     <TabsTrigger value="empresa">Empresa</TabsTrigger>
                     <TabsTrigger value="endereco" className="flex items-center gap-1">
@@ -879,6 +898,27 @@ export default function Empresas() {
                         <strong>Como funciona:</strong> Os códigos acima identificam a empresa e vinculam automaticamente os lançamentos financeiros ao plano de contas correto no sistema Domínio, evitando retrabalho de digitação.
                       </p>
                     </div>
+
+                    {/* Lista de contas cadastradas para esta empresa */}
+                    {pcContas.length > 0 && (
+                      <div className="border-t pt-4 space-y-2">
+                        <p className="text-sm font-medium">{pcContas.length} contas cadastradas</p>
+                        <div className="max-h-48 overflow-y-auto rounded border divide-y text-xs">
+                          {pcContas.map(c => (
+                            <div key={c.id} className="flex items-center justify-between px-3 py-1.5 hover:bg-muted/30">
+                              <span className="font-mono text-muted-foreground w-20 shrink-0">{c.codigo}</span>
+                              <span className="flex-1 truncate">{c.nome}</span>
+                              <Badge variant="outline" className="ml-2 text-[10px] shrink-0">{c.tipo}</Badge>
+                              {PODE_EXCLUIR && (
+                                <button type="button" onClick={() => handlePcDeleteConta(c.id)} className="ml-2 text-muted-foreground hover:text-destructive shrink-0">
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </TabsContent>
                 </Tabs>
 

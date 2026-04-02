@@ -156,7 +156,7 @@ export default function PlanoContas() {
 
   const load = useCallback(async () => {
     if (!user) return;
-    const { data } = await supabase.from("plano_contas").select("*").eq("user_id", ownerUserId!).order("codigo");
+    const { data } = await supabase.from("plano_contas").select("*").order("codigo");
     const items = (data ?? []) as PlanoConta[];
     setContas(items);
     setTree(buildTree(items));

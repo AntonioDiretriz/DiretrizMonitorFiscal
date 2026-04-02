@@ -23,11 +23,10 @@ export default function Alertas() {
     const { data } = await supabase
       .from("alertas")
       .select("*, empresas(razao_social)")
-      .eq("user_id", ownerUserId!)
       .order("created_at", { ascending: false });
     setAlertas(data || []);
     setIsLoading(false);
-  }, [user, ownerUserId]);
+  }, [user]);
 
   useEffect(() => { loadAlertas(); }, [loadAlertas]);
 

@@ -55,7 +55,6 @@ export function useContasPagar() {
       const { data, error } = await supabase
         .from("contas_pagar")
         .select("*, empresas(razao_social)")
-        .eq("user_id", user.id)
         .order("data_vencimento", { ascending: true });
       if (error) throw error;
       return (data ?? []) as ContaPagar[];

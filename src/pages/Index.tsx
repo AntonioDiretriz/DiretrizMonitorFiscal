@@ -218,10 +218,10 @@ export default function Index() {
     setIsLoading(true);
 
     const [empRes, certRes, certDigRes, caixasRes] = await Promise.all([
-      supabase.from("empresas").select("*").eq("user_id", ownerUserId!),
-      supabase.from("certidoes").select("*").eq("user_id", ownerUserId!),
-      supabase.from("certificados").select("*").eq("user_id", ownerUserId!),
-      supabase.from("caixas_postais").select("*").eq("user_id", ownerUserId!),
+      supabase.from("empresas").select("*"),
+      supabase.from("certidoes").select("*"),
+      supabase.from("certificados").select("*"),
+      supabase.from("caixas_postais").select("*"),
     ]);
 
     const emps     = empRes.data     || [];
@@ -291,11 +291,10 @@ export default function Index() {
       const titulo = `Certificado ${c.tipo} — ${c.empresa} ${dias < 0 ? "vencido" : "vencendo"}`;
       const { data: jaExiste } = await supabase
         .from("alertas").select("id")
-        .eq("user_id", ownerUserId!).eq("titulo", titulo).eq("resolvida", false).limit(1);
+        .eq("titulo", titulo).eq("resolvida", false).limit(1);
       if (!jaExiste || jaExiste.length === 0) {
         const nivel = dias < 0 ? "critico" : dias <= 7 ? "critico" : "aviso";
         await supabase.from("alertas").insert({
-          user_id: ownerUserId!,
           nivel,
           titulo,
           mensagem: dias < 0
@@ -319,7 +318,6 @@ export default function Index() {
         const { data: jaExiste } = await supabase
           .from("alertas")
           .select("id")
-          .eq("user_id", ownerUserId!)
           .eq("titulo", titulo)
           .eq("resolvida", false)
           .limit(1);
@@ -363,14 +361,13 @@ export default function Index() {
     const { data: alertasData } = await supabase
       .from("alertas")
       .select("*, empresas(razao_social)")
-      .eq("user_id", ownerUserId!)
       .eq("lida", false)
       .order("created_at", { ascending: false })
       .limit(5);
     setAlertas(alertasData || []);
 
     setIsLoading(false);
-  }, [user, ownerUserId]);
+  }, [user]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -556,30 +553,6 @@ export default function Index() {
         </div>
       )}
 
-      {/* ── Certificados Digitais ── */}
-      {show.certificados && (
-        <div>
-          <SectionHeading icon={KeyRound} title="Certificados Digitais" color={BLUE} badge={`${totalCertDig} certificados`} />
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-            <Card className="shadow-sm">
-              <CardHeader className="pb-0">
-                <CardTitle className="text-sm text-muted-foreground font-medium">A1 vs A3</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <DonutChart data={certDigTipoData} total={totalCertDig} centerLabel="certificados" height={220} />
-              </CardContent>
-            </Card>
-            <Card className="shadow-sm">
-              <CardHeader className="pb-0">
-                <CardTitle className="text-sm text-muted-foreground font-medium">Situação de Vencimento</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <DonutChart data={certDigVencData} total={totalCertDig} centerLabel="certificados" height={220} />
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      )}
 
       {/* ── Caixas Postais ── */}
       {show.caixas && (

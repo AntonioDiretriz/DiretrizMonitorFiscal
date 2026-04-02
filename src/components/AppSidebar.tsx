@@ -86,7 +86,7 @@ export function AppSidebar() {
     { title: "Empresas",        url: "/empresas",      icon: Building2,  adminOnly: false },
     { title: "Fornecedores",    url: "/fornecedores",  icon: UserCheck,  adminOnly: true  },
     { title: "Equipe",          url: "/usuarios",      icon: Users,      adminOnly: true  },
-    { title: "Plano de Contas", url: "/plano-contas",  icon: ListChecks, adminOnly: true  },
+    { title: "Plano de Contas", url: "/plano-contas",  icon: ListChecks, adminOnly: false },
   ].filter(item => !item.adminOnly || isAdmin);
 
   const showMonitoramento = monitoramentoItems.length > 0;

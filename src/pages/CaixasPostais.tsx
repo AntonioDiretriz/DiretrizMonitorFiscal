@@ -105,19 +105,17 @@ export default function CaixasPostais() {
     const { data } = await supabase
       .from("caixas_postais")
       .select("*")
-      .eq("user_id", ownerUserId!)
       .order("numero", { ascending: true });
     setCaixas(data || []);
-  }, [user, ownerUserId]);
+  }, [user]);
 
   const loadEmpresas = useCallback(async () => {
     if (!user) return;
     const { data } = await supabase
       .from("empresas")
-      .select("id, cnpj, razao_social")
-      .eq("user_id", ownerUserId!);
+      .select("id, cnpj, razao_social");
     setEmpresas(data || []);
-  }, [user, ownerUserId]);
+  }, [user]);
 
   useEffect(() => { loadCaixas(); loadEmpresas(); }, [loadCaixas, loadEmpresas]);
 

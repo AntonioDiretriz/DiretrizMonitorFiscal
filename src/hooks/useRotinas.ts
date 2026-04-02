@@ -101,7 +101,6 @@ export function useRotinas() {
           responsavel:responsavel_id(nome, email),
           revisor:revisor_id(nome, email)
         `)
-        .eq("user_id", user.id)
         .order("data_vencimento", { ascending: true });
       if (error) throw error;
       return (data ?? []) as Rotina[];

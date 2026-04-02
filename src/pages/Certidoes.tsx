@@ -60,7 +60,6 @@ export default function Certidoes() {
     const { data, count } = await supabase
       .from("certidoes")
       .select("*, empresas(razao_social, cnpj)", { count: "exact" })
-      .eq("user_id", ownerUserId!)
       .order("data_validade", { ascending: true })
       .range(from, to);
     setCertidoes(data || []);
@@ -70,9 +69,9 @@ export default function Certidoes() {
 
   const loadEmpresas = useCallback(async () => {
     if (!user) return;
-    const { data } = await supabase.from("empresas").select("id, razao_social").eq("user_id", ownerUserId!).order("razao_social");
+    const { data } = await supabase.from("empresas").select("id, razao_social").order("razao_social");
     setEmpresas(data || []);
-  }, [user, ownerUserId]);
+  }, [user]);
 
   useEffect(() => { loadCertidoes(); loadEmpresas(); }, [loadCertidoes, loadEmpresas]);
 

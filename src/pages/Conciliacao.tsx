@@ -232,17 +232,17 @@ export default function Conciliacao() {
     if (!user) return;
     setLoading(true);
     const [cbRes, tRes, cpRes, empRes] = await Promise.all([
-      supabase.from("contas_bancarias").select("*, empresas(razao_social)").eq("user_id", ownerUserId!).order("created_at"),
-      supabase.from("transacoes_bancarias").select("*").eq("user_id", ownerUserId!).order("data", { ascending: false }).limit(500),
-      supabase.from("contas_pagar").select("id, fornecedor, valor, data_vencimento, status").eq("user_id", ownerUserId!).in("status", ["pendente", "aprovado"]).order("data_vencimento"),
-      supabase.from("empresas").select("id, razao_social").eq("user_id", ownerUserId!).order("razao_social"),
+      supabase.from("contas_bancarias").select("*, empresas(razao_social)").order("created_at"),
+      supabase.from("transacoes_bancarias").select("*").order("data", { ascending: false }).limit(500),
+      supabase.from("contas_pagar").select("id, fornecedor, valor, data_vencimento, status").in("status", ["pendente", "aprovado"]).order("data_vencimento"),
+      supabase.from("empresas").select("id, razao_social").order("razao_social"),
     ]);
     setContas((cbRes.data ?? []) as ContaBancaria[]);
     setTransacoes((tRes.data ?? []) as Transacao[]);
     setContasPagar((cpRes.data ?? []) as ContaPagar[]);
     setEmpresas((empRes.data ?? []) as Empresa[]);
     setLoading(false);
-  }, [user, ownerUserId]);
+  }, [user]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
