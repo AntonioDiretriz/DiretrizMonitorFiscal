@@ -64,10 +64,22 @@ CREATE TABLE public.rotinas (
 );
 
 ALTER TABLE public.rotinas ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can view own rotinas"   ON public.rotinas FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users can insert own rotinas" ON public.rotinas FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Users can update own rotinas" ON public.rotinas FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "Users can delete own rotinas" ON public.rotinas FOR DELETE USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own rotinas"   ON public.rotinas FOR SELECT USING (
+  auth.uid() = user_id
+  OR (SELECT escritorio_owner_id FROM public.usuarios_perfil WHERE user_id = auth.uid()) = user_id
+);
+CREATE POLICY "Users can insert own rotinas" ON public.rotinas FOR INSERT WITH CHECK (
+  auth.uid() = user_id
+  OR (SELECT escritorio_owner_id FROM public.usuarios_perfil WHERE user_id = auth.uid()) = user_id
+);
+CREATE POLICY "Users can update own rotinas" ON public.rotinas FOR UPDATE USING (
+  auth.uid() = user_id
+  OR (SELECT escritorio_owner_id FROM public.usuarios_perfil WHERE user_id = auth.uid()) = user_id
+);
+CREATE POLICY "Users can delete own rotinas" ON public.rotinas FOR DELETE USING (
+  auth.uid() = user_id
+  OR (SELECT escritorio_owner_id FROM public.usuarios_perfil WHERE user_id = auth.uid()) = user_id
+);
 
 CREATE INDEX idx_rotinas_user_id         ON public.rotinas(user_id);
 CREATE INDEX idx_rotinas_empresa_id      ON public.rotinas(empresa_id);
@@ -99,7 +111,10 @@ CREATE TABLE public.rotinas_evidencias (
 );
 
 ALTER TABLE public.rotinas_evidencias ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can view own evidencias"   ON public.rotinas_evidencias FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own evidencias"   ON public.rotinas_evidencias FOR SELECT USING (
+  EXISTS (SELECT 1 FROM public.rotinas r WHERE r.id = rotina_id
+    AND (r.user_id = auth.uid() OR (SELECT escritorio_owner_id FROM public.usuarios_perfil WHERE user_id = auth.uid()) = r.user_id))
+);
 CREATE POLICY "Users can insert own evidencias" ON public.rotinas_evidencias FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can delete own evidencias" ON public.rotinas_evidencias FOR DELETE USING (auth.uid() = user_id);
 
@@ -117,7 +132,10 @@ CREATE TABLE public.rotinas_comentarios (
 );
 
 ALTER TABLE public.rotinas_comentarios ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users can view own comentarios"   ON public.rotinas_comentarios FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own comentarios"   ON public.rotinas_comentarios FOR SELECT USING (
+  EXISTS (SELECT 1 FROM public.rotinas r WHERE r.id = rotina_id
+    AND (r.user_id = auth.uid() OR (SELECT escritorio_owner_id FROM public.usuarios_perfil WHERE user_id = auth.uid()) = r.user_id))
+);
 CREATE POLICY "Users can insert own comentarios" ON public.rotinas_comentarios FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 CREATE INDEX idx_comentarios_rotina_id ON public.rotinas_comentarios(rotina_id);
