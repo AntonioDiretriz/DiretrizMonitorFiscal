@@ -612,21 +612,21 @@ export default function Certificados() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card onClick={() => setStatusFilter(statusFilter === "ativo" ? null : "ativo")} className={`cursor-pointer transition-all hover:scale-[1.02] ${statusFilter === "ativo" ? "ring-2 ring-green-500 bg-green-50" : "bg-green-50/40 hover:bg-green-50/70"} border-green-200`}>
+        <Card onClick={() => { setStatusFilter(statusFilter === "ativo" ? null : "ativo"); setSearch(""); }} className={`cursor-pointer transition-all hover:scale-[1.02] ${statusFilter === "ativo" ? "ring-2 ring-green-500 bg-green-50" : "bg-green-50/40 hover:bg-green-50/70"} border-green-200`}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-green-700">Certificados Ativos</CardTitle>
             <CheckCircle2 className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent><div className="text-2xl font-bold text-green-700">{ativos}</div></CardContent>
         </Card>
-        <Card onClick={() => setStatusFilter(statusFilter === "a_expirar" ? null : "a_expirar")} className={`cursor-pointer transition-all hover:scale-[1.02] ${statusFilter === "a_expirar" ? "ring-2 ring-amber-500 bg-amber-50" : "bg-amber-50/40 hover:bg-amber-50/70"} border-amber-200`}>
+        <Card onClick={() => { setStatusFilter(statusFilter === "a_expirar" ? null : "a_expirar"); setSearch(""); }} className={`cursor-pointer transition-all hover:scale-[1.02] ${statusFilter === "a_expirar" ? "ring-2 ring-amber-500 bg-amber-50" : "bg-amber-50/40 hover:bg-amber-50/70"} border-amber-200`}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-amber-800">A Expirar</CardTitle>
             <AlertTriangle className="h-4 w-4 text-amber-600" />
           </CardHeader>
           <CardContent><div className="text-2xl font-bold text-amber-700">{aExpirar}</div></CardContent>
         </Card>
-        <Card onClick={() => setStatusFilter(statusFilter === "vencido" ? null : "vencido")} className={`cursor-pointer transition-all hover:scale-[1.02] ${statusFilter === "vencido" ? "ring-2 ring-red-500 bg-red-50" : "bg-red-50/40 hover:bg-red-50/70"} border-red-200`}>
+        <Card onClick={() => { setStatusFilter(statusFilter === "vencido" ? null : "vencido"); setSearch(""); }} className={`cursor-pointer transition-all hover:scale-[1.02] ${statusFilter === "vencido" ? "ring-2 ring-red-500 bg-red-50" : "bg-red-50/40 hover:bg-red-50/70"} border-red-200`}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-destructive">Certificados Vencidos</CardTitle>
             <XCircle className="h-4 w-4 text-destructive" />
