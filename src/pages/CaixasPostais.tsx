@@ -330,19 +330,20 @@ export default function CaixasPostais() {
 
   // ── Derived data ───────────────────────────────────────────────────────────
 
-  const ativas      = caixas.filter(c => getStatus(c).id === "ativa").length;
-  const aVencer     = caixas.filter(c => getStatus(c).id === "a_vencer").length;
-  const vencidas    = caixas.filter(c => getStatus(c).id === "vencida").length;
-  const rescindidas = caixas.filter(c => getStatus(c).id === "rescindido").length;
+  const caixasPorBusca = caixas.filter(c =>
+    c.empresa.toLowerCase().includes(search.toLowerCase()) ||
+    c.cnpj.includes(search) ||
+    String(c.numero).includes(search) ||
+    c.nome_responsavel.toLowerCase().includes(search.toLowerCase())
+  );
 
-  const caixasFiltradas = caixas
-    .filter(c => !statusFilter || statusFilter === "todos" || getStatus(c).id === statusFilter)
-    .filter(c =>
-      c.empresa.toLowerCase().includes(search.toLowerCase()) ||
-      c.cnpj.includes(search) ||
-      String(c.numero).includes(search) ||
-      c.nome_responsavel.toLowerCase().includes(search.toLowerCase())
-    );
+  const ativas      = caixasPorBusca.filter(c => getStatus(c).id === "ativa").length;
+  const aVencer     = caixasPorBusca.filter(c => getStatus(c).id === "a_vencer").length;
+  const vencidas    = caixasPorBusca.filter(c => getStatus(c).id === "vencida").length;
+  const rescindidas = caixasPorBusca.filter(c => getStatus(c).id === "rescindido").length;
+
+  const caixasFiltradas = caixasPorBusca
+    .filter(c => !statusFilter || statusFilter === "todos" || getStatus(c).id === statusFilter);
 
   const selectedCaixa = caixas.find(c => c.id === selectedId);
 
