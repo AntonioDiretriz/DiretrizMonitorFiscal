@@ -25,6 +25,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   Plus, MailOpen, AlertTriangle, XCircle, CheckCircle2,
   Pencil, RefreshCw, History, Ban, Loader2,
+  ChevronsUpDown, ChevronUp, ChevronDown,
 } from "lucide-react";
 import { ExportButton } from "@/components/ExportButton";
 import { useToast } from "@/hooks/use-toast";
@@ -88,6 +89,16 @@ export default function CaixasPostais() {
   const [statusFilter, setStatusFilter]       = useState<string | null>(null);
   const [search, setSearch]                   = useState("");
   const [searchParams]                        = useSearchParams();
+
+  type SortCol = "empresa" | "vencimento" | "dias" | "numero";
+  type SortDir = "asc" | "desc";
+  const [sortCol, setSortCol] = useState<SortCol>("vencimento");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const handleSort = (col: SortCol) => {
+    if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortCol(col); setSortDir("asc"); }
+  };
 
   // Aplica filtro vindo da URL (?filtro=a_vencer)
   useEffect(() => {
@@ -343,7 +354,17 @@ export default function CaixasPostais() {
   const rescindidas = caixasPorBusca.filter(c => getStatus(c).id === "rescindido").length;
 
   const caixasFiltradas = caixasPorBusca
-    .filter(c => !statusFilter || statusFilter === "todos" || getStatus(c).id === statusFilter);
+    .filter(c => !statusFilter || statusFilter === "todos" || getStatus(c).id === statusFilter)
+    .sort((a, b) => {
+      let va: any, vb: any;
+      if (sortCol === "empresa")    { va = a.empresa.toLowerCase(); vb = b.empresa.toLowerCase(); }
+      else if (sortCol === "vencimento") { va = a.data_vencimento; vb = b.data_vencimento; }
+      else if (sortCol === "dias")  { va = getDias(a.data_vencimento); vb = getDias(b.data_vencimento); }
+      else                          { va = a.numero; vb = b.numero; }
+      if (va < vb) return sortDir === "asc" ? -1 : 1;
+      if (va > vb) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
 
   const selectedCaixa = caixas.find(c => c.id === selectedId);
 
@@ -457,14 +478,32 @@ export default function CaixasPostais() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-14">Nº</TableHead>
-                <TableHead>Empresa</TableHead>
-                <TableHead>CNPJ</TableHead>
-                <TableHead>Responsável</TableHead>
-                <TableHead>Vencimento</TableHead>
-                <TableHead className="w-20">Dias</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
+                {(() => {
+                  const SortHeader = ({ col, children, className }: { col: SortCol; children: React.ReactNode; className?: string }) => {
+                    const active = sortCol === col;
+                    const Icon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
+                    return (
+                      <TableHead className={`cursor-pointer select-none hover:bg-muted/40 ${className ?? ""}`} onClick={() => handleSort(col)}>
+                        <span className="inline-flex items-center gap-1">
+                          {children}
+                          <Icon className={`h-3.5 w-3.5 ${active ? "text-primary" : "text-muted-foreground/40"}`} />
+                        </span>
+                      </TableHead>
+                    );
+                  };
+                  return (
+                    <>
+                      <SortHeader col="numero" className="w-14">Nº</SortHeader>
+                      <SortHeader col="empresa">Empresa</SortHeader>
+                      <TableHead>CNPJ</TableHead>
+                      <TableHead>Responsável</TableHead>
+                      <SortHeader col="vencimento">Vencimento</SortHeader>
+                      <SortHeader col="dias" className="w-20">Dias</SortHeader>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </>
+                  );
+                })()}
               </TableRow>
             </TableHeader>
             <TableBody>
