@@ -466,6 +466,42 @@ export default function Certificados() {
               </DialogHeader>
 
               <form id="cert-form" onSubmit={handleSubmit} className="space-y-4 overflow-y-auto flex-1 pr-1">
+
+                {/* ── Banner de renovação quando editando cert vencido/a expirar ── */}
+                {editingId && !isRenovando && (() => {
+                  const s = getStatus(form.data_vencimento);
+                  if (s.id !== "vencido" && s.id !== "a_expirar") return null;
+                  const isVencido = s.id === "vencido";
+                  return (
+                    <div className={`flex items-center justify-between gap-3 rounded-lg border p-3 ${isVencido ? "bg-destructive/10 border-destructive/30" : "bg-amber-50 border-amber-200"}`}>
+                      <div className="flex items-center gap-2 text-sm">
+                        {isVencido
+                          ? <XCircle className="h-4 w-4 shrink-0 text-destructive" />
+                          : <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />}
+                        <span className={isVencido ? "text-destructive font-medium" : "text-amber-700 font-medium"}>
+                          {isVencido ? "Certificado vencido" : "Certificado a expirar"}
+                          {" — deseja instalar o novo certificado?"}
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0 border-amber-400 text-amber-700 hover:bg-amber-100"
+                        onClick={() => {
+                          setIsRenovando(true);
+                          setForm(prev => ({ ...prev, data_vencimento: "", senha_certificado: "" }));
+                          setFileParaLer(null);
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                        }}
+                      >
+                        <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                        Renovar
+                      </Button>
+                    </div>
+                  );
+                })()}
+
                 {/* 1. Tipo */}
                 <div className="space-y-2">
                   <Label>Tipo de Certificado</Label>
