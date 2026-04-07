@@ -502,7 +502,101 @@ export default function Certificados() {
                   );
                 })()}
 
-                {/* 1. Tipo */}
+                {/* ── Modo Renovação: upload do novo certificado ── */}
+                {isRenovando && (
+                  <>
+                    {/* Info empresa atual */}
+                    <div className="rounded-lg border bg-muted/20 p-3 space-y-1">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Certificado atual</p>
+                      <p className="text-sm font-medium">{form.empresa}</p>
+                      <p className="text-xs text-muted-foreground font-mono">{form.cnpj ? formatDocumento(form.cnpj) : "—"}</p>
+                    </div>
+
+                    {form.tipo === "A1" ? (
+                      <>
+                        <div className="space-y-3">
+                          <p className="text-sm font-medium text-foreground">Selecione o novo arquivo do certificado:</p>
+
+                          {/* Arquivo */}
+                          <div className="space-y-1">
+                            <Label className="text-xs">1. Novo arquivo (.pfx / .p12)</Label>
+                            <button
+                              type="button"
+                              onClick={() => fileInputRef.current?.click()}
+                              className={`w-full flex items-center gap-2 px-3 py-3 rounded-lg border-2 border-dashed text-sm transition-colors ${fileParaLer ? "border-green-400 bg-green-50/40 text-green-700" : "border-primary/40 bg-primary/5 text-muted-foreground hover:border-primary/60 hover:bg-primary/10"}`}
+                            >
+                              <FileKey2 className={`h-5 w-5 shrink-0 ${fileParaLer ? "text-green-600" : "text-primary/60"}`} />
+                              <span className="truncate">{fileParaLer ? fileParaLer.name : "Clique para selecionar o arquivo .pfx / .p12"}</span>
+                            </button>
+                            <input type="file" ref={fileInputRef} className="hidden" accept=".pfx,.p12"
+                              onChange={e => {
+                                const f = e.target.files?.[0] ?? null;
+                                setFileParaLer(f);
+                                setForm(prev => ({ ...prev, data_vencimento: "", empresa: prev.empresa, cnpj: prev.cnpj }));
+                              }}
+                            />
+                          </div>
+
+                          {/* Senha */}
+                          <div className="space-y-1">
+                            <Label className="text-xs">2. Senha do novo certificado</Label>
+                            <Input
+                              type="password"
+                              value={form.senha_certificado}
+                              onChange={e => setForm(prev => ({ ...prev, senha_certificado: e.target.value }))}
+                              placeholder="Digite a senha do certificado..."
+                              disabled={!fileParaLer}
+                              className="h-[42px]"
+                            />
+                          </div>
+
+                          {/* Botão Ler */}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full"
+                            onClick={lerCertificado}
+                            disabled={!fileParaLer || !form.senha_certificado || isReading}
+                          >
+                            <ScanSearch className="mr-2 h-4 w-4" />
+                            {isReading ? "Lendo certificado..." : "3. Ler e Extrair Nova Data de Vencimento"}
+                          </Button>
+                        </div>
+
+                        {/* Dados extraídos do novo certificado */}
+                        {form.data_vencimento && (
+                          <div className="rounded-lg border border-green-300 bg-green-50 p-3">
+                            <p className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2">✓ Novo certificado lido</p>
+                            <div className="grid grid-cols-2 gap-2 text-sm">
+                              <div>
+                                <span className="text-xs text-muted-foreground block">Empresa</span>
+                                <p className="font-medium truncate">{form.empresa}</p>
+                              </div>
+                              <div>
+                                <span className="text-xs text-muted-foreground block">Nova validade</span>
+                                <p className="font-semibold text-green-700">{format(new Date(form.data_vencimento + "T12:00:00"), "dd/MM/yyyy")}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      /* A3: renovação manual */
+                      <div className="space-y-2">
+                        <Label>Nova data de vencimento *</Label>
+                        <Input
+                          type="date"
+                          value={form.data_vencimento}
+                          onChange={e => setForm(prev => ({ ...prev, data_vencimento: e.target.value }))}
+                          required
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* 1. Tipo — oculto em modo renovação */}
+                {!isRenovando && (
                 <div className="space-y-2">
                   <Label>Tipo de Certificado</Label>
                   <Select
@@ -520,9 +614,10 @@ export default function Certificados() {
                     </SelectContent>
                   </Select>
                 </div>
+                )}
 
-                {/* ── A1: upload → senha → ler ── */}
-                {(!editingId || isRenovando) && form.tipo === "A1" && (
+                {/* ── A1: upload → senha → ler (somente novo cadastro) ── */}
+                {!editingId && !isRenovando && form.tipo === "A1" && (
                   <>
                     {/* Arquivo + Senha lado a lado */}
                     <div className="grid grid-cols-2 gap-3">
