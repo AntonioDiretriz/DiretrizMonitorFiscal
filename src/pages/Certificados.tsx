@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, KeyRound, AlertTriangle, XCircle, CheckCircle2, Trash2, Pencil, FileKey2, Printer, ScanSearch, ChevronsUpDown, ChevronUp, ChevronDown } from "lucide-react";
+import { Plus, KeyRound, AlertTriangle, XCircle, CheckCircle2, Trash2, Pencil, FileKey2, Printer, ScanSearch, ChevronsUpDown, ChevronUp, ChevronDown, RefreshCw } from "lucide-react";
 import { ExportButton } from "@/components/ExportButton";
 import { useToast } from "@/hooks/use-toast";
 import { format, differenceInDays } from "date-fns";
@@ -52,6 +52,7 @@ export default function Certificados() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [fileParaLer, setFileParaLer] = useState<File | null>(null);
   const [isReading, setIsReading] = useState(false);
+  const [isRenovando, setIsRenovando] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(() => searchParams.get("filtro"));
   const [search, setSearch] = useState("");
 
@@ -182,6 +183,7 @@ export default function Certificados() {
 
   const resetDialog = () => {
     setEditingId(null);
+    setIsRenovando(false);
     setForm(EMPTY_FORM);
     setFileParaLer(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -189,15 +191,32 @@ export default function Certificados() {
 
   const handleEdit = (cert: Certificado) => {
     setEditingId(cert.id);
+    setIsRenovando(false);
     setForm({
-      empresa:          cert.empresa,
-      cnpj:             (cert as any).cnpj || "",
-      tipo:             cert.tipo,
-      data_vencimento:  cert.data_vencimento,
+      empresa:           cert.empresa,
+      cnpj:              (cert as any).cnpj || "",
+      tipo:              cert.tipo,
+      data_vencimento:   cert.data_vencimento,
       senha_certificado: "",
-      email_cliente:    cert.email_cliente || "",
+      email_cliente:     cert.email_cliente || "",
     });
     setFileParaLer(null);
+    setDialogOpen(true);
+  };
+
+  const handleRenovar = (cert: Certificado) => {
+    setEditingId(cert.id);
+    setIsRenovando(true);
+    setForm({
+      empresa:           cert.empresa,
+      cnpj:              (cert as any).cnpj || "",
+      tipo:              cert.tipo,
+      data_vencimento:   "",
+      senha_certificado: "",
+      email_cliente:     cert.email_cliente || "",
+    });
+    setFileParaLer(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     setDialogOpen(true);
   };
 
@@ -441,7 +460,9 @@ export default function Certificados() {
 
             <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
               <DialogHeader className="shrink-0">
-                <DialogTitle>{editingId ? "Atualizar Certificado" : "Lançar Novo Certificado"}</DialogTitle>
+                <DialogTitle>
+                  {isRenovando ? "Renovar Certificado" : editingId ? "Atualizar Certificado" : "Lançar Novo Certificado"}
+                </DialogTitle>
               </DialogHeader>
 
               <form id="cert-form" onSubmit={handleSubmit} className="space-y-4 overflow-y-auto flex-1 pr-1">
@@ -465,7 +486,7 @@ export default function Certificados() {
                 </div>
 
                 {/* ── A1: upload → senha → ler ── */}
-                {!editingId && form.tipo === "A1" && (
+                {(!editingId || isRenovando) && form.tipo === "A1" && (
                   <>
                     {/* Arquivo + Senha lado a lado */}
                     <div className="grid grid-cols-2 gap-3">
@@ -543,8 +564,8 @@ export default function Certificados() {
                   </div>
                 )}
 
-                {/* ── Campos manuais (A3 ou edição) ── */}
-                {(form.tipo === "A3" || editingId) && (
+                {/* ── Campos manuais (A3 ou edição normal) ── */}
+                {(form.tipo === "A3" || (editingId && !isRenovando)) && (
                   <>
                     <div className="space-y-2">
                       <Label>Nome da Empresa *</Label>
@@ -607,7 +628,7 @@ export default function Certificados() {
                   className="w-full"
                   disabled={!form.empresa || !form.data_vencimento || isReading}
                 >
-                  {editingId ? "Salvar Atualização" : "Confirmar e Salvar Certificado"}
+                  {isRenovando ? "Confirmar Renovação" : editingId ? "Salvar Atualização" : "Confirmar e Salvar Certificado"}
                 </Button>
               </div>
             </DialogContent>
@@ -719,6 +740,11 @@ export default function Certificados() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1 justify-end">
+                        {(status.id === "vencido" || status.id === "a_expirar") && (
+                          <Button variant="ghost" size="icon" title="Renovar certificado" onClick={() => handleRenovar(cert)}>
+                            <RefreshCw className="h-4 w-4 text-amber-500 hover:text-amber-700" />
+                          </Button>
+                        )}
                         <Button variant="ghost" size="icon" onClick={() => handleEdit(cert)}>
                           <Pencil className="h-4 w-4 text-muted-foreground hover:text-primary" />
                         </Button>
