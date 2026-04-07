@@ -70,6 +70,27 @@ const EMPTY_RENOVACAO = {
   observacao: "",
 };
 
+type SortCol = "empresa" | "vencimento" | "dias" | "numero";
+type SortDir = "asc" | "desc";
+
+function SortHeader({
+  col, children, className, sortCol, sortDir, onSort,
+}: {
+  col: SortCol; children: React.ReactNode; className?: string;
+  sortCol: SortCol; sortDir: SortDir; onSort: (c: SortCol) => void;
+}) {
+  const active = sortCol === col;
+  const Icon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
+  return (
+    <TableHead className={`cursor-pointer select-none hover:bg-muted/40 ${className ?? ""}`} onClick={() => onSort(col)}>
+      <span className="inline-flex items-center gap-1">
+        {children}
+        <Icon className={`h-3.5 w-3.5 ${active ? "text-primary" : "text-muted-foreground/40"}`} />
+      </span>
+    </TableHead>
+  );
+}
+
 export default function CaixasPostais() {
   const { user, ownerUserId } = useAuth();
   const { toast } = useToast();
@@ -90,8 +111,6 @@ export default function CaixasPostais() {
   const [search, setSearch]                   = useState("");
   const [searchParams]                        = useSearchParams();
 
-  type SortCol = "empresa" | "vencimento" | "dias" | "numero";
-  type SortDir = "asc" | "desc";
   const [sortCol, setSortCol] = useState<SortCol>("vencimento");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -478,32 +497,14 @@ export default function CaixasPostais() {
           <Table>
             <TableHeader>
               <TableRow>
-                {(() => {
-                  const SortHeader = ({ col, children, className }: { col: SortCol; children: React.ReactNode; className?: string }) => {
-                    const active = sortCol === col;
-                    const Icon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
-                    return (
-                      <TableHead className={`cursor-pointer select-none hover:bg-muted/40 ${className ?? ""}`} onClick={() => handleSort(col)}>
-                        <span className="inline-flex items-center gap-1">
-                          {children}
-                          <Icon className={`h-3.5 w-3.5 ${active ? "text-primary" : "text-muted-foreground/40"}`} />
-                        </span>
-                      </TableHead>
-                    );
-                  };
-                  return (
-                    <>
-                      <SortHeader col="numero" className="w-14">Nº</SortHeader>
-                      <SortHeader col="empresa">Empresa</SortHeader>
-                      <TableHead>CNPJ</TableHead>
-                      <TableHead>Responsável</TableHead>
-                      <SortHeader col="vencimento">Vencimento</SortHeader>
-                      <SortHeader col="dias" className="w-20">Dias</SortHeader>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </>
-                  );
-                })()}
+                <SortHeader col="numero" className="w-14" sortCol={sortCol} sortDir={sortDir} onSort={handleSort}>Nº</SortHeader>
+                <SortHeader col="empresa" sortCol={sortCol} sortDir={sortDir} onSort={handleSort}>Empresa</SortHeader>
+                <TableHead>CNPJ</TableHead>
+                <TableHead>Responsável</TableHead>
+                <SortHeader col="vencimento" sortCol={sortCol} sortDir={sortDir} onSort={handleSort}>Vencimento</SortHeader>
+                <SortHeader col="dias" className="w-20" sortCol={sortCol} sortDir={sortDir} onSort={handleSort}>Dias</SortHeader>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
