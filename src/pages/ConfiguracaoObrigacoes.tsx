@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Save, Info, RotateCcw, Plus, Pencil, Trash2, PackageOpen } from "lucide-react";
+import { Save, Info, RotateCcw, Plus, Pencil, Trash2, PackageOpen, Building2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -465,6 +465,10 @@ export default function ConfiguracaoObrigacoes() {
   const [saving, setSaving] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editando, setEditando] = useState<RotinaModelo | null>(null);
+  const [regrasPorModelo, setRegrasPorModelo] = useState<Record<string, RegraAtivacao[]>>({});
+  const [todasEmpresas, setTodasEmpresas] = useState<any[]>([]);
+  const [filtroEmpresaId, setFiltroEmpresaId] = useState<string>("todas");
+
   async function load() {
     if (!user) return;
     setLoading(true);
@@ -480,6 +484,29 @@ export default function ConfiguracaoObrigacoes() {
         .order("nome_rotina");
 
       setModelos((mods ?? []) as RotinaModelo[]);
+
+      // Busca regras de ativação (perfis) de todos os modelos
+      try {
+        const { data: regrasAtiv } = await (supabase as any)
+          .from("regra_ativacao_rotina")
+          .select("*")
+          .eq("ativo", true);
+        const rMap: Record<string, RegraAtivacao[]> = {};
+        for (const r of (regrasAtiv ?? []) as any[]) {
+          if (!rMap[r.rotina_modelo_id]) rMap[r.rotina_modelo_id] = [];
+          rMap[r.rotina_modelo_id].push(r);
+        }
+        setRegrasPorModelo(rMap);
+      } catch { /* tabela pode não existir */ }
+
+      // Busca empresas para o filtro
+      try {
+        const { data: emps } = await (supabase as any)
+          .from("empresas")
+          .select("id, razao_social, regime_tributario, regime, atividade, possui_prolabore, possui_funcionario, tem_retencoes, contribuinte_icms, contribuinte_iss")
+          .order("razao_social");
+        setTodasEmpresas(emps ?? []);
+      } catch { /* ignora */ }
 
       // Busca regras do usuário — tabela pode não existir ainda
       try {
@@ -567,14 +594,27 @@ export default function ConfiguracaoObrigacoes() {
     toast({ title: `Resetado para padrão: ${modelo.nome_rotina}` });
   }
 
+  const empresaFiltro = useMemo(
+    () => todasEmpresas.find(e => e.id === filtroEmpresaId) ?? null,
+    [todasEmpresas, filtroEmpresaId]
+  );
+
   const grupos = useMemo(() => {
+    const filtered = empresaFiltro
+      ? modelos.filter(m => {
+          const regras = regrasPorModelo[m.id];
+          if (!regras || regras.length === 0) return true; // sem regra = aplica a todos
+          return regras.some(r => empresaMatchesRegra(empresaFiltro, r));
+        })
+      : modelos;
+
     const map: Record<string, RotinaModelo[]> = {};
-    for (const m of modelos) {
+    for (const m of filtered) {
       if (!map[m.departamento]) map[m.departamento] = [];
       map[m.departamento].push(m);
     }
     return DEPT_ORDER.filter(d => map[d]).map(d => ({ dept: d, items: map[d] }));
-  }, [modelos]);
+  }, [modelos, regrasPorModelo, empresaFiltro]);
 
   if (loading) return (
     <div className="flex items-center justify-center h-64 text-muted-foreground">
@@ -606,6 +646,31 @@ export default function ConfiguracaoObrigacoes() {
           </Button>
         </div>
       </div>
+
+      {/* Filtro por empresa */}
+      {todasEmpresas.length > 0 && (
+        <div className="flex items-center gap-3">
+          <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+          <div className="flex-1 max-w-xs">
+            <Select value={filtroEmpresaId} onValueChange={setFiltroEmpresaId}>
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Filtrar por empresa..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas as empresas</SelectItem>
+                {todasEmpresas.map(e => (
+                  <SelectItem key={e.id} value={e.id}>{e.razao_social}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {filtroEmpresaId !== "todas" && (
+            <span className="text-xs text-muted-foreground">
+              Exibindo obrigações que se aplicam a esta empresa
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Legenda */}
       <div className="flex items-start gap-2 px-4 py-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800">
@@ -643,9 +708,10 @@ export default function ConfiguracaoObrigacoes() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-gray-50 text-xs text-muted-foreground">
-                  <th className="text-left px-4 py-2 w-[28%]">Obrigação</th>
-                  <th className="text-left px-4 py-2 w-[10%]">Período</th>
-                  <th className="text-left px-4 py-2 w-[9%]">Criticidade</th>
+                  <th className="text-left px-4 py-2 w-[24%]">Obrigação</th>
+                  <th className="text-left px-4 py-2 w-[8%]">Período</th>
+                  <th className="text-left px-4 py-2 w-[8%]">Criticidade</th>
+                  <th className="text-left px-4 py-2 w-[16%]">Perfis</th>
                   <th className="text-center px-2 py-2 w-[13%]">
                     Dia Legal
                     <div className="font-normal text-[10px] leading-tight">(padrão do sistema)</div>
@@ -679,6 +745,19 @@ export default function ConfiguracaoObrigacoes() {
                         <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium border capitalize ${CRIT_COLOR[modelo.criticidade] ?? ""}`}>
                           {modelo.criticidade}
                         </span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex flex-wrap gap-1">
+                          {(regrasPorModelo[modelo.id] ?? []).length === 0 ? (
+                            <span className="text-[10px] text-muted-foreground italic">Todos</span>
+                          ) : (
+                            (regrasPorModelo[modelo.id] ?? []).map((r: any) => (
+                              <span key={r.id} className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium border bg-purple-50 text-purple-700 border-purple-200">
+                                {regraLabel(r)}
+                              </span>
+                            ))
+                          )}
+                        </div>
                       </td>
                       <td className="px-2 py-2.5">
                         <Input
