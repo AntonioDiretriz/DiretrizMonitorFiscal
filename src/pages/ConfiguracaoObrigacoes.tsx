@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,6 +14,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -94,6 +96,53 @@ const EMPTY_FORM = {
   dia_vencimento: "", meses_offset: "1", margem_seguranca: "3", descricao: "",
 };
 
+// ── Tipos para regras de ativação ─────────────────────────────────────────────
+interface RegraAtivacao {
+  id?: string;
+  regime_tributario: string;
+  tipo_atividade: string;
+  exige_prolabore: string;
+  exige_funcionario: string;
+  exige_retencao: string;
+  exige_icms: string;
+  exige_iss: string;
+}
+
+const REGRA_VAZIA: RegraAtivacao = {
+  regime_tributario: "qualquer", tipo_atividade: "qualquer",
+  exige_prolabore: "qualquer", exige_funcionario: "qualquer",
+  exige_retencao: "qualquer", exige_icms: "qualquer", exige_iss: "qualquer",
+};
+
+function regraLabel(r: RegraAtivacao): string {
+  const parts: string[] = [];
+  if (r.regime_tributario !== "qualquer") parts.push({ simples: "Simples", presumido: "Presumido", real: "Real", mei: "MEI" }[r.regime_tributario] ?? r.regime_tributario);
+  if (r.tipo_atividade !== "qualquer") parts.push({ servico: "Serviço", comercio: "Comércio", misto: "Misto" }[r.tipo_atividade] ?? r.tipo_atividade);
+  if (r.exige_prolabore === "true") parts.push("c/ Pró-labore");
+  if (r.exige_funcionario === "true") parts.push("c/ Funcionário");
+  if (r.exige_retencao === "true") parts.push("c/ Retenção");
+  if (r.exige_icms === "true") parts.push("Contribuinte ICMS");
+  if (r.exige_iss === "true") parts.push("Contribuinte ISS");
+  return parts.length ? parts.join(" + ") : "Todos os perfis";
+}
+
+function empresaMatchesRegra(emp: any, r: RegraAtivacao): boolean {
+  const regime = emp.regime_tributario ?? emp.regime ?? "";
+  if (r.regime_tributario !== "qualquer" && regime !== r.regime_tributario) return false;
+  if (r.tipo_atividade !== "qualquer") {
+    const at = emp.atividade ?? "";
+    if (r.tipo_atividade === "misto" && at !== "misto") return false;
+    if (r.tipo_atividade === "servico" && at !== "servico" && at !== "misto") return false;
+    if (r.tipo_atividade === "comercio" && at !== "comercio" && at !== "misto") return false;
+  }
+  if (r.exige_prolabore === "true" && !emp.possui_prolabore) return false;
+  if (r.exige_funcionario === "true" && !emp.possui_funcionario) return false;
+  if (r.exige_retencao === "true" && !emp.tem_retencoes) return false;
+  if (r.exige_icms === "true" && !emp.contribuinte_icms) return false;
+  if (r.exige_iss === "true" && !emp.contribuinte_iss) return false;
+  return true;
+}
+
 // ── Dialog Nova / Editar Obrigação ─────────────────────────────────────────────
 function ObrigacaoDialog({
   open, onOpenChange, initial, onSaved,
@@ -106,9 +155,14 @@ function ObrigacaoDialog({
   const { toast } = useToast();
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [regras, setRegras] = useState<RegraAtivacao[]>([]);
+  const [novaRegra, setNovaRegra] = useState<RegraAtivacao>(REGRA_VAZIA);
+  const [empresas, setEmpresas] = useState<any[]>([]);
+  const [tab, setTab] = useState("dados");
 
   useEffect(() => {
     if (open) {
+      setTab("dados");
       setForm(initial ? {
         nome_rotina:     initial.nome_rotina,
         codigo_rotina:   initial.codigo_rotina,
@@ -121,10 +175,25 @@ function ObrigacaoDialog({
         margem_seguranca:initial.margem_seguranca?.toString() ?? "3",
         descricao:       initial.descricao ?? "",
       } : EMPTY_FORM);
+
+      // Carrega regras e empresas se editando
+      if (initial?.id) {
+        (supabase as any).from("regra_ativacao_rotina").select("*")
+          .eq("rotina_modelo_id", initial.id).eq("ativo", true)
+          .then(({ data }: any) => setRegras(data ?? []));
+        (supabase as any).from("empresas")
+          .select("id, razao_social, regime_tributario, regime, atividade, possui_prolabore, possui_funcionario, tem_retencoes, contribuinte_icms, contribuinte_iss")
+          .order("razao_social")
+          .then(({ data }: any) => setEmpresas(data ?? []));
+      } else {
+        setRegras([]);
+        setEmpresas([]);
+      }
     }
   }, [open, initial]);
 
   const f = (field: string) => (e: any) => setForm(p => ({ ...p, [field]: e.target.value }));
+  const nr = (field: keyof RegraAtivacao) => (v: string) => setNovaRegra(p => ({ ...p, [field]: v }));
 
   async function handleSave() {
     if (!form.nome_rotina || !form.codigo_rotina || !form.tipo_rotina) {
@@ -139,37 +208,83 @@ function ObrigacaoDialog({
         departamento:    form.departamento,
         periodicidade:   form.periodicidade,
         criticidade:     form.criticidade,
-        dia_vencimento:  form.dia_vencimento  ? parseInt(form.dia_vencimento)  : null,
-        meses_offset:    form.meses_offset    ? parseInt(form.meses_offset)    : 1,
-        margem_seguranca:form.margem_seguranca? parseInt(form.margem_seguranca): 3,
+        dia_vencimento:  form.dia_vencimento   ? parseInt(form.dia_vencimento)   : null,
+        meses_offset:    form.meses_offset     ? parseInt(form.meses_offset)     : 1,
+        margem_seguranca:form.margem_seguranca ? parseInt(form.margem_seguranca) : 3,
         descricao:       form.descricao || null,
         ativo:           true,
       };
-
       const { error } = initial
         ? await (supabase as any).from("rotina_modelo").update(payload).eq("id", initial.id)
         : await (supabase as any).from("rotina_modelo").insert(payload);
-
       if (error) throw error;
       toast({ title: initial ? "Obrigação atualizada!" : "Obrigação criada!" });
       onSaved();
       onOpenChange(false);
     } catch (err: any) {
       toast({ title: "Erro ao salvar", description: err.message, variant: "destructive" });
-    } finally {
-      setSaving(false);
+    } finally { setSaving(false); }
+  }
+
+  async function adicionarRegra() {
+    if (!initial?.id) return;
+    try {
+      const { error } = await (supabase as any).from("regra_ativacao_rotina").insert({
+        rotina_modelo_id: initial.id, ...novaRegra, ativo: true,
+      });
+      if (error) throw error;
+      const { data } = await (supabase as any).from("regra_ativacao_rotina")
+        .select("*").eq("rotina_modelo_id", initial.id).eq("ativo", true);
+      setRegras(data ?? []);
+      setNovaRegra(REGRA_VAZIA);
+      toast({ title: "Regra adicionada!" });
+    } catch (err: any) {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
     }
   }
 
+  async function removerRegra(id: string) {
+    await (supabase as any).from("regra_ativacao_rotina").update({ ativo: false }).eq("id", id);
+    setRegras(p => p.filter(r => r.id !== id));
+  }
+
+  // Empresas que batem com pelo menos uma regra
+  const empresasAtivadas = useMemo(() =>
+    empresas.filter(emp => regras.some(r => empresaMatchesRegra(emp, r))),
+    [empresas, regras]
+  );
+
+  const SelectRegra = ({ field, options }: { field: keyof RegraAtivacao; options: [string, string][] }) => (
+    <Select value={novaRegra[field]} onValueChange={nr(field)}>
+      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        {options.map(([v, l]) => <SelectItem key={v} value={v} className="text-xs">{l}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle style={{ color: NAVY }}>
             {initial ? "Editar Obrigação" : "Nova Obrigação"}
           </DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 pt-1">
+
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList className="w-full">
+            <TabsTrigger value="dados" className="flex-1">Dados</TabsTrigger>
+            <TabsTrigger value="perfis" className="flex-1" disabled={!initial}>
+              Perfis de Ativação {regras.length > 0 && <Badge className="ml-1 h-4 px-1 text-[10px]">{regras.length}</Badge>}
+            </TabsTrigger>
+            <TabsTrigger value="empresas" className="flex-1" disabled={!initial}>
+              Empresas {empresasAtivadas.length > 0 && <Badge className="ml-1 h-4 px-1 text-[10px]">{empresasAtivadas.length}</Badge>}
+            </TabsTrigger>
+          </TabsList>
+
+          {/* ── Aba Dados ── */}
+          <TabsContent value="dados" className="space-y-3 pt-2">
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <Label>Nome *</Label>
@@ -240,7 +355,100 @@ function ObrigacaoDialog({
               {saving ? "Salvando..." : "Salvar"}
             </Button>
           </div>
-        </div>
+          </TabsContent>
+
+          {/* ── Aba Perfis de Ativação ── */}
+          <TabsContent value="perfis" className="space-y-4 pt-2">
+            <p className="text-xs text-muted-foreground">
+              Cada linha abaixo é uma condição que ativa esta obrigação. A empresa precisa atender <strong>pelo menos uma</strong> condição.
+            </p>
+
+            {/* Regras existentes */}
+            {regras.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic py-4 text-center">Nenhum perfil configurado. Adicione abaixo.</p>
+            ) : (
+              <div className="space-y-2">
+                {regras.map((r: any) => (
+                  <div key={r.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50 border text-sm">
+                    <span>{regraLabel(r)}</span>
+                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-500 hover:text-red-700" onClick={() => removerRegra(r.id)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Formulário nova regra */}
+            <div className="border rounded-lg p-3 space-y-2 bg-blue-50/50">
+              <p className="text-xs font-medium text-muted-foreground mb-2">Adicionar novo perfil</p>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <Label className="text-xs">Regime</Label>
+                  <SelectRegra field="regime_tributario" options={[["qualquer","Qualquer"],["simples","Simples"],["presumido","Presumido"],["real","Real"],["mei","MEI"]]} />
+                </div>
+                <div>
+                  <Label className="text-xs">Atividade</Label>
+                  <SelectRegra field="tipo_atividade" options={[["qualquer","Qualquer"],["servico","Serviço"],["comercio","Comércio"],["misto","Misto"]]} />
+                </div>
+                <div>
+                  <Label className="text-xs">Pró-labore</Label>
+                  <SelectRegra field="exige_prolabore" options={[["qualquer","Qualquer"],["true","Sim"],["false","Não"]]} />
+                </div>
+                <div>
+                  <Label className="text-xs">Funcionário</Label>
+                  <SelectRegra field="exige_funcionario" options={[["qualquer","Qualquer"],["true","Sim"],["false","Não"]]} />
+                </div>
+                <div>
+                  <Label className="text-xs">Retenção</Label>
+                  <SelectRegra field="exige_retencao" options={[["qualquer","Qualquer"],["true","Sim"],["false","Não"]]} />
+                </div>
+                <div>
+                  <Label className="text-xs">Contrib. ISS</Label>
+                  <SelectRegra field="exige_iss" options={[["qualquer","Qualquer"],["true","Sim"],["false","Não"]]} />
+                </div>
+                <div>
+                  <Label className="text-xs">Contrib. ICMS</Label>
+                  <SelectRegra field="exige_icms" options={[["qualquer","Qualquer"],["true","Sim"],["false","Não"]]} />
+                </div>
+              </div>
+              <div className="flex justify-end pt-1">
+                <Button size="sm" onClick={adicionarRegra} style={{ backgroundColor: NAVY }} className="text-white">
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar Perfil
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* ── Aba Empresas ── */}
+          <TabsContent value="empresas" className="pt-2">
+            <p className="text-xs text-muted-foreground mb-3">
+              Empresas que atendem ao perfil desta obrigação e receberão esta tarefa na geração automática.
+            </p>
+            {empresasAtivadas.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic text-center py-8">
+                Nenhuma empresa corresponde aos perfis configurados.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {empresasAtivadas.map((emp: any) => (
+                  <div key={emp.id} className="flex items-center gap-2 px-3 py-2 rounded-lg border bg-gray-50 text-sm">
+                    <div className="h-7 w-7 rounded-full bg-[#10143D] text-white text-xs flex items-center justify-center font-bold shrink-0">
+                      {emp.razao_social?.[0]?.toUpperCase()}
+                    </div>
+                    <div>
+                      <div className="font-medium">{emp.razao_social}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {emp.regime_tributario ?? emp.regime ?? "—"} · {emp.atividade ?? "—"}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+        </Tabs>
       </DialogContent>
     </Dialog>
   );
@@ -257,8 +465,6 @@ export default function ConfiguracaoObrigacoes() {
   const [saving, setSaving] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editando, setEditando] = useState<RotinaModelo | null>(null);
-  const [seeding, setSeeding] = useState(false);
-
   async function load() {
     if (!user) return;
     setLoading(true);
@@ -298,22 +504,6 @@ export default function ConfiguracaoObrigacoes() {
   }
 
   useEffect(() => { load(); }, [user]);
-
-  async function carregarPadroes() {
-    setSeeding(true);
-    try {
-      const { error } = await (supabase as any)
-        .from("rotina_modelo")
-        .upsert(SEED_OBRIGACOES.map(o => ({ ...o, ativo: true })), { onConflict: "codigo_rotina" });
-      if (error) throw error;
-      toast({ title: `${SEED_OBRIGACOES.length} obrigações padrão carregadas!` });
-      await load();
-    } catch (err: any) {
-      toast({ title: "Erro ao carregar padrões", description: err.message, variant: "destructive" });
-    } finally {
-      setSeeding(false);
-    }
-  }
 
   async function excluirModelo(modelo: RotinaModelo) {
     const { error } = await (supabase as any)
