@@ -468,6 +468,7 @@ export default function ConfiguracaoObrigacoes() {
   const [regrasPorModelo, setRegrasPorModelo] = useState<Record<string, RegraAtivacao[]>>({});
   const [todasEmpresas, setTodasEmpresas] = useState<any[]>([]);
   const [filtroEmpresaId, setFiltroEmpresaId] = useState<string>("todas");
+  const [filtroPerfil, setFiltroPerfil] = useState<string>("todos");
 
   async function load() {
     if (!user) return;
@@ -599,14 +600,37 @@ export default function ConfiguracaoObrigacoes() {
     [todasEmpresas, filtroEmpresaId]
   );
 
+  // Empresas que têm o perfil/regime selecionado
+  const empresasNoPerfil = useMemo(() => {
+    if (filtroPerfil === "todos") return [];
+    return todasEmpresas.filter(e => {
+      const reg = e.regime_tributario ?? e.regime ?? "";
+      return reg === filtroPerfil;
+    });
+  }, [todasEmpresas, filtroPerfil]);
+
   const grupos = useMemo(() => {
-    const filtered = empresaFiltro
-      ? modelos.filter(m => {
-          const regras = regrasPorModelo[m.id];
-          if (!regras || regras.length === 0) return true; // sem regra = aplica a todos
-          return regras.some(r => empresaMatchesRegra(empresaFiltro, r));
-        })
-      : modelos;
+    let filtered = modelos;
+
+    // Filtro por empresa
+    if (empresaFiltro) {
+      filtered = filtered.filter(m => {
+        const regras = regrasPorModelo[m.id];
+        if (!regras || regras.length === 0) return true;
+        return regras.some(r => empresaMatchesRegra(empresaFiltro, r));
+      });
+    }
+
+    // Filtro por perfil/regime
+    if (filtroPerfil !== "todos") {
+      filtered = filtered.filter(m => {
+        const regras = regrasPorModelo[m.id];
+        if (!regras || regras.length === 0) return true;
+        return regras.some(r =>
+          r.regime_tributario === "qualquer" || r.regime_tributario === filtroPerfil
+        );
+      });
+    }
 
     const map: Record<string, RotinaModelo[]> = {};
     for (const m of filtered) {
@@ -614,7 +638,7 @@ export default function ConfiguracaoObrigacoes() {
       map[m.departamento].push(m);
     }
     return DEPT_ORDER.filter(d => map[d]).map(d => ({ dept: d, items: map[d] }));
-  }, [modelos, regrasPorModelo, empresaFiltro]);
+  }, [modelos, regrasPorModelo, empresaFiltro, filtroPerfil]);
 
   if (loading) return (
     <div className="flex items-center justify-center h-64 text-muted-foreground">
@@ -647,27 +671,68 @@ export default function ConfiguracaoObrigacoes() {
         </div>
       </div>
 
-      {/* Filtro por empresa */}
+      {/* Filtros */}
       {todasEmpresas.length > 0 && (
-        <div className="flex items-center gap-3">
-          <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
-          <div className="flex-1 max-w-xs">
-            <Select value={filtroEmpresaId} onValueChange={setFiltroEmpresaId}>
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="Filtrar por empresa..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todas">Todas as empresas</SelectItem>
-                {todasEmpresas.map(e => (
-                  <SelectItem key={e.id} value={e.id}>{e.razao_social}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-3">
+            {/* Filtro por empresa */}
+            <div className="flex items-center gap-2 flex-1 min-w-[220px] max-w-xs">
+              <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+              <Select value={filtroEmpresaId} onValueChange={v => { setFiltroEmpresaId(v); setFiltroPerfil("todos"); }}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Filtrar por empresa..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas as empresas</SelectItem>
+                  {todasEmpresas.map(e => (
+                    <SelectItem key={e.id} value={e.id}>{e.razao_social}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Filtro por perfil */}
+            <div className="flex items-center gap-2 flex-1 min-w-[200px] max-w-xs">
+              <span className="text-xs font-medium text-muted-foreground shrink-0">Perfil:</span>
+              <Select value={filtroPerfil} onValueChange={v => { setFiltroPerfil(v); setFiltroEmpresaId("todas"); }}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Filtrar por perfil..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os perfis</SelectItem>
+                  <SelectItem value="simples">Simples Nacional</SelectItem>
+                  <SelectItem value="presumido">Lucro Presumido</SelectItem>
+                  <SelectItem value="real">Lucro Real</SelectItem>
+                  <SelectItem value="mei">MEI</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          {filtroEmpresaId !== "todas" && (
-            <span className="text-xs text-muted-foreground">
-              Exibindo obrigações que se aplicam a esta empresa
-            </span>
+
+          {/* Painel: empresas do perfil selecionado */}
+          {filtroPerfil !== "todos" && (
+            <div className="rounded-lg border bg-purple-50/60 border-purple-200 px-4 py-3">
+              <p className="text-xs font-semibold text-purple-800 mb-2">
+                {(() => {
+                  const label: Record<string,string> = { simples: "Simples Nacional", presumido: "Lucro Presumido", real: "Lucro Real", mei: "MEI" };
+                  return `Empresas cadastradas com perfil "${label[filtroPerfil] ?? filtroPerfil}":`;
+                })()}
+              </p>
+              {empresasNoPerfil.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic">Nenhuma empresa encontrada com este perfil.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {empresasNoPerfil.map(e => (
+                    <span key={e.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-purple-200 text-xs font-medium text-purple-900">
+                      <span className="h-4 w-4 rounded-full bg-[#10143D] text-white text-[9px] flex items-center justify-center font-bold shrink-0">
+                        {e.razao_social?.[0]?.toUpperCase()}
+                      </span>
+                      {e.razao_social}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
