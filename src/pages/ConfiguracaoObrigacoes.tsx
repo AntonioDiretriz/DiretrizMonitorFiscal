@@ -403,12 +403,6 @@ export default function ConfiguracaoObrigacoes() {
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {modelos.length === 0 && (
-            <Button variant="outline" onClick={carregarPadroes} disabled={seeding}>
-              <PackageOpen className="h-4 w-4 mr-2" />
-              {seeding ? "Carregando..." : "Carregar Obrigações Padrão"}
-            </Button>
-          )}
           <Button
             variant="outline"
             onClick={() => { setEditando(null); setDialogOpen(true); }}
@@ -440,14 +434,9 @@ export default function ConfiguracaoObrigacoes() {
             <div>
               <p className="font-medium text-foreground">Nenhuma obrigação cadastrada</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Clique em <strong>"Carregar Obrigações Padrão"</strong> para importar as {SEED_OBRIGACOES.length} obrigações do sistema,
-                ou em <strong>"Nova Obrigação"</strong> para criar manualmente.
+                Clique em <strong>"Nova Obrigação"</strong> para criar uma obrigação personalizada.
               </p>
             </div>
-            <Button onClick={carregarPadroes} disabled={seeding} style={{ backgroundColor: NAVY }} className="text-white">
-              <PackageOpen className="h-4 w-4 mr-2" />
-              {seeding ? "Carregando..." : "Carregar Obrigações Padrão"}
-            </Button>
           </CardContent>
         </Card>
       )}
