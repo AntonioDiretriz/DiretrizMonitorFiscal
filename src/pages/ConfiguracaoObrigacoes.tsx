@@ -262,21 +262,39 @@ export default function ConfiguracaoObrigacoes() {
   async function load() {
     if (!user) return;
     setLoading(true);
-    const uid = ownerUserId ?? user.id;
-    const [{ data: mods }, { data: rules }] = await Promise.all([
-      supabase.from("rotina_modelo" as any).select("*").eq("ativo", true).order("departamento").order("nome_rotina"),
-      supabase.from("regra_vencimento_usuario" as any).select("*").eq("user_id", uid),
-    ]);
-    setModelos((mods ?? []) as RotinaModelo[]);
-    const map: RegrasMap = {};
-    for (const r of (rules ?? []) as any[]) {
-      map[r.rotina_modelo_id] = {
-        dia_vencimento: r.dia_vencimento?.toString() ?? "",
-        dias_margem:    r.dias_margem?.toString() ?? "",
-      };
+    try {
+      const uid = ownerUserId ?? user.id;
+
+      // Busca obrigações — tabela sem RLS, sempre acessível
+      const { data: mods } = await (supabase as any)
+        .from("rotina_modelo")
+        .select("*")
+        .eq("ativo", true)
+        .order("departamento")
+        .order("nome_rotina");
+
+      setModelos((mods ?? []) as RotinaModelo[]);
+
+      // Busca regras do usuário — tabela pode não existir ainda
+      try {
+        const { data: rules } = await (supabase as any)
+          .from("regra_vencimento_usuario")
+          .select("*")
+          .eq("user_id", uid);
+        const map: RegrasMap = {};
+        for (const r of (rules ?? []) as any[]) {
+          map[r.rotina_modelo_id] = {
+            dia_vencimento: r.dia_vencimento?.toString() ?? "",
+            dias_margem:    r.dias_margem?.toString() ?? "",
+          };
+        }
+        setRegras(map);
+      } catch {
+        // tabela ainda não existe — ignora
+      }
+    } finally {
+      setLoading(false);
     }
-    setRegras(map);
-    setLoading(false);
   }
 
   useEffect(() => { load(); }, [user]);
