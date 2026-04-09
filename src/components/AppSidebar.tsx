@@ -65,9 +65,9 @@ export function AppSidebar() {
   const monitoramentoItems = [
     { title: "Certidões",          url: "/certidoes",      icon: FileCheck,   moduleId: "certidoes"    as ModuleId },
     { title: "Caixas Postais",     url: "/caixas-postais", icon: MailOpen,    moduleId: "caixas"       as ModuleId },
-    { title: "Diagnóstico Fiscal", icon: Stethoscope,      soon: true,        url: ""                              },
+    { title: "Diagnóstico Fiscal", icon: Stethoscope,      url: "/diagnostico-fiscal", moduleId: "certidoes" as ModuleId },
     { title: "Certificados",       url: "/certificados",   icon: KeyRound,    moduleId: "certificados" as ModuleId },
-  ].filter(item => item.soon || temModulo(item.moduleId as ModuleId));
+  ].filter(item => temModulo(item.moduleId as ModuleId));
 
   const financeiroItems = temModulo("financeiro") ? [
     { title: "Visão Geral",    url: "/financeiro",   icon: Banknote   },
@@ -149,24 +149,16 @@ export function AppSidebar() {
                             <SidebarMenuSub>
                               {monitoramentoItems.map((item) => (
                                 <SidebarMenuSubItem key={item.title}>
-                                  {item.soon ? (
-                                    <SidebarMenuSubButton disabled className="opacity-50 cursor-default">
+                                  <SidebarMenuSubButton asChild>
+                                    <NavLink
+                                      to={item.url}
+                                      className="hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-foreground"
+                                      activeClassName="text-sidebar-foreground font-medium"
+                                    >
                                       <item.icon className="h-3.5 w-3.5 shrink-0" />
-                                      <span className="flex-1">{item.title}</span>
-                                      <span className="ml-auto text-[10px] text-muted-foreground">Em breve</span>
-                                    </SidebarMenuSubButton>
-                                  ) : (
-                                    <SidebarMenuSubButton asChild>
-                                      <NavLink
-                                        to={item.url!}
-                                        className="hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-foreground"
-                                        activeClassName="text-sidebar-foreground font-medium"
-                                      >
-                                        <item.icon className="h-3.5 w-3.5 shrink-0" />
-                                        <span>{item.title}</span>
-                                      </NavLink>
-                                    </SidebarMenuSubButton>
-                                  )}
+                                      <span>{item.title}</span>
+                                    </NavLink>
+                                  </SidebarMenuSubButton>
                                 </SidebarMenuSubItem>
                               ))}
                             </SidebarMenuSub>

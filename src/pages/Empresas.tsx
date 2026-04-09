@@ -156,6 +156,166 @@ function resolvePerfilCodigo(regime: string, atividade: string, prolabore: boole
   return `${r}-${a}-PL-${funcionario ? "CF" : "SF"}`;
 }
 
+// ── Perfis pré-definidos ──────────────────────────────────────────────────────
+const PERFIS_PREDEFINIDOS = [
+  // Simples Nacional
+  { codigo: "SN-SERV-PL-SF",  label: "Serviço — Simples Nacional — c/ Pró-labore — s/ Funcionário",          regime: "simples",   atividade: "servico",  prolabore: true,  funcionario: false },
+  { codigo: "SN-SERV-PL-CF",  label: "Serviço — Simples Nacional — c/ Pró-labore — c/ Funcionário",          regime: "simples",   atividade: "servico",  prolabore: true,  funcionario: true  },
+  { codigo: "SN-COM-PL-SF",   label: "Comércio — Simples Nacional — c/ Pró-labore — s/ Funcionário",         regime: "simples",   atividade: "comercio", prolabore: true,  funcionario: false },
+  { codigo: "SN-COM-PL-CF",   label: "Comércio — Simples Nacional — c/ Pró-labore — c/ Funcionário",         regime: "simples",   atividade: "comercio", prolabore: true,  funcionario: true  },
+  { codigo: "SN-MIX-PL-SF",   label: "Serviço e Comércio — Simples Nacional — c/ Pró-labore — s/ Funcionário", regime: "simples",  atividade: "misto",    prolabore: true,  funcionario: false },
+  { codigo: "SN-MIX-PL-CF",   label: "Serviço e Comércio — Simples Nacional — c/ Pró-labore — c/ Funcionário", regime: "simples",  atividade: "misto",    prolabore: true,  funcionario: true  },
+  // Lucro Presumido
+  { codigo: "LP-SERV-PL-SF",  label: "Serviço — Lucro Presumido — c/ Pró-labore — s/ Funcionário",           regime: "presumido", atividade: "servico",  prolabore: true,  funcionario: false },
+  { codigo: "LP-SERV-PL-CF",  label: "Serviço — Lucro Presumido — c/ Pró-labore — c/ Funcionário",           regime: "presumido", atividade: "servico",  prolabore: true,  funcionario: true  },
+  { codigo: "LP-COM-PL-SF",   label: "Comércio — Lucro Presumido — c/ Pró-labore — s/ Funcionário",          regime: "presumido", atividade: "comercio", prolabore: true,  funcionario: false },
+  { codigo: "LP-COM-PL-CF",   label: "Comércio — Lucro Presumido — c/ Pró-labore — c/ Funcionário",          regime: "presumido", atividade: "comercio", prolabore: true,  funcionario: true  },
+  { codigo: "LP-MIX-PL-SF",   label: "Serviço e Comércio — Lucro Presumido — c/ Pró-labore — s/ Funcionário", regime: "presumido", atividade: "misto",   prolabore: true,  funcionario: false },
+  { codigo: "LP-MIX-PL-CF",   label: "Serviço e Comércio — Lucro Presumido — c/ Pró-labore — c/ Funcionário", regime: "presumido", atividade: "misto",   prolabore: true,  funcionario: true  },
+  // Lucro Real
+  { codigo: "LR-SERV-PL-SF",  label: "Serviço — Lucro Real — c/ Pró-labore — s/ Funcionário",                regime: "real",      atividade: "servico",  prolabore: true,  funcionario: false },
+  { codigo: "LR-SERV-PL-CF",  label: "Serviço — Lucro Real — c/ Pró-labore — c/ Funcionário",                regime: "real",      atividade: "servico",  prolabore: true,  funcionario: true  },
+  { codigo: "LR-COM-PL-SF",   label: "Comércio — Lucro Real — c/ Pró-labore — s/ Funcionário",               regime: "real",      atividade: "comercio", prolabore: true,  funcionario: false },
+  { codigo: "LR-COM-PL-CF",   label: "Comércio — Lucro Real — c/ Pró-labore — c/ Funcionário",               regime: "real",      atividade: "comercio", prolabore: true,  funcionario: true  },
+  { codigo: "LR-MIX-PL-SF",   label: "Serviço e Comércio — Lucro Real — c/ Pró-labore — s/ Funcionário",     regime: "real",      atividade: "misto",    prolabore: true,  funcionario: false },
+  { codigo: "LR-MIX-PL-CF",   label: "Serviço e Comércio — Lucro Real — c/ Pró-labore — c/ Funcionário",     regime: "real",      atividade: "misto",    prolabore: true,  funcionario: true  },
+];
+
+// ── Componente: seletor de perfil tributário ──────────────────────────────────
+function PerfilTributarioSelector({
+  form,
+  setForm,
+}: {
+  form: any;
+  setForm: React.Dispatch<React.SetStateAction<any>>;
+}) {
+  const [personalizar, setPersonalizar] = useState(false);
+
+  // Detecta o código do perfil atual para pré-selecionar o dropdown
+  const codigoAtual = resolvePerfilCodigo(
+    form.regime_tributario, form.atividade, form.possui_prolabore, form.possui_funcionario
+  );
+  const perfilSelecionado = PERFIS_PREDEFINIDOS.find(p => p.codigo === codigoAtual);
+
+  function handleSelectPerfil(codigo: string) {
+    if (codigo === "_personalizar") {
+      setPersonalizar(true);
+      return;
+    }
+    const perfil = PERFIS_PREDEFINIDOS.find(p => p.codigo === codigo);
+    if (!perfil) return;
+    setPersonalizar(false);
+    setForm((prev: any) => ({
+      ...prev,
+      regime_tributario: perfil.regime,
+      atividade: perfil.atividade,
+      possui_prolabore: perfil.prolabore,
+      possui_funcionario: perfil.funcionario,
+    }));
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">Perfil Tributário</Label>
+        <Select
+          value={personalizar ? "_personalizar" : (perfilSelecionado?.codigo ?? "")}
+          onValueChange={handleSelectPerfil}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Selecione o perfil da empresa..." />
+          </SelectTrigger>
+          <SelectContent className="max-h-72">
+            {PERFIS_PREDEFINIDOS.map(p => (
+              <SelectItem key={p.codigo} value={p.codigo}>{p.label}</SelectItem>
+            ))}
+            <SelectItem value="_personalizar">— Personalizar manualmente —</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Campos manuais: só aparecem em "Personalizar" */}
+      {personalizar && (
+        <div className="rounded-lg border border-dashed p-4 space-y-3">
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Configuração manual</p>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Regime Tributário</Label>
+              <Select value={form.regime_tributario} onValueChange={v => setForm((p: any) => ({ ...p, regime_tributario: v }))}>
+                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="simples">Simples Nacional</SelectItem>
+                  <SelectItem value="presumido">Lucro Presumido</SelectItem>
+                  <SelectItem value="real">Lucro Real</SelectItem>
+                  <SelectItem value="mei">MEI</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Atividade</Label>
+              <Select value={form.atividade} onValueChange={v => setForm((p: any) => ({ ...p, atividade: v }))}>
+                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="servico">Serviço</SelectItem>
+                  <SelectItem value="comercio">Comércio</SelectItem>
+                  <SelectItem value="misto">Misto (Serv + Com)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-4">
+            <div className="flex items-center gap-2">
+              <Checkbox id="possui_prolabore" checked={form.possui_prolabore}
+                onCheckedChange={v => setForm((p: any) => ({ ...p, possui_prolabore: !!v }))} />
+              <label htmlFor="possui_prolabore" className="text-sm cursor-pointer select-none">Pró-labore</label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox id="possui_funcionario" checked={form.possui_funcionario}
+                onCheckedChange={v => setForm((p: any) => ({ ...p, possui_funcionario: !!v }))} />
+              <label htmlFor="possui_funcionario" className="text-sm cursor-pointer select-none">Funcionários CLT</label>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Flags adicionais — sempre visíveis */}
+      <div className="rounded-lg bg-muted/40 px-4 py-3 space-y-2">
+        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Obrigações adicionais</p>
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          <div className="flex items-center gap-2">
+            <Checkbox id="tem_retencoes" checked={form.tem_retencoes}
+              onCheckedChange={v => setForm((p: any) => ({ ...p, tem_retencoes: !!v }))} />
+            <label htmlFor="tem_retencoes" className="text-sm cursor-pointer select-none">Retenções na fonte</label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox id="tem_reinf" checked={form.tem_reinf}
+              onCheckedChange={v => setForm((p: any) => ({ ...p, tem_reinf: !!v }))} />
+            <label htmlFor="tem_reinf" className="text-sm cursor-pointer select-none">EFD-Reinf</label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox id="contribuinte_iss" checked={form.contribuinte_iss}
+              onCheckedChange={v => setForm((p: any) => ({ ...p, contribuinte_iss: !!v }))} />
+            <label htmlFor="contribuinte_iss" className="text-sm cursor-pointer select-none">Contribuinte ISS</label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox id="contribuinte_icms" checked={form.contribuinte_icms}
+              onCheckedChange={v => setForm((p: any) => ({ ...p, contribuinte_icms: !!v }))} />
+            <label htmlFor="contribuinte_icms" className="text-sm cursor-pointer select-none">Contribuinte ICMS</label>
+          </div>
+        </div>
+      </div>
+
+      {/* Badge de código do perfil */}
+      {!personalizar && perfilSelecionado && (
+        <p className="text-xs text-muted-foreground">
+          Código:{" "}
+          <Badge variant="outline" className="text-xs font-mono">{perfilSelecionado.codigo}</Badge>
+        </p>
+      )}
+    </div>
+  );
+}
+
 const EMPTY_FORM = {
   cnpj: "", razao_social: "",
   // endereço
@@ -171,6 +331,8 @@ const EMPTY_FORM = {
   possui_funcionario: false,
   tem_retencoes: false,
   tem_reinf: false,
+  contribuinte_iss: false,
+  contribuinte_icms: false,
   // financeiro / integração Domínio
   codigo_dominio: "", plano_contas_dominio: "", codigo_contabil: "",
 };
@@ -320,6 +482,8 @@ export default function Empresas() {
       possui_funcionario:   e.possui_funcionario ?? false,
       tem_retencoes:        e.tem_retencoes     ?? false,
       tem_reinf:            e.tem_reinf         ?? false,
+      contribuinte_iss:     e.contribuinte_iss  ?? false,
+      contribuinte_icms:    e.contribuinte_icms ?? false,
       codigo_dominio:       e.codigo_dominio       || "",
       plano_contas_dominio: e.plano_contas_dominio || "",
       codigo_contabil:      e.codigo_contabil      || "",
@@ -379,6 +543,8 @@ export default function Empresas() {
       possui_funcionario:   form.possui_funcionario,
       tem_retencoes:        form.tem_retencoes,
       tem_reinf:            form.tem_reinf,
+      contribuinte_iss:     form.contribuinte_iss,
+      contribuinte_icms:    form.contribuinte_icms,
     };
 
     let empresaId: string | null = editingId;
@@ -386,9 +552,9 @@ export default function Empresas() {
     // Try save with address columns; fallback without them if migration not run yet
     const save = async (p: Record<string, any>) => {
       if (editingId) {
-        return supabase.from("empresas").update(p).eq("id", editingId);
+        return (supabase as any).from("empresas").update(p).eq("id", editingId);
       }
-      return supabase.from("empresas").insert(p).select("id").single();
+      return (supabase as any).from("empresas").insert(p).select("id").single();
     };
 
     let { data: saved, error } = await save(payload);
@@ -603,65 +769,7 @@ export default function Empresas() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Regime Tributário</Label>
-                        <Select value={form.regime_tributario} onValueChange={v => setForm(p => ({ ...p, regime_tributario: v }))}>
-                          <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="simples">Simples Nacional</SelectItem>
-                            <SelectItem value="presumido">Lucro Presumido</SelectItem>
-                            <SelectItem value="real">Lucro Real</SelectItem>
-                            <SelectItem value="mei">MEI</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Atividade Principal</Label>
-                        <Select value={form.atividade} onValueChange={v => setForm(p => ({ ...p, atividade: v }))}>
-                          <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="servico">Serviço</SelectItem>
-                            <SelectItem value="comercio">Comércio</SelectItem>
-                            <SelectItem value="misto">Misto (Serv + Com)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Perfil Operacional</Label>
-                      <div className="flex flex-wrap gap-4 pt-1">
-                        <div className="flex items-center gap-2">
-                          <Checkbox id="possui_prolabore" checked={form.possui_prolabore}
-                            onCheckedChange={v => setForm(p => ({ ...p, possui_prolabore: !!v }))} />
-                          <label htmlFor="possui_prolabore" className="text-sm cursor-pointer select-none">Pró-labore</label>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Checkbox id="possui_funcionario" checked={form.possui_funcionario}
-                            onCheckedChange={v => setForm(p => ({ ...p, possui_funcionario: !!v }))} />
-                          <label htmlFor="possui_funcionario" className="text-sm cursor-pointer select-none">Funcionários CLT</label>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Checkbox id="tem_retencoes" checked={form.tem_retencoes}
-                            onCheckedChange={v => setForm(p => ({ ...p, tem_retencoes: !!v }))} />
-                          <label htmlFor="tem_retencoes" className="text-sm cursor-pointer select-none">Retenções na fonte</label>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Checkbox id="tem_reinf" checked={form.tem_reinf}
-                            onCheckedChange={v => setForm(p => ({ ...p, tem_reinf: !!v }))} />
-                          <label htmlFor="tem_reinf" className="text-sm cursor-pointer select-none">e-Social / EFD-Reinf</label>
-                        </div>
-                      </div>
-                      {form.regime_tributario && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Perfil:{" "}
-                          <Badge variant="outline" className="text-xs font-mono">
-                            {resolvePerfilCodigo(form.regime_tributario, form.atividade, form.possui_prolabore, form.possui_funcionario)}
-                          </Badge>
-                        </p>
-                      )}
-                    </div>
+                    <PerfilTributarioSelector form={form} setForm={setForm} />
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">

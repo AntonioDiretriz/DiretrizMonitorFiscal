@@ -25,6 +25,7 @@ import Obrigacoes from "./pages/Obrigacoes";
 import Rotinas from "./pages/Rotinas";
 import CalendarioRotinas from "./pages/CalendarioRotinas";
 import DashboardRotinas from "./pages/DashboardRotinas";
+import DiagnosticoFiscal from "./pages/DiagnosticoFiscal";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -63,6 +64,7 @@ const App = () => (
               <Route path="/rotinas" element={<Rotinas />} />
               <Route path="/rotinas/calendario" element={<CalendarioRotinas />} />
               <Route path="/rotinas/dashboard" element={<DashboardRotinas />} />
+              <Route path="/diagnostico-fiscal" element={<DiagnosticoFiscal />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

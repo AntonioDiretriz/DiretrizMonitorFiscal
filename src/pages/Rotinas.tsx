@@ -22,7 +22,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
   useRotinas, useCreateRotina, useDeleteRotina, useCatalogoObrigacoes,
-  type Rotina, type RotinaStatus,
+  useGerarObrigacoes,
+  type Rotina, type RotinaStatus, type RotinaRisco,
 } from "@/hooks/useRotinas";
 import { ExportButton } from "@/components/ExportButton";
 import RotinaDetalhe, { STATUS_CONFIG, StatusBadge } from "@/pages/RotinaDetalhe";
@@ -49,6 +50,32 @@ function getCompetenciaMes(): string {
 }
 
 // ── Criar Rotina Dialog ───────────────────────────────────────────────────────
+interface ObrigacaoItem {
+  id: string;
+  nome_rotina: string;
+  codigo_rotina: string;
+  tipo_rotina: string;
+  departamento: string;
+  periodicidade: string;
+  dia_vencimento: number | null;
+  meses_offset: number | null;
+  margem_seguranca: number | null;
+  // configuração editável pelo usuário
+  incluir: boolean;
+  dia_legal: string;      // dia do mês — vencimento legal
+  dia_interno: string;    // dia do mês — prazo interno
+}
+
+function calcDataFromDia(competencia: string, diaStr: string, mesesOffset: number): string {
+  if (!competencia || !diaStr) return "";
+  const dia = parseInt(diaStr, 10);
+  if (isNaN(dia) || dia < 1 || dia > 31) return "";
+  const refMes = parseISO(competencia + "-01");
+  const mesPag = addMonths(refMes, mesesOffset);
+  const maxDia = getDaysInMonth(mesPag);
+  return format(setDate(mesPag, Math.min(dia, maxDia)), "yyyy-MM-dd");
+}
+
 interface NovaRotinaDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -56,243 +83,341 @@ interface NovaRotinaDialogProps {
   equipe: { id: string; nome: string; papel_rotinas?: string }[];
 }
 
+const DEPT_COLORS: Record<string, string> = {
+  Fiscal: "#3b82f6", Contábil: "#8b5cf6", DP: "#f59e0b",
+  Gestão: "#22c55e", Legalização: "#6b7280", Financeiro: "#ec4899",
+};
+
 function NovaRotinaDialog({ open, onOpenChange, empresas, equipe }: NovaRotinaDialogProps) {
   const { toast } = useToast();
-  const catalogo = useCatalogoObrigacoes();
   const createRotina = useCreateRotina();
 
-  const [form, setForm] = useState({
-    empresa_id: "",
-    catalogo_id: "",
-    titulo: "",
-    tipo: "",
-    competencia: format(startOfMonth(new Date()), "yyyy-MM"),
-    data_vencimento: "",
-    data_vencimento_interno: "",
-    responsavel_id: "",
-    revisor_id: "",
-    observacao: "",
+  const [modo, setModo] = useState<"perfil" | "manual">("perfil");
+  const [empresaId, setEmpresaId] = useState("");
+  const [competencia, setCompetencia] = useState(format(startOfMonth(new Date()), "yyyy-MM"));
+  const [responsavelId, setResponsavelId] = useState("");
+  const [obrigacoes, setObrigacoes] = useState<ObrigacaoItem[]>([]);
+  const [loadingObs, setLoadingObs] = useState(false);
+  const [creating, setCreating] = useState(false);
+
+  // Modo manual
+  const [manual, setManual] = useState({
+    titulo: "", tipo: "", data_vencimento: "", data_vencimento_interno: "",
+    responsavel_id: "", observacao: "",
   });
 
-  const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }));
-
-  // Calcula datas de vencimento com base na competência + catálogo
-  function calcDatas(competencia: string, catalogoId: string) {
-    if (!competencia || !catalogoId || catalogoId === "_manual") return {};
-    const item = catalogo.data?.find(c => c.id === catalogoId);
-    if (!item || !item.dia_vencimento) return {};
-
-    const refMes = parseISO(competencia + "-01");
-    const mesPagamento = addMonths(refMes, item.meses_offset ?? 1);
-    const maxDia = getDaysInMonth(mesPagamento);
-    const dia = Math.min(item.dia_vencimento, maxDia);
-    const vencLegal = setDate(mesPagamento, dia);
-    const vencInterno = subDays(vencLegal, item.margem_seguranca ?? 3);
-
-    return {
-      data_vencimento: format(vencLegal, "yyyy-MM-dd"),
-      data_vencimento_interno: format(vencInterno, "yyyy-MM-dd"),
-    };
+  function reset() {
+    setEmpresaId(""); setObrigacoes([]); setResponsavelId("");
+    setCompetencia(format(startOfMonth(new Date()), "yyyy-MM"));
+    setManual({ titulo: "", tipo: "", data_vencimento: "", data_vencimento_interno: "", responsavel_id: "", observacao: "" });
   }
 
-  // Auto-fill título, tipo e datas quando catálogo é selecionado
-  function onCatalogoChange(id: string) {
-    if (!id || id === "_manual") {
-      setForm(p => ({ ...p, catalogo_id: id, titulo: "", tipo: "", data_vencimento: "", data_vencimento_interno: "" }));
-      return;
+  // Carrega obrigações do motor quando empresa muda
+  useEffect(() => {
+    if (!empresaId || modo !== "perfil") return;
+    setLoadingObs(true);
+    setObrigacoes([]);
+    (supabase as any).rpc("motor_ativacao", { p_empresa_id: empresaId }).then(({ data, error }: any) => {
+      if (error) { toast({ title: "Erro ao carregar perfil", description: error.message, variant: "destructive" }); setLoadingObs(false); return; }
+      const items: ObrigacaoItem[] = (data ?? []).map((r: any) => {
+        const diaLegal = r.dia_vencimento ? String(r.dia_vencimento) : "";
+        const diaInt = r.dia_vencimento && r.margem_seguranca
+          ? String(Math.max(1, r.dia_vencimento - r.margem_seguranca))
+          : diaLegal;
+        return { ...r, incluir: true, dia_legal: diaLegal, dia_interno: diaInt };
+      });
+      setObrigacoes(items);
+      setLoadingObs(false);
+    });
+  }, [empresaId, modo]);
+
+  function toggleAll(dept: string, value: boolean) {
+    setObrigacoes(prev => prev.map(o => o.departamento === dept ? { ...o, incluir: value } : o));
+  }
+
+  function updateOb(id: string, field: keyof ObrigacaoItem, value: any) {
+    setObrigacoes(prev => prev.map(o => o.id === id ? { ...o, [field]: value } : o));
+  }
+
+  async function handleCriarPorPerfil() {
+    const selecionadas = obrigacoes.filter(o => o.incluir);
+    if (!empresaId || selecionadas.length === 0) return;
+    setCreating(true);
+    let criadas = 0;
+    try {
+      for (const ob of selecionadas) {
+        const offset = ob.meses_offset ?? 1;
+        const dataVenc = calcDataFromDia(competencia, ob.dia_legal, offset);
+        const dataInt  = calcDataFromDia(competencia, ob.dia_interno, offset);
+        if (!dataVenc) continue;
+        await createRotina.mutateAsync({
+          empresa_id: empresaId,
+          catalogo_id: null,
+          titulo: `${ob.nome_rotina} — ${format(parseISO(competencia + "-01"), "MMM/yyyy", { locale: ptBR })}`,
+          tipo: ob.tipo_rotina,
+          competencia: competencia + "-01",
+          data_vencimento: dataVenc,
+          data_vencimento_interno: dataInt || null,
+          responsavel_id: (responsavelId && responsavelId !== "_none") ? responsavelId : null,
+          revisor_id: null,
+          observacao: null,
+        });
+        criadas++;
+      }
+      toast({ title: `${criadas} rotina${criadas !== 1 ? "s" : ""} criada${criadas !== 1 ? "s" : ""}!` });
+      onOpenChange(false);
+      reset();
+    } catch (err: any) {
+      toast({ title: "Erro ao criar rotinas", description: err.message, variant: "destructive" });
+    } finally {
+      setCreating(false);
     }
-    const item = catalogo.data?.find(c => c.id === id);
-    const datas = calcDatas(form.competencia, id);
-    setForm(p => ({
-      ...p,
-      catalogo_id: id,
-      titulo: item?.nome ?? p.titulo,
-      tipo: item?.tipo ?? p.tipo,
-      ...datas,
-    }));
   }
 
-  // Recalcula datas quando competência muda (se já tem catálogo selecionado)
-  function onCompetenciaChange(v: string) {
-    const datas = calcDatas(v, form.catalogo_id);
-    setForm(p => ({ ...p, competencia: v, ...datas }));
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleCriarManual(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.titulo || !form.tipo || !form.data_vencimento) {
-      toast({ title: "Campos obrigatórios", description: "Título, tipo e data de vencimento são obrigatórios.", variant: "destructive" });
-      return;
+    if (!manual.titulo || !manual.tipo || !manual.data_vencimento) {
+      toast({ title: "Preencha título, tipo e vencimento.", variant: "destructive" }); return;
     }
     try {
       await createRotina.mutateAsync({
-        empresa_id: form.empresa_id || null,
-        catalogo_id: form.catalogo_id && form.catalogo_id !== "_manual" ? form.catalogo_id : null,
-        titulo: form.titulo,
-        tipo: form.tipo,
-        competencia: form.competencia ? form.competencia + "-01" : null,
-        data_vencimento: form.data_vencimento,
-        data_vencimento_interno: form.data_vencimento_interno || null,
-        responsavel_id: form.responsavel_id || null,
-        revisor_id: form.revisor_id || null,
-        observacao: form.observacao || null,
+        empresa_id: empresaId || null,
+        catalogo_id: null,
+        titulo: manual.titulo, tipo: manual.tipo,
+        competencia: competencia + "-01",
+        data_vencimento: manual.data_vencimento,
+        data_vencimento_interno: manual.data_vencimento_interno || null,
+        responsavel_id: (manual.responsavel_id && manual.responsavel_id !== "_none") ? manual.responsavel_id : null,
+        revisor_id: null, observacao: manual.observacao || null,
       });
-      toast({ title: "Rotina criada com sucesso!" });
-      onOpenChange(false);
-      setForm({
-        empresa_id: "", catalogo_id: "", titulo: "", tipo: "",
-        competencia: format(startOfMonth(new Date()), "yyyy-MM"),
-        data_vencimento: "", data_vencimento_interno: "",
-        responsavel_id: "", revisor_id: "", observacao: "",
-      });
+      toast({ title: "Rotina criada!" });
+      onOpenChange(false); reset();
     } catch (err: any) {
-      toast({ title: "Erro ao criar rotina", description: err.message, variant: "destructive" });
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
     }
   }
 
-  const catalogoItems = catalogo.data ?? [];
+  // Agrupamento por departamento
+  const grupos = useMemo(() => {
+    const map: Record<string, ObrigacaoItem[]> = {};
+    obrigacoes.forEach(o => { if (!map[o.departamento]) map[o.departamento] = []; map[o.departamento].push(o); });
+    return map;
+  }, [obrigacoes]);
+
+  const totalSelecionadas = obrigacoes.filter(o => o.incluir).length;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={v => { onOpenChange(v); if (!v) reset(); }}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle style={{ color: NAVY }}>Nova Rotina</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-          {/* Empresa */}
-          <div className="grid grid-cols-2 gap-4">
+
+        {/* Modo tabs */}
+        <div className="flex gap-1 p-1 bg-muted rounded-lg w-fit">
+          <button
+            onClick={() => setModo("perfil")}
+            className={`px-3 py-1.5 rounded text-sm font-medium transition-all ${modo === "perfil" ? "bg-white shadow text-gray-900" : "text-muted-foreground hover:text-gray-700"}`}
+          >
+            Por Perfil
+          </button>
+          <button
+            onClick={() => setModo("manual")}
+            className={`px-3 py-1.5 rounded text-sm font-medium transition-all ${modo === "manual" ? "bg-white shadow text-gray-900" : "text-muted-foreground hover:text-gray-700"}`}
+          >
+            Manual
+          </button>
+        </div>
+
+        {/* ── MODO PERFIL ── */}
+        {modo === "perfil" && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-1">
+                <Label className="text-xs text-muted-foreground">Empresa *</Label>
+                <Select value={empresaId} onValueChange={setEmpresaId}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Selecionar" /></SelectTrigger>
+                  <SelectContent>
+                    {empresas.map(e => <SelectItem key={e.id} value={e.id}>{e.razao_social}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Competência *</Label>
+                <Input type="month" value={competencia} onChange={e => setCompetencia(e.target.value)} className="h-9" />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Responsável</Label>
+                <Select value={responsavelId} onValueChange={setResponsavelId}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Opcional" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">— Nenhum —</SelectItem>
+                    {equipe.filter(u => ["responsavel", "ambos"].includes(u.papel_rotinas ?? "")).map(u => (
+                      <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {!empresaId && (
+              <p className="text-sm text-muted-foreground text-center py-6">Selecione uma empresa para ver as obrigações do perfil.</p>
+            )}
+
+            {loadingObs && (
+              <p className="text-sm text-muted-foreground text-center py-6">Carregando perfil tributário...</p>
+            )}
+
+            {!loadingObs && empresaId && obrigacoes.length === 0 && (
+              <p className="text-sm text-amber-600 text-center py-6">Nenhuma obrigação encontrada. Configure o perfil tributário da empresa primeiro.</p>
+            )}
+
+            {!loadingObs && obrigacoes.length > 0 && (
+              <div className="space-y-3">
+                {/* Legenda de colunas */}
+                <div className="grid grid-cols-[auto_1fr_80px_80px] gap-2 px-3 text-[10px] text-muted-foreground uppercase tracking-wide">
+                  <span className="w-5" />
+                  <span>Obrigação</span>
+                  <span className="text-center">Venc. legal<br/><span className="text-[9px] normal-case">(dia do mês)</span></span>
+                  <span className="text-center">Prazo interno<br/><span className="text-[9px] normal-case">(dia do mês)</span></span>
+                </div>
+
+                {Object.entries(grupos).map(([dept, items]) => {
+                  const color = DEPT_COLORS[dept] ?? "#6b7280";
+                  const allOn = items.every(o => o.incluir);
+                  return (
+                    <div key={dept} className="rounded-lg border overflow-hidden">
+                      {/* Header do grupo */}
+                      <div className="flex items-center justify-between px-3 py-2" style={{ backgroundColor: color + "12" }}>
+                        <span className="text-xs font-semibold" style={{ color }}>{dept}</span>
+                        <button
+                          onClick={() => toggleAll(dept, !allOn)}
+                          className="text-[10px] underline text-muted-foreground hover:text-gray-700"
+                        >
+                          {allOn ? "Desmarcar todos" : "Marcar todos"}
+                        </button>
+                      </div>
+                      {/* Linhas */}
+                      {items.map(ob => (
+                        <div
+                          key={ob.id}
+                          className={`grid grid-cols-[auto_1fr_80px_80px] gap-2 items-center px-3 py-2 border-t text-sm ${!ob.incluir ? "opacity-40" : ""}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={ob.incluir}
+                            onChange={e => updateOb(ob.id, "incluir", e.target.checked)}
+                            className="h-4 w-4 accent-[#10143D] cursor-pointer"
+                          />
+                          <div>
+                            <span className="font-medium text-gray-800">{ob.nome_rotina}</span>
+                            <span className="ml-2 text-[10px] uppercase text-muted-foreground px-1 py-0.5 rounded bg-muted">{ob.tipo_rotina}</span>
+                            {ob.meses_offset && ob.meses_offset > 0 && (
+                              <span className="ml-1 text-[10px] text-muted-foreground">+{ob.meses_offset}m</span>
+                            )}
+                          </div>
+                          <input
+                            type="number"
+                            min={1} max={31}
+                            value={ob.dia_legal}
+                            disabled={!ob.incluir}
+                            onChange={e => updateOb(ob.id, "dia_legal", e.target.value)}
+                            className="w-full text-center border rounded px-1 py-1 text-sm disabled:cursor-not-allowed"
+                            placeholder="dia"
+                          />
+                          <input
+                            type="number"
+                            min={1} max={31}
+                            value={ob.dia_interno}
+                            disabled={!ob.incluir}
+                            onChange={e => updateOb(ob.id, "dia_interno", e.target.value)}
+                            className="w-full text-center border rounded px-1 py-1 text-sm disabled:cursor-not-allowed"
+                            placeholder="dia"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+              <Button
+                onClick={handleCriarPorPerfil}
+                disabled={!empresaId || totalSelecionadas === 0 || creating}
+                style={{ backgroundColor: NAVY }}
+                className="text-white"
+              >
+                {creating ? "Criando..." : `Criar ${totalSelecionadas} Rotina${totalSelecionadas !== 1 ? "s" : ""}`}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ── MODO MANUAL ── */}
+        {modo === "manual" && (
+          <form onSubmit={handleCriarManual} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Empresa</Label>
+                <Select value={empresaId} onValueChange={setEmpresaId}>
+                  <SelectTrigger><SelectValue placeholder="Selecionar empresa" /></SelectTrigger>
+                  <SelectContent>
+                    {empresas.map(e => <SelectItem key={e.id} value={e.id}>{e.razao_social}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Competência</Label>
+                <Input type="month" value={competencia} onChange={e => setCompetencia(e.target.value)} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Título *</Label>
+                <Input value={manual.titulo} onChange={e => setManual(p => ({ ...p, titulo: e.target.value }))} placeholder="Ex: FGTS — Abr/2026" required />
+              </div>
+              <div>
+                <Label>Tipo *</Label>
+                <Input value={manual.tipo} onChange={e => setManual(p => ({ ...p, tipo: e.target.value }))} placeholder="das, fgts, inss..." required />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Vencimento Legal *</Label>
+                <Input type="date" value={manual.data_vencimento} onChange={e => setManual(p => ({ ...p, data_vencimento: e.target.value }))} required />
+              </div>
+              <div>
+                <Label>Prazo Interno</Label>
+                <Input type="date" value={manual.data_vencimento_interno} onChange={e => setManual(p => ({ ...p, data_vencimento_interno: e.target.value }))} />
+              </div>
+            </div>
             <div>
-              <Label>Empresa</Label>
-              <Select value={form.empresa_id} onValueChange={v => set("empresa_id", v)}>
-                <SelectTrigger><SelectValue placeholder="Selecionar empresa" /></SelectTrigger>
+              <Label>Responsável</Label>
+              <Select value={manual.responsavel_id} onValueChange={v => setManual(p => ({ ...p, responsavel_id: v }))}>
+                <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
                 <SelectContent>
-                  {empresas.map(e => (
-                    <SelectItem key={e.id} value={e.id}>{e.razao_social}</SelectItem>
+                  <SelectItem value="">— Nenhum —</SelectItem>
+                  {equipe.filter(u => ["responsavel", "ambos"].includes(u.papel_rotinas ?? "")).map(u => (
+                    <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label>Competência</Label>
-              <Input
-                type="month"
-                value={form.competencia}
-                onChange={e => onCompetenciaChange(e.target.value)}
-              />
+              <Label>Observação</Label>
+              <Textarea value={manual.observacao} onChange={e => setManual(p => ({ ...p, observacao: e.target.value }))} rows={2} />
             </div>
-          </div>
-
-          {/* Catálogo */}
-          <div>
-            <Label>Obrigação do Catálogo</Label>
-            <Select value={form.catalogo_id} onValueChange={onCatalogoChange}>
-              <SelectTrigger><SelectValue placeholder="Selecionar do catálogo (ou preencher manualmente)" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_manual">— Manual —</SelectItem>
-                {catalogoItems.map(c => (
-                  <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Título + Tipo */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Título *</Label>
-              <Input
-                value={form.titulo}
-                onChange={e => set("titulo", e.target.value)}
-                placeholder="Ex: FGTS — Jan/2026"
-                required
-              />
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+              <Button type="submit" style={{ backgroundColor: NAVY }} disabled={createRotina.isPending}>
+                {createRotina.isPending ? "Criando..." : "Criar Rotina"}
+              </Button>
             </div>
-            <div>
-              <Label>Tipo *</Label>
-              <Input
-                value={form.tipo}
-                onChange={e => set("tipo", e.target.value)}
-                placeholder="das, fgts, inss..."
-                required
-              />
-            </div>
-          </div>
-
-          {/* Datas */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>
-                Vencimento Legal *
-                {form.catalogo_id && form.catalogo_id !== "_manual" && (
-                  <span className="ml-2 text-[10px] text-muted-foreground font-normal">calculado automaticamente</span>
-                )}
-              </Label>
-              <Input
-                type="date"
-                value={form.data_vencimento}
-                onChange={e => set("data_vencimento", e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <Label>
-                Prazo Interno
-                {form.catalogo_id && form.catalogo_id !== "_manual" && (
-                  <span className="ml-2 text-[10px] text-muted-foreground font-normal">calculado automaticamente</span>
-                )}
-              </Label>
-              <Input
-                type="date"
-                value={form.data_vencimento_interno}
-                onChange={e => set("data_vencimento_interno", e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Responsável + Revisor */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Responsável</Label>
-              <Select value={form.responsavel_id} onValueChange={v => set("responsavel_id", v)}>
-                <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
-                <SelectContent>
-                  {equipe
-                    .filter(u => ["responsavel", "ambos"].includes(u.papel_rotinas ?? ""))
-                    .map(u => <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>)
-                  }
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Revisor</Label>
-              <Select value={form.revisor_id} onValueChange={v => set("revisor_id", v)}>
-                <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
-                <SelectContent>
-                  {equipe
-                    .filter(u => ["revisor", "ambos"].includes(u.papel_rotinas ?? ""))
-                    .map(u => <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>)
-                  }
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div>
-            <Label>Observação</Label>
-            <Textarea
-              value={form.observacao}
-              onChange={e => set("observacao", e.target.value)}
-              rows={2}
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button type="submit" style={{ backgroundColor: NAVY }} disabled={createRotina.isPending}>
-              {createRotina.isPending ? "Criando..." : "Criar Rotina"}
-            </Button>
-          </div>
-        </form>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -408,7 +533,7 @@ function GerarRotinasPerfilDialog({ open, onOpenChange, empresas, equipe }: Gera
           competencia: competencia + "-01",
           data_vencimento: item.data_vencimento,
           data_vencimento_interno: item.data_vencimento_interno || null,
-          responsavel_id: responsavelId || null,
+          responsavel_id: (responsavelId && responsavelId !== "_none") ? responsavelId : null,
           revisor_id: null,
           observacao: item.condicional ? `Condição: ${item.condicional}` : null,
         });
@@ -520,6 +645,114 @@ function GerarRotinasPerfilDialog({ open, onOpenChange, empresas, equipe }: Gera
   );
 }
 
+// ── Risco Badge ───────────────────────────────────────────────────────────────
+const RISCO_CONFIG: Record<RotinaRisco, { label: string; color: string }> = {
+  baixo:  { label: "Baixo",   color: "#22c55e" },
+  medio:  { label: "Médio",   color: "#f59e0b" },
+  alto:   { label: "Alto",    color: "#ef4444" },
+  critico: { label: "Crítico", color: "#7c3aed" },
+};
+
+function RiscoBadge({ risco }: { risco: RotinaRisco }) {
+  const cfg = RISCO_CONFIG[risco] ?? RISCO_CONFIG.baixo;
+  return (
+    <span
+      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase"
+      style={{ backgroundColor: cfg.color + "20", color: cfg.color }}
+    >
+      {cfg.label}
+    </span>
+  );
+}
+
+// ── Gerar Obrigações (RPC) Dialog ─────────────────────────────────────────────
+interface GerarRPCDialogProps {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  empresas: { id: string; razao_social: string }[];
+}
+
+function GerarObrigacoesRPCDialog({ open, onOpenChange, empresas }: GerarRPCDialogProps) {
+  const { toast } = useToast();
+  const gerarObrigacoes = useGerarObrigacoes();
+  const [empresaId, setEmpresaId] = useState("");
+  const [competencia, setCompetencia] = useState(format(startOfMonth(new Date()), "yyyy-MM"));
+  const [geradas, setGeradas] = useState<number | null>(null);
+
+  function handleClose(v: boolean) {
+    onOpenChange(v);
+    if (!v) { setEmpresaId(""); setGeradas(null); }
+  }
+
+  async function handleGerar() {
+    if (!empresaId) return;
+    try {
+      const count = await gerarObrigacoes.mutateAsync({
+        empresa_id: empresaId,
+        competencia: competencia + "-01",
+      });
+      setGeradas(count);
+      toast({ title: `${count} obrigações geradas com sucesso!` });
+    } catch (err: any) {
+      toast({ title: "Erro ao gerar obrigações", description: err.message, variant: "destructive" });
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle style={{ color: NAVY }} className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-amber-500" />
+            Gerar Obrigações Automáticas
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <p className="text-sm text-muted-foreground">
+            Gera as obrigações do mês com base no regime tributário e perfil da empresa.
+          </p>
+          <div>
+            <Label>Empresa *</Label>
+            <Select value={empresaId} onValueChange={setEmpresaId}>
+              <SelectTrigger><SelectValue placeholder="Selecionar empresa" /></SelectTrigger>
+              <SelectContent>
+                {empresas.map(e => (
+                  <SelectItem key={e.id} value={e.id}>{e.razao_social}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Competência *</Label>
+            <Input type="month" value={competencia} onChange={e => setCompetencia(e.target.value)} />
+          </div>
+
+          {geradas !== null && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-50 border border-green-200 text-sm text-green-800">
+              <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
+              {geradas > 0
+                ? `${geradas} obrigações geradas para a competência.`
+                : "Nenhuma nova obrigação gerada (já existem ou perfil não configurado)."}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => handleClose(false)}>Fechar</Button>
+            <Button
+              onClick={handleGerar}
+              disabled={!empresaId || gerarObrigacoes.isPending}
+              style={{ backgroundColor: NAVY }}
+              className="text-white"
+            >
+              {gerarObrigacoes.isPending ? "Gerando..." : "Gerar Obrigações"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Kanban Card ───────────────────────────────────────────────────────────────
 function KanbanCard({ rotina, onClick }: { rotina: Rotina; onClick: () => void }) {
   const hoje = new Date();
@@ -588,6 +821,7 @@ export default function Rotinas() {
   }[]>([]);
   const [equipe, setEquipe] = useState<{ id: string; nome: string; papel_rotinas?: string }[]>([]);
   const [gerarOpen, setGerarOpen] = useState(false);
+  const [gerarRPCOpen, setGerarRPCOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -596,7 +830,7 @@ export default function Rotinas() {
       .eq("user_id", ownerUserId!).order("razao_social")
       .then(({ data }) => setEmpresas((data ?? []) as any[]));
     supabase.from("usuarios_perfil").select("id, nome, papel_rotinas").eq("user_id", ownerUserId!).order("nome")
-      .then(({ data }) => setEquipe((data ?? []) as { id: string; nome: string; papel_rotinas?: string }[]));
+      .then(({ data }) => setEquipe((data ?? []) as unknown as { id: string; nome: string; papel_rotinas?: string }[]));
   }, [user]);
 
   // ── KPIs ──
@@ -700,6 +934,10 @@ export default function Rotinas() {
               { header: "Status",      value: r => STATUS_CONFIG[r.status]?.label ?? r.status },
             ]}
           />
+          <Button onClick={() => setGerarRPCOpen(true)} variant="outline">
+            <Sparkles className="h-4 w-4 mr-2" />
+            Gerar Automático
+          </Button>
           <Button onClick={() => setGerarOpen(true)} variant="outline">
             <ClipboardList className="h-4 w-4 mr-2" />
             Gerar do Perfil
@@ -851,6 +1089,13 @@ export default function Rotinas() {
         empresas={empresas}
         equipe={equipe}
       />
+
+      {/* Gerar obrigações automáticas (RPC) */}
+      <GerarObrigacoesRPCDialog
+        open={gerarRPCOpen}
+        onOpenChange={setGerarRPCOpen}
+        empresas={empresas}
+      />
     </div>
   );
 }
@@ -890,6 +1135,7 @@ function ListaView({
               <TableHead>Vencimento</TableHead>
               <TableHead>Responsável</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Risco</TableHead>
               <TableHead className="w-[80px]" />
             </TableRow>
           </TableHeader>
@@ -939,6 +1185,9 @@ function ListaView({
                   </TableCell>
                   <TableCell onClick={e => e.stopPropagation()}>
                     <StatusBadge status={r.status} />
+                  </TableCell>
+                  <TableCell onClick={e => e.stopPropagation()}>
+                    <RiscoBadge risco={r.risco} />
                   </TableCell>
                   <TableCell onClick={e => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
