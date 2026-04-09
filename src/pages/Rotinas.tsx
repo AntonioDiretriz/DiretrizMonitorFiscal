@@ -827,9 +827,9 @@ export default function Rotinas() {
     if (!user) return;
     supabase.from("empresas")
       .select("id, razao_social, regime_tributario, atividade, possui_prolabore, possui_funcionario")
-      .eq("user_id", ownerUserId!).order("razao_social")
+      .order("razao_social")
       .then(({ data }) => setEmpresas((data ?? []) as any[]));
-    supabase.from("usuarios_perfil").select("id, nome, papel_rotinas").eq("user_id", ownerUserId!).order("nome")
+    supabase.from("usuarios_perfil").select("id, nome, papel_rotinas").eq("user_id", ownerUserId ?? user.id).order("nome")
       .then(({ data }) => setEquipe((data ?? []) as unknown as { id: string; nome: string; papel_rotinas?: string }[]));
   }, [user]);
 
@@ -838,11 +838,18 @@ export default function Rotinas() {
   const mesStart = startOfMonth(parseISO(filterMes + "-01"));
   const mesEnd   = endOfMonth(mesStart);
 
+  // Filtra por competência (quando existe) ou data_vencimento como fallback
+  function rotinaMatchesMes(r: Rotina, start: Date, end: Date): boolean {
+    if (r.competencia) {
+      const comp = parseISO(r.competencia);
+      return isWithinInterval(comp, { start, end });
+    }
+    const venc = parseISO(r.data_vencimento);
+    return isWithinInterval(venc, { start, end });
+  }
+
   const rotinasMes = useMemo(() =>
-    rotinas.filter(r => {
-      const venc = parseISO(r.data_vencimento);
-      return isWithinInterval(venc, { start: mesStart, end: mesEnd });
-    }),
+    rotinas.filter(r => rotinaMatchesMes(r, mesStart, mesEnd)),
     [rotinas, filterMes]
   );
 
@@ -860,11 +867,8 @@ export default function Rotinas() {
   const filtered = useMemo(() => {
     let list = rotinas;
 
-    // Mes filter
-    list = list.filter(r => {
-      const venc = parseISO(r.data_vencimento);
-      return isWithinInterval(venc, { start: mesStart, end: mesEnd });
-    });
+    // Mes filter (por competência ou vencimento)
+    list = list.filter(r => rotinaMatchesMes(r, mesStart, mesEnd));
 
     if (filterEmpresa !== "_todos") list = list.filter(r => r.empresa_id === filterEmpresa);
     if (filterStatus  !== "_todos") list = list.filter(r => r.status === filterStatus);
@@ -972,7 +976,7 @@ export default function Rotinas() {
           <div className="flex flex-wrap gap-3 items-end">
             {/* Mês */}
             <div className="min-w-[140px]">
-              <Label className="text-xs text-muted-foreground">Mês</Label>
+              <Label className="text-xs text-muted-foreground">Competência</Label>
               <Input
                 type="month"
                 value={filterMes}

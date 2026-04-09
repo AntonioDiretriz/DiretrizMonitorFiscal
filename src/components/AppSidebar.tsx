@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Building2, FileCheck, Bell, Settings, LogOut,
   Users, KeyRound, MailOpen, ChevronRight, Stethoscope,
   Banknote, CreditCard, ListChecks, Package, UserCheck, ClipboardList,
-  CalendarDays, BarChart2, User,
+  CalendarDays, BarChart2, User, BookOpen,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -83,10 +83,11 @@ export function AppSidebar() {
   ] : [];
 
   const configItems = [
-    { title: "Empresas",        url: "/empresas",      icon: Building2,  adminOnly: false },
-    { title: "Fornecedores",    url: "/fornecedores",  icon: UserCheck,  adminOnly: true  },
-    { title: "Equipe",          url: "/usuarios",      icon: Users,      adminOnly: true  },
-    { title: "Plano de Contas", url: "/plano-contas",  icon: ListChecks, adminOnly: false },
+    { title: "Empresas",        url: "/empresas",                  icon: Building2,  adminOnly: false },
+    { title: "Fornecedores",    url: "/fornecedores",              icon: UserCheck,  adminOnly: true  },
+    { title: "Equipe",          url: "/usuarios",                  icon: Users,      adminOnly: true  },
+    { title: "Plano de Contas", url: "/plano-contas",              icon: ListChecks, adminOnly: false },
+    { title: "Obrigações",      url: "/configuracao/obrigacoes",   icon: BookOpen,   adminOnly: false },
   ].filter(item => !item.adminOnly || isAdmin);
 
   const showMonitoramento = monitoramentoItems.length > 0;

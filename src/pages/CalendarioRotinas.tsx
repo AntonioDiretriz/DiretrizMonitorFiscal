@@ -37,7 +37,7 @@ export default function CalendarioRotinas() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("empresas").select("id, razao_social").eq("user_id", ownerUserId!).order("razao_social")
+    supabase.from("empresas").select("id, razao_social").order("razao_social")
       .then(({ data }) => setEmpresas(data ?? []));
   }, [user]);
 
