@@ -99,9 +99,9 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupLabel className="px-4 py-6">
             {!collapsed ? (
-              <img src="/logo-diretriz.png" alt="Diretriz Logo" className="h-10 w-auto object-contain rounded-md bg-white p-1" />
+              <img src="/logo-white.svg" alt="Diretriz Logo" className="h-8 w-auto object-contain" />
             ) : (
-              <img src="/logo-diretriz.png" alt="Diretriz" className="h-8 w-8 object-contain rounded-md bg-white p-0.5" />
+              <img src="/favicon.svg" alt="Diretriz" className="h-7 w-7 object-contain" />
             )}
           </SidebarGroupLabel>
 

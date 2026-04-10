@@ -1,18 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 64" width="300" height="64">
-  <!-- D-mark icon (same construction as favicon, scaled to 60px tall) -->
+  <!-- Diretriz D-mark -->
   <g transform="translate(2,2) scale(0.9375)">
     <path fill-rule="evenodd" fill="#ED3237" d="
-      M 6,60
-      L 37,57
-      Q 61,57 61,32
-      Q 61,7  37,7
-      L 6,10
+      M 10,6
+      L 10,58
+      L 34,58
+      Q 58,58 58,32
+      Q 58,6  34,6
       Z
-      M 6,27  L 37,24  L 37,40  L 6,43  Z
+      M 10,29  L 34,22  L 34,40  L 10,37  Z
     "/>
   </g>
 
-  <!-- "Diretriz" wordmark — white, bold -->
+  <!-- "Diretriz" wordmark — white -->
   <text
     x="68" y="43"
     font-family="Kanit, sans-serif"
@@ -20,7 +20,7 @@
     fill="#FFFFFF"
     letter-spacing="-0.5">Diretriz</text>
 
-  <!-- Subtitle: CONTABILIDADE / E CONSULTORIA -->
+  <!-- Subtitle -->
   <text
     x="220" y="31"
     font-family="Kanit, sans-serif"
