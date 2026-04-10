@@ -433,11 +433,12 @@ const PERFIL_LABEL: Record<string, string> = {
   simples: "Simples Nacional", presumido: "Lucro Presumido", real: "Lucro Real", mei: "MEI",
 };
 
-function EmpresasPerfilPanel({ perfil, empresas, selectedId, onSelect }: {
+function EmpresasPerfilPanel({ perfil, empresas, selectedId, onSelect, onAddObrigacao }: {
   perfil: string;
   empresas: any[];
   selectedId: string;
   onSelect: (id: string) => void;
+  onAddObrigacao: () => void;
 }) {
   const [busca, setBusca] = useState("");
   const selectedEmpresa = empresas.find(e => e.id === selectedId);
@@ -448,19 +449,25 @@ function EmpresasPerfilPanel({ perfil, empresas, selectedId, onSelect }: {
   // Quando empresa está selecionada, mostra só o chip e oculta a tabela
   if (selectedId !== "todas" && selectedEmpresa) {
     return (
-      <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-blue-200 bg-blue-50">
+      <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-blue-200 bg-blue-50 flex-wrap">
         <span className="h-6 w-6 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold shrink-0">
           {selectedEmpresa.razao_social?.[0]?.toUpperCase()}
         </span>
         <span className="text-sm font-medium text-blue-800">{selectedEmpresa.razao_social}</span>
         <span className="text-xs text-blue-500 capitalize">· {selectedEmpresa.regime_tributario ?? selectedEmpresa.regime ?? "—"} · {selectedEmpresa.atividade ?? "—"}</span>
-        <span className="text-xs text-blue-400 ml-1">— exibindo obrigações desta empresa</span>
-        <button
-          onClick={() => onSelect("todas")}
-          className="ml-auto text-xs text-blue-500 hover:text-blue-700 underline"
-        >
-          Limpar filtro
-        </button>
+        <span className="text-xs text-blue-400">— exibindo obrigações desta empresa</span>
+        <div className="ml-auto flex items-center gap-2">
+          <Button size="sm" variant="outline" className="h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-100" onClick={onAddObrigacao}>
+            <Plus className="h-3.5 w-3.5 mr-1" />
+            Incluir Obrigação
+          </Button>
+          <button
+            onClick={() => onSelect("todas")}
+            className="text-xs text-blue-500 hover:text-blue-700 underline"
+          >
+            Limpar filtro
+          </button>
+        </div>
       </div>
     );
   }
@@ -542,6 +549,9 @@ export default function ConfiguracaoObrigacoes() {
   const [todasEmpresas, setTodasEmpresas] = useState<any[]>([]);
   const [filtroEmpresaId, setFiltroEmpresaId] = useState<string>("todas");
   const [filtroPerfil, setFiltroPerfil] = useState<string>("todos");
+  const [addObrigacaoOpen, setAddObrigacaoOpen] = useState(false);
+  const [addObrigacaoSelecionada, setAddObrigacaoSelecionada] = useState<string>("");
+  const [addObrigacaoSaving, setAddObrigacaoSaving] = useState(false);
 
   async function load() {
     if (!user) return;
@@ -668,6 +678,28 @@ export default function ConfiguracaoObrigacoes() {
     toast({ title: `Resetado para padrão: ${modelo.nome_rotina}` });
   }
 
+  async function adicionarObrigacaoEmpresa() {
+    if (!user || !addObrigacaoSelecionada || filtroEmpresaId === "todas") return;
+    const uid = ownerUserId ?? user.id;
+    setAddObrigacaoSaving(true);
+    try {
+      const { error } = await (supabase as any).from("empresa_rotina_config").upsert({
+        user_id: uid,
+        empresa_id: filtroEmpresaId,
+        rotina_modelo_id: addObrigacaoSelecionada,
+        ativo: true,
+      }, { onConflict: "empresa_id,rotina_modelo_id" });
+      if (error) throw error;
+      toast({ title: "Obrigação adicionada para esta empresa!" });
+      setAddObrigacaoOpen(false);
+      setAddObrigacaoSelecionada("");
+    } catch (err: any) {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } finally {
+      setAddObrigacaoSaving(false);
+    }
+  }
+
   const empresaFiltro = useMemo(
     () => todasEmpresas.find(e => e.id === filtroEmpresaId) ?? null,
     [todasEmpresas, filtroEmpresaId]
@@ -789,6 +821,7 @@ export default function ConfiguracaoObrigacoes() {
               empresas={empresasNoPerfil}
               selectedId={filtroEmpresaId}
               onSelect={setFiltroEmpresaId}
+              onAddObrigacao={() => { setAddObrigacaoSelecionada(""); setAddObrigacaoOpen(true); }}
             />
           )}
         </div>
@@ -959,6 +992,76 @@ export default function ConfiguracaoObrigacoes() {
         initial={editando}
         onSaved={load}
       />
+
+      {/* Dialog: Incluir obrigação para empresa específica */}
+      {(() => {
+        const empresa = todasEmpresas.find(e => e.id === filtroEmpresaId);
+        // Obrigações que a empresa já recebe pelo perfil (baseado em regras)
+        const jaTemIds = new Set(
+          modelos
+            .filter(m => {
+              const regras = regrasPorModelo[m.id];
+              if (!regras || regras.length === 0) return true;
+              return regras.some(r => empresaMatchesRegra(empresa, r));
+            })
+            .map(m => m.id)
+        );
+        const disponiveis = modelos.filter(m => !jaTemIds.has(m.id));
+        return (
+          <Dialog open={addObrigacaoOpen} onOpenChange={setAddObrigacaoOpen}>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle style={{ color: NAVY }}>
+                  Incluir Obrigação para {empresa?.razao_social}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-1">
+                <p className="text-sm text-muted-foreground">
+                  Selecione uma obrigação que não faz parte do perfil padrão desta empresa mas deve ser adicionada manualmente.
+                </p>
+                {disponiveis.length === 0 ? (
+                  <p className="text-sm text-center text-muted-foreground italic py-4">
+                    Esta empresa já recebe todas as obrigações cadastradas.
+                  </p>
+                ) : (
+                  <div className="space-y-1 max-h-72 overflow-y-auto border rounded-lg divide-y">
+                    {disponiveis.map(m => (
+                      <div
+                        key={m.id}
+                        onClick={() => setAddObrigacaoSelecionada(m.id)}
+                        className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
+                          addObrigacaoSelecionada === m.id
+                            ? "bg-[#10143D]/10 border-l-2 border-l-[#10143D]"
+                            : "hover:bg-gray-50"
+                        }`}
+                      >
+                        <div className="flex-1">
+                          <div className="text-sm font-medium">{m.nome_rotina}</div>
+                          <div className="text-xs text-muted-foreground">{m.codigo_rotina} · {m.departamento} · {PERIOD_LABEL[m.periodicidade] ?? m.periodicidade}</div>
+                        </div>
+                        <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium border capitalize ${CRIT_COLOR[m.criticidade] ?? ""}`}>
+                          {m.criticidade}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button variant="outline" onClick={() => setAddObrigacaoOpen(false)}>Cancelar</Button>
+                  <Button
+                    onClick={adicionarObrigacaoEmpresa}
+                    disabled={!addObrigacaoSelecionada || addObrigacaoSaving}
+                    style={{ backgroundColor: NAVY }}
+                    className="text-white"
+                  >
+                    {addObrigacaoSaving ? "Salvando..." : "Incluir Obrigação"}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
     </div>
   );
 }
