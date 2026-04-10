@@ -559,15 +559,9 @@ function AddObrigacaoEmpresaDialog({ open, onOpenChange, empresa, modelos, regra
   const [busca, setBusca] = useState("");
   const [customForm, setCustomForm] = useState(EMPTY_CUSTOM);
   const [customSaving, setCustomSaving] = useState(false);
-  const [modelosInativos, setModelosInativos] = useState<RotinaModelo[]>([]);
 
   useEffect(() => {
-    if (open) {
-      setBusca(""); setCustomForm(EMPTY_CUSTOM); setTab("existente");
-      // Busca obrigações removidas do sistema (ativo=false)
-      (supabase as any).from("rotina_modelo").select("*").eq("ativo", false).order("nome_rotina")
-        .then(({ data }: any) => setModelosInativos(data ?? []));
-    }
+    if (open) { setBusca(""); setCustomForm(EMPTY_CUSTOM); setTab("existente"); }
   }, [open]);
 
   if (!empresa) return null;
@@ -596,25 +590,6 @@ function AddObrigacaoEmpresaDialog({ open, onOpenChange, empresa, modelos, regra
 
   const excluiradasFiltradas = excluidas.filter(buscarFiltro);
   const novasFiltradas = novas.filter(buscarFiltro);
-  const inativasFiltradas = modelosInativos.filter(buscarFiltro);
-
-  async function restaurarEAdicionar(modelo: RotinaModelo) {
-    const uid = ownerUserId ?? userId;
-    try {
-      // Reativa o rotina_modelo
-      const { error: e1 } = await (supabase as any).from("rotina_modelo").update({ ativo: true }).eq("id", modelo.id);
-      if (e1) throw e1;
-      // Garante que está vinculado à empresa
-      const { error: e2 } = await (supabase as any).from("empresa_rotina_config").upsert({
-        user_id: uid, empresa_id: empresa.id, rotina_modelo_id: modelo.id, ativo: true,
-      }, { onConflict: "empresa_id,rotina_modelo_id" });
-      if (e2) throw e2;
-      toast({ title: `"${modelo.nome_rotina}" restaurada e adicionada!` });
-      onOpenChange(false);
-    } catch (err: any) {
-      toast({ title: "Erro ao restaurar", description: err.message, variant: "destructive" });
-    }
-  }
 
   async function salvarPersonalizada() {
     if (!customForm.nome_rotina) { toast({ title: "Informe o nome da obrigação.", variant: "destructive" }); return; }
@@ -693,7 +668,7 @@ function AddObrigacaoEmpresaDialog({ open, onOpenChange, empresa, modelos, regra
               onChange={e => setBusca(e.target.value)}
               className="h-9"
             />
-            {disponiveis.length === 0 && inativasFiltradas.length === 0 ? (
+            {disponiveis.length === 0 ? (
               <p className="text-sm text-center text-muted-foreground italic py-6">
                 Esta empresa já possui todas as obrigações ativas.
               </p>
@@ -715,30 +690,7 @@ function AddObrigacaoEmpresaDialog({ open, onOpenChange, empresa, modelos, regra
                     {novasFiltradas.map(m => <ItemRow key={m.id} m={m} />)}
                   </>
                 )}
-                {inativasFiltradas.length > 0 && (
-                  <>
-                    <div className="px-4 py-1.5 bg-red-50 text-[10px] font-semibold text-red-700 uppercase tracking-wide">
-                      Removidas do sistema — clique para restaurar ({inativasFiltradas.length})
-                    </div>
-                    {inativasFiltradas.map(m => (
-                      <div
-                        key={m.id}
-                        onClick={() => restaurarEAdicionar(m)}
-                        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-red-50/60 transition-colors"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium flex items-center gap-2">
-                            {m.nome_rotina}
-                            <span className="text-[10px] px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">Inativa</span>
-                          </div>
-                          <div className="text-xs text-muted-foreground">{m.departamento} · {PERIOD_LABEL[m.periodicidade] ?? m.periodicidade}</div>
-                        </div>
-                        <span className="text-xs text-red-600 underline shrink-0">Restaurar</span>
-                      </div>
-                    ))}
-                  </>
-                )}
-                {excluiradasFiltradas.length === 0 && novasFiltradas.length === 0 && inativasFiltradas.length === 0 && (
+                {excluiradasFiltradas.length === 0 && novasFiltradas.length === 0 && (
                   <p className="text-sm text-center text-muted-foreground italic py-4">Nenhuma obrigação encontrada.</p>
                 )}
               </div>
@@ -1006,11 +958,28 @@ export default function ConfiguracaoObrigacoes() {
   }, [filtroEmpresaId]);
 
   async function excluirModelo(modelo: RotinaModelo) {
-    const { error } = await (supabase as any)
-      .from("rotina_modelo").update({ ativo: false }).eq("id", modelo.id);
-    if (error) { toast({ title: "Erro ao excluir", description: error.message, variant: "destructive" }); return; }
-    toast({ title: `${modelo.nome_rotina} removida.` });
-    await load();
+    if (!user) return;
+    const uid = ownerUserId ?? user.id;
+
+    if (filtroEmpresaId !== "todas") {
+      // Exclui apenas do perfil desta empresa (não toca no sistema)
+      const { error } = await (supabase as any).from("empresa_rotina_config").upsert({
+        user_id: uid,
+        empresa_id: filtroEmpresaId,
+        rotina_modelo_id: modelo.id,
+        ativo: false,
+      }, { onConflict: "empresa_id,rotina_modelo_id" });
+      if (error) { toast({ title: "Erro ao remover", description: error.message, variant: "destructive" }); return; }
+      setExcludedIds(p => new Set([...p, modelo.id]));
+      toast({ title: `${modelo.nome_rotina} removida do perfil desta empresa.` });
+    } else {
+      // Sem empresa selecionada: exclui do sistema (obrigação criada errada, etc.)
+      const { error } = await (supabase as any)
+        .from("rotina_modelo").update({ ativo: false }).eq("id", modelo.id);
+      if (error) { toast({ title: "Erro ao excluir", description: error.message, variant: "destructive" }); return; }
+      toast({ title: `${modelo.nome_rotina} removida do sistema.` });
+      await load();
+    }
   }
 
   function getRegra(id: string, field: "dia_vencimento" | "dias_margem") {
@@ -1111,6 +1080,7 @@ export default function ConfiguracaoObrigacoes() {
     // Filtro por empresa
     if (empresaFiltro) {
       filtered = filtered.filter(m => {
+        if (excludedIds.has(m.id)) return false; // excluída do perfil desta empresa
         const regras = regrasPorModelo[m.id];
         if (!regras || regras.length === 0) return true;
         return regras.some(r => empresaMatchesRegra(empresaFiltro, r));
@@ -1134,7 +1104,7 @@ export default function ConfiguracaoObrigacoes() {
       map[m.departamento].push(m);
     }
     return DEPT_ORDER.filter(d => map[d]).map(d => ({ dept: d, items: map[d] }));
-  }, [modelos, regrasPorModelo, empresaFiltro, filtroPerfil]);
+  }, [modelos, regrasPorModelo, empresaFiltro, filtroPerfil, excludedIds]);
 
   if (loading) return (
     <div className="flex items-center justify-center h-64 text-muted-foreground">
