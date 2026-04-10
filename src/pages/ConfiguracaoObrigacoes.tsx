@@ -433,12 +433,13 @@ const PERFIL_LABEL: Record<string, string> = {
   simples: "Simples Nacional", presumido: "Lucro Presumido", real: "Lucro Real", mei: "MEI",
 };
 
-function EmpresasPerfilPanel({ perfil, empresas, selectedId, onSelect, onAddObrigacao }: {
+function EmpresasPerfilPanel({ perfil, empresas, selectedId, onSelect, onAddObrigacao, onCopiarPerfil }: {
   perfil: string;
   empresas: any[];
   selectedId: string;
   onSelect: (id: string) => void;
   onAddObrigacao: () => void;
+  onCopiarPerfil: () => void;
 }) {
   const [busca, setBusca] = useState("");
   const selectedEmpresa = empresas.find(e => e.id === selectedId);
@@ -460,6 +461,9 @@ function EmpresasPerfilPanel({ perfil, empresas, selectedId, onSelect, onAddObri
           <Button size="sm" variant="outline" className="h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-100" onClick={onAddObrigacao}>
             <Plus className="h-3.5 w-3.5 mr-1" />
             Incluir Obrigação
+          </Button>
+          <Button size="sm" variant="outline" className="h-7 text-xs border-gray-300 text-gray-600 hover:bg-gray-100" onClick={onCopiarPerfil}>
+            Copiar Perfil
           </Button>
           <button
             onClick={() => onSelect("todas")}
@@ -534,78 +538,319 @@ function EmpresasPerfilPanel({ perfil, empresas, selectedId, onSelect, onAddObri
   );
 }
 
-function AddObrigacaoEmpresaDialog({ open, onOpenChange, empresa, modelos, regrasPorModelo, selecionada, onSelecionada, onConfirm, saving }: {
+const EMPTY_CUSTOM = { nome_rotina: "", departamento: "Fiscal", periodicidade: "mensal", criticidade: "alta", dia_vencimento: "", margem_seguranca: "3", descricao: "" };
+
+function AddObrigacaoEmpresaDialog({ open, onOpenChange, empresa, modelos, regrasPorModelo, excludedIds, selecionada, onSelecionada, onConfirm, saving, ownerUserId, userId }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   empresa: any | null;
   modelos: RotinaModelo[];
   regrasPorModelo: Record<string, RegraAtivacao[]>;
+  excludedIds: Set<string>;
   selecionada: string;
   onSelecionada: (id: string) => void;
   onConfirm: () => void;
   saving: boolean;
+  ownerUserId: string | null;
+  userId: string;
 }) {
+  const { toast } = useToast();
+  const [tab, setTab] = useState<"existente" | "personalizada">("existente");
+  const [busca, setBusca] = useState("");
+  const [customForm, setCustomForm] = useState(EMPTY_CUSTOM);
+  const [customSaving, setCustomSaving] = useState(false);
+
+  useEffect(() => { if (open) { setBusca(""); setCustomForm(EMPTY_CUSTOM); setTab("existente"); } }, [open]);
+
   if (!empresa) return null;
 
-  const jaTemIds = new Set(
+  // Obrigações que a empresa já recebe ATIVAMENTE pelo perfil (não excluídas)
+  const jaTemAtivosIds = new Set(
     modelos
       .filter(m => {
+        if (excludedIds.has(m.id)) return false; // excluída manualmente → não tem
         const regras = regrasPorModelo[m.id];
         if (!regras || regras.length === 0) return true;
         return regras.some(r => empresaMatchesRegra(empresa, r));
       })
       .map(m => m.id)
   );
-  const disponiveis = modelos.filter(m => !jaTemIds.has(m.id));
+
+  // Disponíveis = não estão ativos agora (fora do perfil ou excluídas)
+  const disponiveis = modelos.filter(m => !jaTemAtivosIds.has(m.id));
+  const excluidas = disponiveis.filter(m => excludedIds.has(m.id));
+  const novas = disponiveis.filter(m => !excludedIds.has(m.id));
+
+  const buscarFiltro = (m: RotinaModelo) =>
+    m.nome_rotina.toLowerCase().includes(busca.toLowerCase()) ||
+    m.codigo_rotina.toLowerCase().includes(busca.toLowerCase()) ||
+    m.departamento.toLowerCase().includes(busca.toLowerCase());
+
+  const excluiradasFiltradas = excluidas.filter(buscarFiltro);
+  const novasFiltradas = novas.filter(buscarFiltro);
+
+  async function salvarPersonalizada() {
+    if (!customForm.nome_rotina) { toast({ title: "Informe o nome da obrigação.", variant: "destructive" }); return; }
+    const uid = ownerUserId ?? userId;
+    setCustomSaving(true);
+    try {
+      // Cria o rotina_modelo
+      const { data: novo, error: e1 } = await (supabase as any).from("rotina_modelo").insert({
+        nome_rotina: customForm.nome_rotina,
+        codigo_rotina: `CUSTOM-${Date.now()}`,
+        tipo_rotina: "personalizado",
+        departamento: customForm.departamento,
+        periodicidade: customForm.periodicidade,
+        criticidade: customForm.criticidade,
+        dia_vencimento: customForm.dia_vencimento ? parseInt(customForm.dia_vencimento) : null,
+        meses_offset: 1,
+        margem_seguranca: customForm.margem_seguranca ? parseInt(customForm.margem_seguranca) : 3,
+        descricao: customForm.descricao || null,
+        ativo: true,
+      }).select().single();
+      if (e1) throw e1;
+      // Vincula à empresa
+      const { error: e2 } = await (supabase as any).from("empresa_rotina_config").insert({
+        user_id: uid, empresa_id: empresa.id, rotina_modelo_id: novo.id, ativo: true,
+      });
+      if (e2) throw e2;
+      toast({ title: `"${customForm.nome_rotina}" criada e vinculada a ${empresa.razao_social}!` });
+      onOpenChange(false);
+    } catch (err: any) {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } finally { setCustomSaving(false); }
+  }
+
+  const ItemRow = ({ m, tag }: { m: RotinaModelo; tag?: string }) => (
+    <div
+      key={m.id}
+      onClick={() => onSelecionada(m.id)}
+      className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
+        selecionada === m.id ? "bg-[#10143D]/10 border-l-2 border-l-[#10143D]" : "hover:bg-gray-50"
+      }`}
+    >
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium flex items-center gap-2">
+          {m.nome_rotina}
+          {tag && <span className="text-[10px] px-1.5 py-0.5 rounded border bg-orange-50 text-orange-700 border-orange-200">{tag}</span>}
+        </div>
+        <div className="text-xs text-muted-foreground truncate">{m.departamento} · {PERIOD_LABEL[m.periodicidade] ?? m.periodicidade}</div>
+      </div>
+      <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium border capitalize shrink-0 ${CRIT_COLOR[m.criticidade] ?? ""}`}>
+        {m.criticidade}
+      </span>
+    </div>
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle style={{ color: NAVY }}>
-            Incluir Obrigação para {empresa.razao_social}
-          </DialogTitle>
+          <DialogTitle style={{ color: NAVY }}>Incluir Obrigação — {empresa.razao_social}</DialogTitle>
+        </DialogHeader>
+
+        <Tabs value={tab} onValueChange={v => setTab(v as any)}>
+          <TabsList className="w-full">
+            <TabsTrigger value="existente" className="flex-1">
+              Obrigações Existentes
+              {disponiveis.length > 0 && <Badge className="ml-1 h-4 px-1 text-[10px]">{disponiveis.length}</Badge>}
+            </TabsTrigger>
+            <TabsTrigger value="personalizada" className="flex-1">Criar Personalizada</TabsTrigger>
+          </TabsList>
+
+          {/* ── Aba Existente ── */}
+          <TabsContent value="existente" className="space-y-3 pt-2">
+            <Input
+              placeholder="Buscar por nome, código ou departamento..."
+              value={busca}
+              onChange={e => setBusca(e.target.value)}
+              className="h-9"
+            />
+            {disponiveis.length === 0 ? (
+              <p className="text-sm text-center text-muted-foreground italic py-6">
+                Esta empresa já possui todas as obrigações ativas.
+              </p>
+            ) : (
+              <div className="border rounded-lg divide-y max-h-64 overflow-y-auto">
+                {excluiradasFiltradas.length > 0 && (
+                  <>
+                    <div className="px-4 py-1.5 bg-orange-50 text-[10px] font-semibold text-orange-700 uppercase tracking-wide">
+                      Excluídas anteriormente ({excluiradasFiltradas.length})
+                    </div>
+                    {excluiradasFiltradas.map(m => <ItemRow key={m.id} m={m} tag="Excluída" />)}
+                  </>
+                )}
+                {novasFiltradas.length > 0 && (
+                  <>
+                    <div className="px-4 py-1.5 bg-gray-50 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      Fora do perfil padrão ({novasFiltradas.length})
+                    </div>
+                    {novasFiltradas.map(m => <ItemRow key={m.id} m={m} />)}
+                  </>
+                )}
+                {excluiradasFiltradas.length === 0 && novasFiltradas.length === 0 && (
+                  <p className="text-sm text-center text-muted-foreground italic py-4">Nenhuma obrigação encontrada.</p>
+                )}
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+              <Button onClick={onConfirm} disabled={!selecionada || saving} style={{ backgroundColor: NAVY }} className="text-white">
+                {saving ? "Salvando..." : "Incluir Obrigação"}
+              </Button>
+            </div>
+          </TabsContent>
+
+          {/* ── Aba Personalizada ── */}
+          <TabsContent value="personalizada" className="space-y-3 pt-2">
+            <p className="text-xs text-muted-foreground">Crie uma obrigação exclusiva para esta empresa, com suas particularidades.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <Label>Nome da Obrigação *</Label>
+                <Input placeholder="Ex: Relatório Especial Mensal" value={customForm.nome_rotina} onChange={e => setCustomForm(p => ({ ...p, nome_rotina: e.target.value }))} />
+              </div>
+              <div>
+                <Label>Departamento</Label>
+                <Select value={customForm.departamento} onValueChange={v => setCustomForm(p => ({ ...p, departamento: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {["Fiscal","Contábil","DP","Gestão","Legalização","Financeiro"].map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Periodicidade</Label>
+                <Select value={customForm.periodicidade} onValueChange={v => setCustomForm(p => ({ ...p, periodicidade: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mensal">Mensal</SelectItem>
+                    <SelectItem value="trimestral">Trimestral</SelectItem>
+                    <SelectItem value="anual">Anual</SelectItem>
+                    <SelectItem value="eventual">Eventual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Criticidade</Label>
+                <Select value={customForm.criticidade} onValueChange={v => setCustomForm(p => ({ ...p, criticidade: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="critica">Crítica</SelectItem>
+                    <SelectItem value="alta">Alta</SelectItem>
+                    <SelectItem value="media">Média</SelectItem>
+                    <SelectItem value="baixa">Baixa</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Dia de Vencimento</Label>
+                <Input type="number" min={1} max={31} placeholder="Ex: 20" value={customForm.dia_vencimento} onChange={e => setCustomForm(p => ({ ...p, dia_vencimento: e.target.value }))} />
+              </div>
+              <div className="col-span-2">
+                <Label>Descrição</Label>
+                <Input placeholder="Observações sobre esta obrigação..." value={customForm.descricao} onChange={e => setCustomForm(p => ({ ...p, descricao: e.target.value }))} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+              <Button onClick={salvarPersonalizada} disabled={customSaving} style={{ backgroundColor: NAVY }} className="text-white">
+                {customSaving ? "Criando..." : "Criar e Vincular"}
+              </Button>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CopiarPerfilDialog({ open, onOpenChange, empresaOrigem, todasEmpresas, userId, ownerUserId }: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  empresaOrigem: any | null;
+  todasEmpresas: any[];
+  userId: string;
+  ownerUserId: string | null;
+}) {
+  const { toast } = useToast();
+  const [destinoId, setDestinoId] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { if (open) setDestinoId(""); }, [open]);
+
+  if (!empresaOrigem) return null;
+
+  const destinos = todasEmpresas.filter(e => e.id !== empresaOrigem.id);
+
+  async function copiar() {
+    if (!destinoId) return;
+    const uid = ownerUserId ?? userId;
+    setSaving(true);
+    try {
+      // Busca configurações manuais da empresa origem (ativo=true = adições manuais)
+      const { data: configs, error: e1 } = await (supabase as any)
+        .from("empresa_rotina_config")
+        .select("rotina_modelo_id, ativo")
+        .eq("empresa_id", empresaOrigem.id)
+        .eq("user_id", uid);
+      if (e1) throw e1;
+
+      if (!configs || configs.length === 0) {
+        toast({ title: "Nenhuma configuração manual para copiar.", description: "A empresa de origem não possui obrigações adicionadas/removidas manualmente." });
+        return;
+      }
+
+      const payload = configs.map((c: any) => ({
+        user_id: uid,
+        empresa_id: destinoId,
+        rotina_modelo_id: c.rotina_modelo_id,
+        ativo: c.ativo,
+      }));
+
+      const { error: e2 } = await (supabase as any)
+        .from("empresa_rotina_config")
+        .upsert(payload, { onConflict: "empresa_id,rotina_modelo_id" });
+      if (e2) throw e2;
+
+      const destino = todasEmpresas.find(e => e.id === destinoId);
+      toast({ title: `Perfil copiado para ${destino?.razao_social}!`, description: `${configs.length} configuração(ões) transferidas.` });
+      onOpenChange(false);
+    } catch (err: any) {
+      toast({ title: "Erro ao copiar", description: err.message, variant: "destructive" });
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle style={{ color: NAVY }}>Copiar Configurações de Perfil</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-1">
-          <p className="text-sm text-muted-foreground">
-            Selecione uma obrigação que não faz parte do perfil padrão desta empresa.
+          <div className="px-3 py-2 rounded-lg bg-gray-50 border text-sm">
+            <span className="text-muted-foreground">Origem: </span>
+            <span className="font-medium">{empresaOrigem.razao_social}</span>
+          </div>
+          <div>
+            <Label>Copiar para</Label>
+            <Select value={destinoId} onValueChange={setDestinoId}>
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="Selecione a empresa destino..." />
+              </SelectTrigger>
+              <SelectContent>
+                {destinos.map(e => (
+                  <SelectItem key={e.id} value={e.id}>{e.razao_social}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Serão copiadas as obrigações adicionadas e removidas manualmente. As obrigações do perfil padrão da empresa destino não são alteradas.
           </p>
-          {disponiveis.length === 0 ? (
-            <p className="text-sm text-center text-muted-foreground italic py-4">
-              Esta empresa já recebe todas as obrigações cadastradas.
-            </p>
-          ) : (
-            <div className="space-y-1 max-h-72 overflow-y-auto border rounded-lg divide-y">
-              {disponiveis.map(m => (
-                <div
-                  key={m.id}
-                  onClick={() => onSelecionada(m.id)}
-                  className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
-                    selecionada === m.id
-                      ? "bg-[#10143D]/10 border-l-2 border-l-[#10143D]"
-                      : "hover:bg-gray-50"
-                  }`}
-                >
-                  <div className="flex-1">
-                    <div className="text-sm font-medium">{m.nome_rotina}</div>
-                    <div className="text-xs text-muted-foreground">{m.codigo_rotina} · {m.departamento} · {PERIOD_LABEL[m.periodicidade] ?? m.periodicidade}</div>
-                  </div>
-                  <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium border capitalize ${CRIT_COLOR[m.criticidade] ?? ""}`}>
-                    {m.criticidade}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button
-              onClick={onConfirm}
-              disabled={!selecionada || saving}
-              style={{ backgroundColor: NAVY }}
-              className="text-white"
-            >
-              {saving ? "Salvando..." : "Incluir Obrigação"}
+            <Button onClick={copiar} disabled={!destinoId || saving} style={{ backgroundColor: NAVY }} className="text-white">
+              {saving ? "Copiando..." : "Copiar Perfil"}
             </Button>
           </div>
         </div>
@@ -632,6 +877,8 @@ export default function ConfiguracaoObrigacoes() {
   const [addObrigacaoOpen, setAddObrigacaoOpen] = useState(false);
   const [addObrigacaoSelecionada, setAddObrigacaoSelecionada] = useState<string>("");
   const [addObrigacaoSaving, setAddObrigacaoSaving] = useState(false);
+  const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
+  const [copiarPerfilOpen, setCopiarPerfilOpen] = useState(false);
 
   async function load() {
     if (!user) return;
@@ -695,6 +942,18 @@ export default function ConfiguracaoObrigacoes() {
   }
 
   useEffect(() => { load(); }, [user]);
+
+  // Carrega obrigações excluídas manualmente para a empresa selecionada
+  useEffect(() => {
+    if (filtroEmpresaId === "todas") { setExcludedIds(new Set()); return; }
+    (supabase as any).from("empresa_rotina_config")
+      .select("rotina_modelo_id")
+      .eq("empresa_id", filtroEmpresaId)
+      .eq("ativo", false)
+      .then(({ data }: any) => {
+        setExcludedIds(new Set((data ?? []).map((r: any) => r.rotina_modelo_id)));
+      });
+  }, [filtroEmpresaId]);
 
   async function excluirModelo(modelo: RotinaModelo) {
     const { error } = await (supabase as any)
@@ -773,6 +1032,8 @@ export default function ConfiguracaoObrigacoes() {
       toast({ title: "Obrigação adicionada para esta empresa!" });
       setAddObrigacaoOpen(false);
       setAddObrigacaoSelecionada("");
+      // Atualiza excluded ids
+      setExcludedIds(p => { const n = new Set(p); n.delete(addObrigacaoSelecionada); return n; });
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
     } finally {
@@ -902,6 +1163,7 @@ export default function ConfiguracaoObrigacoes() {
               selectedId={filtroEmpresaId}
               onSelect={setFiltroEmpresaId}
               onAddObrigacao={() => { setAddObrigacaoSelecionada(""); setAddObrigacaoOpen(true); }}
+              onCopiarPerfil={() => setCopiarPerfilOpen(true)}
             />
           )}
         </div>
@@ -1080,10 +1342,23 @@ export default function ConfiguracaoObrigacoes() {
         empresa={todasEmpresas.find(e => e.id === filtroEmpresaId) ?? null}
         modelos={modelos}
         regrasPorModelo={regrasPorModelo}
+        excludedIds={excludedIds}
         selecionada={addObrigacaoSelecionada}
         onSelecionada={setAddObrigacaoSelecionada}
         onConfirm={adicionarObrigacaoEmpresa}
         saving={addObrigacaoSaving}
+        ownerUserId={ownerUserId}
+        userId={user?.id ?? ""}
+      />
+
+      {/* Dialog: Copiar perfil entre empresas */}
+      <CopiarPerfilDialog
+        open={copiarPerfilOpen}
+        onOpenChange={setCopiarPerfilOpen}
+        empresaOrigem={todasEmpresas.find(e => e.id === filtroEmpresaId) ?? null}
+        todasEmpresas={todasEmpresas}
+        userId={user?.id ?? ""}
+        ownerUserId={ownerUserId}
       />
     </div>
   );
