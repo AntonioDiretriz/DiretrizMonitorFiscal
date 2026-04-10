@@ -559,8 +559,16 @@ function AddObrigacaoEmpresaDialog({ open, onOpenChange, empresa, modelos, regra
   const [busca, setBusca] = useState("");
   const [customForm, setCustomForm] = useState(EMPTY_CUSTOM);
   const [customSaving, setCustomSaving] = useState(false);
+  const [modelosInativos, setModelosInativos] = useState<RotinaModelo[]>([]);
 
-  useEffect(() => { if (open) { setBusca(""); setCustomForm(EMPTY_CUSTOM); setTab("existente"); } }, [open]);
+  useEffect(() => {
+    if (open) {
+      setBusca(""); setCustomForm(EMPTY_CUSTOM); setTab("existente");
+      // Busca obrigações removidas do sistema (ativo=false)
+      (supabase as any).from("rotina_modelo").select("*").eq("ativo", false).order("nome_rotina")
+        .then(({ data }: any) => setModelosInativos(data ?? []));
+    }
+  }, [open]);
 
   if (!empresa) return null;
 
@@ -588,6 +596,25 @@ function AddObrigacaoEmpresaDialog({ open, onOpenChange, empresa, modelos, regra
 
   const excluiradasFiltradas = excluidas.filter(buscarFiltro);
   const novasFiltradas = novas.filter(buscarFiltro);
+  const inativasFiltradas = modelosInativos.filter(buscarFiltro);
+
+  async function restaurarEAdicionar(modelo: RotinaModelo) {
+    const uid = ownerUserId ?? userId;
+    try {
+      // Reativa o rotina_modelo
+      const { error: e1 } = await (supabase as any).from("rotina_modelo").update({ ativo: true }).eq("id", modelo.id);
+      if (e1) throw e1;
+      // Garante que está vinculado à empresa
+      const { error: e2 } = await (supabase as any).from("empresa_rotina_config").upsert({
+        user_id: uid, empresa_id: empresa.id, rotina_modelo_id: modelo.id, ativo: true,
+      }, { onConflict: "empresa_id,rotina_modelo_id" });
+      if (e2) throw e2;
+      toast({ title: `"${modelo.nome_rotina}" restaurada e adicionada!` });
+      onOpenChange(false);
+    } catch (err: any) {
+      toast({ title: "Erro ao restaurar", description: err.message, variant: "destructive" });
+    }
+  }
 
   async function salvarPersonalizada() {
     if (!customForm.nome_rotina) { toast({ title: "Informe o nome da obrigação.", variant: "destructive" }); return; }
@@ -666,7 +693,7 @@ function AddObrigacaoEmpresaDialog({ open, onOpenChange, empresa, modelos, regra
               onChange={e => setBusca(e.target.value)}
               className="h-9"
             />
-            {disponiveis.length === 0 ? (
+            {disponiveis.length === 0 && inativasFiltradas.length === 0 ? (
               <p className="text-sm text-center text-muted-foreground italic py-6">
                 Esta empresa já possui todas as obrigações ativas.
               </p>
@@ -675,7 +702,7 @@ function AddObrigacaoEmpresaDialog({ open, onOpenChange, empresa, modelos, regra
                 {excluiradasFiltradas.length > 0 && (
                   <>
                     <div className="px-4 py-1.5 bg-orange-50 text-[10px] font-semibold text-orange-700 uppercase tracking-wide">
-                      Excluídas anteriormente ({excluiradasFiltradas.length})
+                      Excluídas desta empresa ({excluiradasFiltradas.length})
                     </div>
                     {excluiradasFiltradas.map(m => <ItemRow key={m.id} m={m} tag="Excluída" />)}
                   </>
@@ -688,7 +715,30 @@ function AddObrigacaoEmpresaDialog({ open, onOpenChange, empresa, modelos, regra
                     {novasFiltradas.map(m => <ItemRow key={m.id} m={m} />)}
                   </>
                 )}
-                {excluiradasFiltradas.length === 0 && novasFiltradas.length === 0 && (
+                {inativasFiltradas.length > 0 && (
+                  <>
+                    <div className="px-4 py-1.5 bg-red-50 text-[10px] font-semibold text-red-700 uppercase tracking-wide">
+                      Removidas do sistema — clique para restaurar ({inativasFiltradas.length})
+                    </div>
+                    {inativasFiltradas.map(m => (
+                      <div
+                        key={m.id}
+                        onClick={() => restaurarEAdicionar(m)}
+                        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-red-50/60 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium flex items-center gap-2">
+                            {m.nome_rotina}
+                            <span className="text-[10px] px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">Inativa</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground">{m.departamento} · {PERIOD_LABEL[m.periodicidade] ?? m.periodicidade}</div>
+                        </div>
+                        <span className="text-xs text-red-600 underline shrink-0">Restaurar</span>
+                      </div>
+                    ))}
+                  </>
+                )}
+                {excluiradasFiltradas.length === 0 && novasFiltradas.length === 0 && inativasFiltradas.length === 0 && (
                   <p className="text-sm text-center text-muted-foreground italic py-4">Nenhuma obrigação encontrada.</p>
                 )}
               </div>
