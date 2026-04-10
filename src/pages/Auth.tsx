@@ -101,7 +101,7 @@ export default function Auth() {
       <div className="min-h-screen flex">
         <div className="hidden lg:flex lg:w-1/2 bg-[#10143D] items-center justify-center relative overflow-hidden">
           <div className="relative z-10 text-center px-12">
-            <img src="/logo-white.svg" alt="Diretriz" className="h-14 w-auto mx-auto mb-8" />
+            <img src="/logo-diretriz.png" alt="Diretriz" className="h-20 w-auto mx-auto mb-8 rounded-xl bg-white p-2" />
             <p className="text-white/70 text-lg font-light leading-relaxed">
               Sistema de Monitoramento Fiscal
             </p>
@@ -111,7 +111,7 @@ export default function Auth() {
           <Card className="w-full max-w-md border-0 shadow-none">
             <CardHeader className="text-center">
               <div className="flex justify-center mb-4 lg:hidden">
-                <img src="/logo.svg" alt="Diretriz Monitor Fiscal" className="h-14 w-auto object-contain" />
+                <img src="/logo-diretriz.png" alt="Diretriz Monitor Fiscal" className="h-14 w-auto object-contain" />
               </div>
               <CardTitle className="text-2xl font-semibold">Criar nova senha</CardTitle>
               <CardDescription>Digite sua nova senha de acesso ao sistema</CardDescription>
@@ -164,7 +164,7 @@ export default function Auth() {
           </svg>
         </div>
         <div className="relative z-10 text-center px-12">
-          <img src="/logo-white.svg" alt="Diretriz" className="h-14 w-auto mx-auto mb-8" />
+          <img src="/logo-diretriz.png" alt="Diretriz" className="h-20 w-auto mx-auto mb-8 rounded-xl bg-white p-2" />
           <p className="text-white/70 text-lg font-light leading-relaxed">
             Sistema de Monitoramento Fiscal
           </p>
@@ -176,7 +176,7 @@ export default function Auth() {
       <Card className="w-full max-w-md border-0 shadow-none lg:shadow-none">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4 lg:hidden">
-            <img src="/logo.svg" alt="Diretriz Monitor Fiscal" className="h-14 w-auto object-contain" />
+            <img src="/logo-diretriz.png" alt="Diretriz Monitor Fiscal" className="h-14 w-auto object-contain" />
           </div>
           <CardTitle className="text-2xl font-semibold">
             {isResetting ? "Recuperar Senha" : isLogin ? "Bem-vindo" : "Criar Conta"}
