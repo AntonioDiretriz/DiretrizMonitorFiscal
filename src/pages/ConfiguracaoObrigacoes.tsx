@@ -534,6 +534,86 @@ function EmpresasPerfilPanel({ perfil, empresas, selectedId, onSelect, onAddObri
   );
 }
 
+function AddObrigacaoEmpresaDialog({ open, onOpenChange, empresa, modelos, regrasPorModelo, selecionada, onSelecionada, onConfirm, saving }: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  empresa: any | null;
+  modelos: RotinaModelo[];
+  regrasPorModelo: Record<string, RegraAtivacao[]>;
+  selecionada: string;
+  onSelecionada: (id: string) => void;
+  onConfirm: () => void;
+  saving: boolean;
+}) {
+  if (!empresa) return null;
+
+  const jaTemIds = new Set(
+    modelos
+      .filter(m => {
+        const regras = regrasPorModelo[m.id];
+        if (!regras || regras.length === 0) return true;
+        return regras.some(r => empresaMatchesRegra(empresa, r));
+      })
+      .map(m => m.id)
+  );
+  const disponiveis = modelos.filter(m => !jaTemIds.has(m.id));
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle style={{ color: NAVY }}>
+            Incluir Obrigação para {empresa.razao_social}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-1">
+          <p className="text-sm text-muted-foreground">
+            Selecione uma obrigação que não faz parte do perfil padrão desta empresa.
+          </p>
+          {disponiveis.length === 0 ? (
+            <p className="text-sm text-center text-muted-foreground italic py-4">
+              Esta empresa já recebe todas as obrigações cadastradas.
+            </p>
+          ) : (
+            <div className="space-y-1 max-h-72 overflow-y-auto border rounded-lg divide-y">
+              {disponiveis.map(m => (
+                <div
+                  key={m.id}
+                  onClick={() => onSelecionada(m.id)}
+                  className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
+                    selecionada === m.id
+                      ? "bg-[#10143D]/10 border-l-2 border-l-[#10143D]"
+                      : "hover:bg-gray-50"
+                  }`}
+                >
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">{m.nome_rotina}</div>
+                    <div className="text-xs text-muted-foreground">{m.codigo_rotina} · {m.departamento} · {PERIOD_LABEL[m.periodicidade] ?? m.periodicidade}</div>
+                  </div>
+                  <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium border capitalize ${CRIT_COLOR[m.criticidade] ?? ""}`}>
+                    {m.criticidade}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+            <Button
+              onClick={onConfirm}
+              disabled={!selecionada || saving}
+              style={{ backgroundColor: NAVY }}
+              className="text-white"
+            >
+              {saving ? "Salvando..." : "Incluir Obrigação"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function ConfiguracaoObrigacoes() {
   const { user, ownerUserId } = useAuth();
@@ -994,74 +1074,17 @@ export default function ConfiguracaoObrigacoes() {
       />
 
       {/* Dialog: Incluir obrigação para empresa específica */}
-      {(() => {
-        const empresa = todasEmpresas.find(e => e.id === filtroEmpresaId);
-        // Obrigações que a empresa já recebe pelo perfil (baseado em regras)
-        const jaTemIds = new Set(
-          modelos
-            .filter(m => {
-              const regras = regrasPorModelo[m.id];
-              if (!regras || regras.length === 0) return true;
-              return regras.some(r => empresaMatchesRegra(empresa, r));
-            })
-            .map(m => m.id)
-        );
-        const disponiveis = modelos.filter(m => !jaTemIds.has(m.id));
-        return (
-          <Dialog open={addObrigacaoOpen} onOpenChange={setAddObrigacaoOpen}>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle style={{ color: NAVY }}>
-                  Incluir Obrigação para {empresa?.razao_social}
-                </DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 pt-1">
-                <p className="text-sm text-muted-foreground">
-                  Selecione uma obrigação que não faz parte do perfil padrão desta empresa mas deve ser adicionada manualmente.
-                </p>
-                {disponiveis.length === 0 ? (
-                  <p className="text-sm text-center text-muted-foreground italic py-4">
-                    Esta empresa já recebe todas as obrigações cadastradas.
-                  </p>
-                ) : (
-                  <div className="space-y-1 max-h-72 overflow-y-auto border rounded-lg divide-y">
-                    {disponiveis.map(m => (
-                      <div
-                        key={m.id}
-                        onClick={() => setAddObrigacaoSelecionada(m.id)}
-                        className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
-                          addObrigacaoSelecionada === m.id
-                            ? "bg-[#10143D]/10 border-l-2 border-l-[#10143D]"
-                            : "hover:bg-gray-50"
-                        }`}
-                      >
-                        <div className="flex-1">
-                          <div className="text-sm font-medium">{m.nome_rotina}</div>
-                          <div className="text-xs text-muted-foreground">{m.codigo_rotina} · {m.departamento} · {PERIOD_LABEL[m.periodicidade] ?? m.periodicidade}</div>
-                        </div>
-                        <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium border capitalize ${CRIT_COLOR[m.criticidade] ?? ""}`}>
-                          {m.criticidade}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="flex justify-end gap-2 pt-1">
-                  <Button variant="outline" onClick={() => setAddObrigacaoOpen(false)}>Cancelar</Button>
-                  <Button
-                    onClick={adicionarObrigacaoEmpresa}
-                    disabled={!addObrigacaoSelecionada || addObrigacaoSaving}
-                    style={{ backgroundColor: NAVY }}
-                    className="text-white"
-                  >
-                    {addObrigacaoSaving ? "Salvando..." : "Incluir Obrigação"}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        );
-      })()}
+      <AddObrigacaoEmpresaDialog
+        open={addObrigacaoOpen}
+        onOpenChange={setAddObrigacaoOpen}
+        empresa={todasEmpresas.find(e => e.id === filtroEmpresaId) ?? null}
+        modelos={modelos}
+        regrasPorModelo={regrasPorModelo}
+        selecionada={addObrigacaoSelecionada}
+        onSelecionada={setAddObrigacaoSelecionada}
+        onConfirm={adicionarObrigacaoEmpresa}
+        saving={addObrigacaoSaving}
+      />
     </div>
   );
 }
