@@ -433,7 +433,12 @@ const PERFIL_LABEL: Record<string, string> = {
   simples: "Simples Nacional", presumido: "Lucro Presumido", real: "Lucro Real", mei: "MEI",
 };
 
-function EmpresasPerfilPanel({ perfil, empresas }: { perfil: string; empresas: any[] }) {
+function EmpresasPerfilPanel({ perfil, empresas, selectedId, onSelect }: {
+  perfil: string;
+  empresas: any[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
   const [busca, setBusca] = useState("");
   const filtradas = empresas.filter(e =>
     e.razao_social?.toLowerCase().includes(busca.toLowerCase())
@@ -445,6 +450,11 @@ function EmpresasPerfilPanel({ perfil, empresas }: { perfil: string; empresas: a
           <CardTitle className="text-sm font-semibold text-purple-800">
             Empresas com perfil "{PERFIL_LABEL[perfil] ?? perfil}"
             <span className="ml-2 text-xs font-normal text-purple-600">({empresas.length})</span>
+            {selectedId !== "todas" && (
+              <span className="ml-2 text-xs font-normal text-blue-600">
+                · clique em outra empresa ou em "Todas" para limpar o filtro
+              </span>
+            )}
           </CardTitle>
           <Input
             placeholder="Buscar empresa..."
@@ -469,24 +479,36 @@ function EmpresasPerfilPanel({ perfil, empresas }: { perfil: string; empresas: a
               </tr>
             </thead>
             <tbody>
-              {filtradas.map((e, idx) => (
-                <tr key={e.id} className={`border-b last:border-0 ${idx % 2 === 0 ? "" : "bg-gray-50/40"}`}>
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <span className="h-6 w-6 rounded-full bg-[#10143D] text-white text-[10px] flex items-center justify-center font-bold shrink-0">
-                        {e.razao_social?.[0]?.toUpperCase()}
-                      </span>
-                      <span className="font-medium">{e.razao_social}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground capitalize">
-                    {e.regime_tributario ?? e.regime ?? "—"}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground capitalize">
-                    {e.atividade ?? "—"}
-                  </td>
-                </tr>
-              ))}
+              {filtradas.map((e, idx) => {
+                const isSelected = selectedId === e.id;
+                return (
+                  <tr
+                    key={e.id}
+                    onClick={() => onSelect(isSelected ? "todas" : e.id)}
+                    className={`border-b last:border-0 cursor-pointer transition-colors
+                      ${isSelected
+                        ? "bg-blue-50 hover:bg-blue-100"
+                        : idx % 2 === 0 ? "hover:bg-gray-50" : "bg-gray-50/40 hover:bg-gray-100/60"
+                      }`}
+                  >
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className={`h-6 w-6 rounded-full text-white text-[10px] flex items-center justify-center font-bold shrink-0 ${isSelected ? "bg-blue-600" : "bg-[#10143D]"}`}>
+                          {e.razao_social?.[0]?.toUpperCase()}
+                        </span>
+                        <span className={`font-medium ${isSelected ? "text-blue-700" : ""}`}>{e.razao_social}</span>
+                        {isSelected && <span className="text-[10px] text-blue-500 ml-1">✓ filtrado</span>}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground capitalize">
+                      {e.regime_tributario ?? e.regime ?? "—"}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground capitalize">
+                      {e.atividade ?? "—"}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -719,7 +741,7 @@ export default function ConfiguracaoObrigacoes() {
             {/* Filtro por empresa */}
             <div className="flex items-center gap-2 flex-1 min-w-[220px] max-w-xs">
               <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
-              <Select value={filtroEmpresaId} onValueChange={v => { setFiltroEmpresaId(v); setFiltroPerfil("todos"); }}>
+              <Select value={filtroEmpresaId} onValueChange={setFiltroEmpresaId}>
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="Filtrar por empresa..." />
                 </SelectTrigger>
@@ -735,7 +757,7 @@ export default function ConfiguracaoObrigacoes() {
             {/* Filtro por perfil */}
             <div className="flex items-center gap-2 flex-1 min-w-[200px] max-w-xs">
               <span className="text-xs font-medium text-muted-foreground shrink-0">Perfil:</span>
-              <Select value={filtroPerfil} onValueChange={v => { setFiltroPerfil(v); setFiltroEmpresaId("todas"); }}>
+              <Select value={filtroPerfil} onValueChange={setFiltroPerfil}>
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="Filtrar por perfil..." />
                 </SelectTrigger>
@@ -752,7 +774,12 @@ export default function ConfiguracaoObrigacoes() {
 
           {/* Painel: empresas do perfil selecionado */}
           {filtroPerfil !== "todos" && (
-            <EmpresasPerfilPanel perfil={filtroPerfil} empresas={empresasNoPerfil} />
+            <EmpresasPerfilPanel
+              perfil={filtroPerfil}
+              empresas={empresasNoPerfil}
+              selectedId={filtroEmpresaId}
+              onSelect={setFiltroEmpresaId}
+            />
           )}
         </div>
       )}
