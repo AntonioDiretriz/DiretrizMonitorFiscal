@@ -64,31 +64,6 @@ function calcPrazoInterno(diaLegal: string, diasMargem: string): string {
   return `dia ${resultado}`;
 }
 
-// ── SEED padrão (caso rotina_modelo esteja vazia) ─────────────────────────────
-const SEED_OBRIGACOES = [
-  { nome_rotina: "PGDAS-D",              codigo_rotina: "FIS-SN-001",      tipo_rotina: "pgdas",     departamento: "Fiscal",   periodicidade: "mensal",     criticidade: "alta",    dia_vencimento: 20, meses_offset: 0, margem_seguranca: 3,  descricao: "Apuração mensal do Simples Nacional" },
-  { nome_rotina: "DAS",                  codigo_rotina: "FIS-SN-002",      tipo_rotina: "das",       departamento: "Fiscal",   periodicidade: "mensal",     criticidade: "critica", dia_vencimento: 20, meses_offset: 1, margem_seguranca: 5,  descricao: "Guia de pagamento do Simples Nacional" },
-  { nome_rotina: "DEFIS",                codigo_rotina: "FIS-SN-003",      tipo_rotina: "defis",     departamento: "Contábil", periodicidade: "anual",      criticidade: "alta",    dia_vencimento: 31, meses_offset: 3, margem_seguranca: 5,  descricao: "Declaração anual do Simples Nacional" },
-  { nome_rotina: "DCTFWeb",              codigo_rotina: "FIS-DCTFWEB-001", tipo_rotina: "dctfweb",   departamento: "Fiscal",   periodicidade: "mensal",     criticidade: "critica", dia_vencimento: 15, meses_offset: 1, margem_seguranca: 3,  descricao: "Declaração de débitos federais web" },
-  { nome_rotina: "PIS/COFINS",           codigo_rotina: "FIS-PISCOFINS-001",tipo_rotina:"piscofins", departamento: "Fiscal",   periodicidade: "mensal",     criticidade: "alta",    dia_vencimento: 25, meses_offset: 1, margem_seguranca: 3,  descricao: "Apuração e pagamento de PIS e COFINS" },
-  { nome_rotina: "EFD-Contribuições",    codigo_rotina: "FIS-CONTRIB-001", tipo_rotina: "efd",       departamento: "Fiscal",   periodicidade: "mensal",     criticidade: "alta",    dia_vencimento: 15, meses_offset: 2, margem_seguranca: 3,  descricao: "EFD das Contribuições" },
-  { nome_rotina: "EFD-Reinf",            codigo_rotina: "FIS-REINF-001",   tipo_rotina: "reinf",     departamento: "Fiscal",   periodicidade: "mensal",     criticidade: "alta",    dia_vencimento: 15, meses_offset: 1, margem_seguranca: 3,  descricao: "EFD de Retenções" },
-  { nome_rotina: "NFS-e",                codigo_rotina: "FIS-MUN-001",     tipo_rotina: "nfse",      departamento: "Fiscal",   periodicidade: "mensal",     criticidade: "alta",    dia_vencimento: 5,  meses_offset: 1, margem_seguranca: 2,  descricao: "Emissão e conferência de notas de serviço" },
-  { nome_rotina: "ISS",                  codigo_rotina: "FIS-ISS-001",     tipo_rotina: "iss",       departamento: "Fiscal",   periodicidade: "mensal",     criticidade: "alta",    dia_vencimento: 10, meses_offset: 1, margem_seguranca: 3,  descricao: "Apuração e pagamento do ISS" },
-  { nome_rotina: "NF-e / NFC-e",         codigo_rotina: "FIS-EST-001",     tipo_rotina: "nfe",       departamento: "Fiscal",   periodicidade: "mensal",     criticidade: "alta",    dia_vencimento: 5,  meses_offset: 1, margem_seguranca: 2,  descricao: "Emissão e conferência de notas de produtos" },
-  { nome_rotina: "ICMS",                 codigo_rotina: "FIS-ICMS-001",    tipo_rotina: "icms",      departamento: "Fiscal",   periodicidade: "mensal",     criticidade: "alta",    dia_vencimento: 15, meses_offset: 1, margem_seguranca: 3,  descricao: "Apuração e pagamento do ICMS" },
-  { nome_rotina: "IRPJ",                 codigo_rotina: "CONT-IRPJ-001",   tipo_rotina: "irpj",      departamento: "Contábil", periodicidade: "trimestral", criticidade: "critica", dia_vencimento: 30, meses_offset: 1, margem_seguranca: 5,  descricao: "Apuração do IRPJ" },
-  { nome_rotina: "CSLL",                 codigo_rotina: "CONT-CSLL-001",   tipo_rotina: "csll",      departamento: "Contábil", periodicidade: "trimestral", criticidade: "critica", dia_vencimento: 30, meses_offset: 1, margem_seguranca: 5,  descricao: "Apuração da CSLL" },
-  { nome_rotina: "ECF",                  codigo_rotina: "CONT-ECF-001",    tipo_rotina: "ecf",       departamento: "Contábil", periodicidade: "anual",      criticidade: "alta",    dia_vencimento: 31, meses_offset: 7, margem_seguranca: 5,  descricao: "Escrituração Contábil Fiscal" },
-  { nome_rotina: "ECD",                  codigo_rotina: "CONT-ECD-001",    tipo_rotina: "ecd",       departamento: "Contábil", periodicidade: "anual",      criticidade: "alta",    dia_vencimento: 30, meses_offset: 6, margem_seguranca: 5,  descricao: "Escrituração Contábil Digital" },
-  { nome_rotina: "Fechamento Fiscal",    codigo_rotina: "FIS-FECH-001",    tipo_rotina: "fechamento",departamento: "Fiscal",   periodicidade: "mensal",     criticidade: "alta",    dia_vencimento: 25, meses_offset: 0, margem_seguranca: 3,  descricao: "Conferência e fechamento fiscal" },
-  { nome_rotina: "Fechamento Contábil",  codigo_rotina: "CONT-FECH-001",   tipo_rotina: "fechamento",departamento: "Contábil", periodicidade: "mensal",     criticidade: "alta",    dia_vencimento: 5,  meses_offset: 1, margem_seguranca: 2,  descricao: "Encerramento contábil mensal" },
-  { nome_rotina: "Controle de Certidões",codigo_rotina: "GES-CERT-001",    tipo_rotina: "certidoes", departamento: "Gestão",   periodicidade: "mensal",     criticidade: "media",   dia_vencimento: 1,  meses_offset: 1, margem_seguranca: 5,  descricao: "Monitoramento de certidões negativas" },
-  { nome_rotina: "eSocial Pró-labore",   codigo_rotina: "DP-001",          tipo_rotina: "esocial",   departamento: "DP",       periodicidade: "mensal",     criticidade: "alta",    dia_vencimento: 20, meses_offset: 1, margem_seguranca: 3,  descricao: "Eventos de pró-labore no eSocial" },
-  { nome_rotina: "Folha de Pagamento",   codigo_rotina: "DP-002",          tipo_rotina: "folha",     departamento: "DP",       periodicidade: "mensal",     criticidade: "critica", dia_vencimento: 5,  meses_offset: 1, margem_seguranca: 2,  descricao: "Processamento da folha mensal" },
-  { nome_rotina: "FGTS Digital",         codigo_rotina: "DP-003",          tipo_rotina: "fgts",      departamento: "DP",       periodicidade: "mensal",     criticidade: "critica", dia_vencimento: 7,  meses_offset: 1, margem_seguranca: 2,  descricao: "Geração e pagamento do FGTS" },
-  { nome_rotina: "eSocial Funcionários", codigo_rotina: "DP-004",          tipo_rotina: "esocial",   departamento: "DP",       periodicidade: "mensal",     criticidade: "critica", dia_vencimento: 15, meses_offset: 1, margem_seguranca: 3,  descricao: "Eventos mensais de CLT no eSocial" },
-];
 
 const EMPTY_FORM = {
   nome_rotina: "", codigo_rotina: "", tipo_rotina: "", departamento: "Fiscal",
@@ -454,6 +429,72 @@ function ObrigacaoDialog({
   );
 }
 
+const PERFIL_LABEL: Record<string, string> = {
+  simples: "Simples Nacional", presumido: "Lucro Presumido", real: "Lucro Real", mei: "MEI",
+};
+
+function EmpresasPerfilPanel({ perfil, empresas }: { perfil: string; empresas: any[] }) {
+  const [busca, setBusca] = useState("");
+  const filtradas = empresas.filter(e =>
+    e.razao_social?.toLowerCase().includes(busca.toLowerCase())
+  );
+  return (
+    <Card className="border-purple-200">
+      <CardHeader className="pb-2 pt-3 px-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <CardTitle className="text-sm font-semibold text-purple-800">
+            Empresas com perfil "{PERFIL_LABEL[perfil] ?? perfil}"
+            <span className="ml-2 text-xs font-normal text-purple-600">({empresas.length})</span>
+          </CardTitle>
+          <Input
+            placeholder="Buscar empresa..."
+            value={busca}
+            onChange={e => setBusca(e.target.value)}
+            className="h-8 w-52 text-xs"
+          />
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        {filtradas.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic text-center py-6">
+            {empresas.length === 0 ? "Nenhuma empresa encontrada com este perfil." : "Nenhuma empresa corresponde à busca."}
+          </p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-purple-50/40 text-xs text-muted-foreground">
+                <th className="text-left px-4 py-2">Empresa</th>
+                <th className="text-left px-4 py-2">Regime</th>
+                <th className="text-left px-4 py-2">Atividade</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtradas.map((e, idx) => (
+                <tr key={e.id} className={`border-b last:border-0 ${idx % 2 === 0 ? "" : "bg-gray-50/40"}`}>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="h-6 w-6 rounded-full bg-[#10143D] text-white text-[10px] flex items-center justify-center font-bold shrink-0">
+                        {e.razao_social?.[0]?.toUpperCase()}
+                      </span>
+                      <span className="font-medium">{e.razao_social}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-muted-foreground capitalize">
+                    {e.regime_tributario ?? e.regime ?? "—"}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-muted-foreground capitalize">
+                    {e.atividade ?? "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function ConfiguracaoObrigacoes() {
   const { user, ownerUserId } = useAuth();
@@ -711,28 +752,7 @@ export default function ConfiguracaoObrigacoes() {
 
           {/* Painel: empresas do perfil selecionado */}
           {filtroPerfil !== "todos" && (
-            <div className="rounded-lg border bg-purple-50/60 border-purple-200 px-4 py-3">
-              <p className="text-xs font-semibold text-purple-800 mb-2">
-                {(() => {
-                  const label: Record<string,string> = { simples: "Simples Nacional", presumido: "Lucro Presumido", real: "Lucro Real", mei: "MEI" };
-                  return `Empresas cadastradas com perfil "${label[filtroPerfil] ?? filtroPerfil}":`;
-                })()}
-              </p>
-              {empresasNoPerfil.length === 0 ? (
-                <p className="text-xs text-muted-foreground italic">Nenhuma empresa encontrada com este perfil.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {empresasNoPerfil.map(e => (
-                    <span key={e.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-purple-200 text-xs font-medium text-purple-900">
-                      <span className="h-4 w-4 rounded-full bg-[#10143D] text-white text-[9px] flex items-center justify-center font-bold shrink-0">
-                        {e.razao_social?.[0]?.toUpperCase()}
-                      </span>
-                      {e.razao_social}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
+            <EmpresasPerfilPanel perfil={filtroPerfil} empresas={empresasNoPerfil} />
           )}
         </div>
       )}
