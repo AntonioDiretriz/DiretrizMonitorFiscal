@@ -128,15 +128,23 @@ export interface RotinaComentario {
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 
 export function useRotinas() {
-  const { user } = useAuth();
+  const { user, isAdmin, perfilId } = useAuth();
   return useQuery({
-    queryKey: ["rotinas", user?.id],
+    queryKey: ["rotinas", user?.id, perfilId],
     queryFn: async () => {
       if (!user) return [];
-      const { data, error } = await supabase
+      const db = supabase as any;
+      let q = db
         .from("rotinas")
         .select(`*, empresas(razao_social), responsavel:responsavel_id(nome, email), revisor:revisor_id(nome, email)`)
         .order("data_vencimento", { ascending: true });
+
+      // Membro da equipe: exibe apenas as rotinas onde é responsável ou revisor
+      if (!isAdmin && perfilId) {
+        q = q.or(`responsavel_id.eq.${perfilId},revisor_id.eq.${perfilId}`);
+      }
+
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as Rotina[];
     },

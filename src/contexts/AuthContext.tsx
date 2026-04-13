@@ -10,6 +10,7 @@ interface AuthContextType {
   session: Session | null;
   user: User | null;
   ownerUserId: string | null;
+  perfilId: string | null;
   displayName: string;
   loading: boolean;
   podeIncluir: boolean;
@@ -26,6 +27,7 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   user: null,
   ownerUserId: null,
+  perfilId: null,
   displayName: "",
   loading: true,
   podeIncluir: true,
@@ -81,6 +83,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isOwner = perfil === null;
   // ownerUserId: team members use their boss's ID; owners use their own ID
   const ownerUserId = perfil?.escritorio_owner_id ?? session?.user?.id ?? null;
+  // perfilId: the usuarios_perfil.id for team members (null for owner)
+  const perfilId = perfil?.id ?? null;
   const displayName = perfil?.nome || session?.user?.email?.split("@")[0] || "";
   const isAdmin = isOwner || perfil?.is_admin === true;
 
@@ -100,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       user: session?.user ?? null,
       ownerUserId,
+      perfilId,
       displayName,
       loading,
       podeIncluir,

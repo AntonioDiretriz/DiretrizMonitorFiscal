@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, isToday } from "date-fns";
+import { useState, useMemo, useEffect } from "react";
+import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, isToday, isSunday, isSaturday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,6 @@ import { useRotinas, type Rotina, type RotinaStatus } from "@/hooks/useRotinas";
 import RotinaDetalhe, { STATUS_CONFIG, StatusBadge } from "@/pages/RotinaDetalhe";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { useEffect } from "react";
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const NAVY  = "#10143D";
@@ -28,18 +27,35 @@ function getStatusColor(status: RotinaStatus): string {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function CalendarioRotinas() {
-  const { user, ownerUserId } = useAuth();
-  const { data: rotinas = [], isLoading } = useRotinas();
+  const { user } = useAuth();
+  const { data: rotinas = [] } = useRotinas();
   const [mesAtual, setMesAtual] = useState(new Date());
   const [filterEmpresa, setFilterEmpresa] = useState("_todos");
   const [selectedRotinaId, setSelectedRotinaId] = useState<string | null>(null);
   const [empresas, setEmpresas] = useState<{ id: string; razao_social: string }[]>([]);
+  const [feriados, setFeriados] = useState<Record<string, string>>({}); // "yyyy-MM-dd" → nome
 
   useEffect(() => {
     if (!user) return;
     supabase.from("empresas").select("id, razao_social").order("razao_social")
       .then(({ data }) => setEmpresas(data ?? []));
   }, [user]);
+
+  // Carrega feriados do mês exibido
+  useEffect(() => {
+    const ini = format(startOfMonth(mesAtual), "yyyy-MM-dd");
+    const fim = format(endOfMonth(mesAtual),   "yyyy-MM-dd");
+    (supabase as any)
+      .from("feriados_nacionais")
+      .select("data, nome")
+      .gte("data", ini)
+      .lte("data", fim)
+      .then(({ data }: any) => {
+        const map: Record<string, string> = {};
+        (data ?? []).forEach((f: any) => { map[f.data] = f.nome; });
+        setFeriados(map);
+      });
+  }, [mesAtual]);
 
   const selectedRotina = useMemo(
     () => (selectedRotinaId ? (rotinas.find(r => r.id === selectedRotinaId) ?? null) : null),
@@ -157,35 +173,50 @@ export default function CalendarioRotinas() {
 
             {/* Day cells */}
             {dias.map(dia => {
-              const key    = format(dia, "yyyy-MM-dd");
-              const items  = byDay[key] ?? [];
-              const today  = isToday(dia);
+              const key       = format(dia, "yyyy-MM-dd");
+              const items     = byDay[key] ?? [];
+              const today     = isToday(dia);
+              const dow       = getDay(dia); // 0=Dom, 6=Sáb
+              const fimSemana = dow === 0 || dow === 6;
+              const feriado   = feriados[key];
               const hasAtrasada = items.some(r => {
                 const venc = parseISO(r.data_vencimento);
                 return venc < new Date() && !["concluida", "nao_aplicavel"].includes(r.status);
               });
               const hasEmRisco = !hasAtrasada && items.some(r => {
                 const venc = parseISO(r.data_vencimento);
-                const dias = Math.ceil((venc.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-                return dias >= 0 && dias <= 2 && !["concluida"].includes(r.status);
+                const diff = Math.ceil((venc.getTime() - new Date().getTime()) / 86400000);
+                return diff >= 0 && diff <= 2 && !["concluida"].includes(r.status);
               });
 
+              let cellBg = "bg-white";
+              if (fimSemana) cellBg = "bg-slate-50";
+              if (feriado)   cellBg = "bg-purple-50";
+              if (hasAtrasada) cellBg = "bg-red-50";
+              if (hasEmRisco)  cellBg = "bg-amber-50";
+
               return (
-                <div
-                  key={key}
-                  className={`bg-white min-h-[90px] p-1.5 flex flex-col gap-1 ${
-                    hasAtrasada ? "bg-red-50" : hasEmRisco ? "bg-amber-50" : ""
-                  }`}
-                >
+                <div key={key} className={`${cellBg} min-h-[90px] p-1.5 flex flex-col gap-1`}>
                   {/* Day number */}
-                  <div className={`text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full self-end ${
-                    today
-                      ? "text-white"
-                      : hasAtrasada ? "text-red-700" : "text-gray-600"
-                  }`}
-                    style={today ? { backgroundColor: NAVY } : {}}
-                  >
-                    {format(dia, "d")}
+                  <div className="flex items-start justify-between gap-1">
+                    <div className="flex-1 min-w-0">
+                      {feriado && (
+                        <p
+                          className="text-[9px] leading-tight text-purple-600 font-medium truncate"
+                          title={feriado}
+                        >
+                          {feriado}
+                        </p>
+                      )}
+                    </div>
+                    <div
+                      className={`text-xs font-bold w-6 h-6 shrink-0 flex items-center justify-center rounded-full ${
+                        today ? "text-white" : fimSemana ? "text-slate-400" : hasAtrasada ? "text-red-700" : "text-gray-600"
+                      }`}
+                      style={today ? { backgroundColor: NAVY } : {}}
+                    >
+                      {format(dia, "d")}
+                    </div>
                   </div>
 
                   {/* Rotina chips */}
@@ -209,6 +240,14 @@ export default function CalendarioRotinas() {
                 </div>
               );
             })}
+          </div>
+
+          {/* Legenda */}
+          <div className="flex flex-wrap gap-3 pt-3 text-[11px] text-muted-foreground border-t mt-2">
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-purple-100 border border-purple-300 inline-block" /> Feriado nacional</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-slate-100 border border-slate-200 inline-block" /> Fim de semana</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-100 border border-amber-300 inline-block" /> Vence em até 2 dias</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-100 border border-red-300 inline-block" /> Atrasada</span>
           </div>
         </CardContent>
       </Card>

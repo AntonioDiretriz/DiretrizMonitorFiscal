@@ -25,6 +25,8 @@ const PAPEL_ROTINAS_OPTIONS = [
   { value: "ambos",       label: "Resp. e Revisor" },
 ];
 
+const TODOS_DEPARTAMENTOS = ["Fiscal", "Contábil", "DP", "Gestão", "Legalização", "Financeiro"];
+
 const EMPTY_FORM = {
   nome: "", email: "", cpf: "",
   senha: "", confirmar_senha: "",
@@ -32,6 +34,7 @@ const EMPTY_FORM = {
   pode_incluir: false, pode_editar: false, pode_excluir: false,
   modulos: [] as ModuleId[],
   papel_rotinas: "nenhum",
+  departamentos: [] as string[],
 };
 
 export default function Usuarios() {
@@ -94,6 +97,7 @@ export default function Usuarios() {
       pode_incluir: u.pode_incluir, pode_editar: u.pode_editar, pode_excluir: u.pode_excluir,
       modulos: (u.modulos ?? []) as ModuleId[],
       papel_rotinas: (u as any).papel_rotinas ?? "nenhum",
+      departamentos: (u as any).departamentos ?? [],
     });
     setActiveTab("dados");
     setDialogOpen(true);
@@ -157,6 +161,7 @@ export default function Usuarios() {
       pode_excluir: form.is_admin ? true : form.pode_excluir,
       modulos:      form.is_admin ? ALL_MODULE_IDS : form.modulos,
       papel_rotinas: form.papel_rotinas,
+      departamentos: form.departamentos,
     };
 
     let error: { message: string } | null;
@@ -447,35 +452,68 @@ export default function Usuarios() {
 
                     {/* Configurações específicas por módulo */}
                     {m.id === "rotinas" && (
-                      <div className="border-t pt-4 space-y-3">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Papel nas tarefas de Rotinas</p>
-                        <div className="grid grid-cols-1 gap-2">
-                          {PAPEL_ROTINAS_OPTIONS.map(o => {
-                            const selected = form.papel_rotinas === o.value;
-                            const descs: Record<string, string> = {
-                              nenhum:      "Não aparece na seleção de responsável/revisor",
-                              responsavel: "Pode ser atribuído como Responsável pela execução",
-                              revisor:     "Pode ser atribuído como Revisor antes do envio",
-                              ambos:       "Pode ser Responsável ou Revisor conforme a tarefa",
-                            };
-                            return (
-                              <label key={o.value}
-                                className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                                  selected ? "border-primary/40 bg-primary/5" : "border-border bg-muted/10 opacity-70"
-                                }`}
-                              >
-                                <input type="radio" name="papel_rotinas" value={o.value}
-                                  checked={selected}
-                                  onChange={() => setForm(p => ({ ...p, papel_rotinas: o.value }))}
-                                  className="h-4 w-4 cursor-pointer" />
-                                <div>
-                                  <p className="text-sm font-medium">{o.label}</p>
-                                  <p className="text-xs text-muted-foreground">{descs[o.value]}</p>
-                                </div>
-                              </label>
-                            );
-                          })}
+                      <div className="border-t pt-4 space-y-5">
+                        {/* Papel */}
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Papel nas tarefas</p>
+                          <div className="grid grid-cols-1 gap-2">
+                            {PAPEL_ROTINAS_OPTIONS.map(o => {
+                              const selected = form.papel_rotinas === o.value;
+                              const descs: Record<string, string> = {
+                                nenhum:      "Não aparece na seleção de responsável/revisor",
+                                responsavel: "Pode ser atribuído como Responsável pela execução",
+                                revisor:     "Pode ser atribuído como Revisor antes do envio",
+                                ambos:       "Pode ser Responsável ou Revisor conforme a tarefa",
+                              };
+                              return (
+                                <label key={o.value}
+                                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                                    selected ? "border-primary/40 bg-primary/5" : "border-border bg-muted/10 opacity-70"
+                                  }`}
+                                >
+                                  <input type="radio" name="papel_rotinas" value={o.value}
+                                    checked={selected}
+                                    onChange={() => setForm(p => ({ ...p, papel_rotinas: o.value }))}
+                                    className="h-4 w-4 cursor-pointer" />
+                                  <div>
+                                    <p className="text-sm font-medium">{o.label}</p>
+                                    <p className="text-xs text-muted-foreground">{descs[o.value]}</p>
+                                  </div>
+                                </label>
+                              );
+                            })}
+                          </div>
                         </div>
+
+                        {/* Departamentos */}
+                        {form.papel_rotinas !== "nenhum" && (
+                          <div className="space-y-2">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Departamentos sob responsabilidade</p>
+                            <p className="text-xs text-muted-foreground">As tarefas geradas automaticamente serão atribuídas a este membro conforme o departamento marcado.</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              {TODOS_DEPARTAMENTOS.map(dep => {
+                                const active = form.departamentos.includes(dep);
+                                return (
+                                  <label key={dep}
+                                    className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors text-sm ${
+                                      active ? "border-primary/40 bg-primary/5 font-medium" : "border-border bg-muted/10 opacity-70"
+                                    }`}
+                                  >
+                                    <input type="checkbox" checked={active}
+                                      onChange={() => setForm(p => ({
+                                        ...p,
+                                        departamentos: active
+                                          ? p.departamentos.filter(d => d !== dep)
+                                          : [...p.departamentos, dep],
+                                      }))}
+                                      className="h-4 w-4" />
+                                    {dep}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 
