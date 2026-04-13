@@ -167,8 +167,12 @@ export default function Usuarios() {
     let error: { message: string } | null;
 
     const tryFallback = async (op: "insert" | "update") => {
-      const { modulos: _m, papel_rotinas: _p, ...base } = payload;
-      const fb = error!.message.includes("modulos") ? base : { ...base, modulos: payload.modulos };
+      // Remove campos que podem não existir ainda na tabela
+      const { modulos: _m, papel_rotinas: _p, departamentos: _d, ...base } = payload;
+      let fb: any = base;
+      if (!error!.message.includes("modulos")) fb = { ...fb, modulos: payload.modulos };
+      if (!error!.message.includes("papel_rotinas")) fb = { ...fb, papel_rotinas: payload.papel_rotinas };
+      if (!error!.message.includes("departamentos")) fb = { ...fb, departamentos: payload.departamentos };
       if (op === "update") {
         ({ error } = await supabase.from("usuarios_perfil").update(fb).eq("id", editingId!));
       } else {
@@ -176,9 +180,12 @@ export default function Usuarios() {
       }
     };
 
+    const needsFallback = (msg: string) =>
+      msg.includes("modulos") || msg.includes("papel_rotinas") || msg.includes("departamentos");
+
     if (editingId) {
       ({ error } = await supabase.from("usuarios_perfil").update(payload).eq("id", editingId));
-      if (error?.message && (error.message.includes("modulos") || error.message.includes("papel_rotinas"))) await tryFallback("update");
+      if (error?.message && needsFallback(error.message)) await tryFallback("update");
       if (error) { toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" }); return; }
 
       if (form.senha) {
@@ -198,7 +205,7 @@ export default function Usuarios() {
     } else {
       const { data: created, error: insertErr } = await supabase.from("usuarios_perfil").insert(payload).select("id").single();
       error = insertErr;
-      if (error?.message && (error.message.includes("modulos") || error.message.includes("papel_rotinas"))) await tryFallback("insert");
+      if (error?.message && needsFallback(error.message)) await tryFallback("insert");
       if (error) { toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" }); return; }
 
       const { error: fnErr } = await supabase.functions.invoke("manage-team-member", {
