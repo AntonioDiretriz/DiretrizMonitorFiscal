@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Building2, Trash2, Loader2, Pencil, MapPin, UserPlus, Cake, Users2, Banknote, Upload } from "lucide-react";
+import { Plus, Search, Building2, Trash2, Loader2, Pencil, MapPin, UserPlus, Cake, Users2, Banknote, Upload, Monitor } from "lucide-react";
 import { ExportButton } from "@/components/ExportButton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -335,6 +335,10 @@ const EMPTY_FORM = {
   contribuinte_icms: false,
   // financeiro / integração Domínio
   codigo_dominio: "", plano_contas_dominio: "", codigo_contabil: "",
+  // monitoramento — responsáveis por departamento
+  responsavel_fiscal_id:   "",
+  responsavel_contabil_id: "",
+  responsavel_pessoal_id:  "",
 };
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -356,6 +360,7 @@ export default function Empresas() {
   const [socios,    setSocios]    = useState<Socio[]>([]);
   const [socioForm, setSocioForm] = useState<Socio>(EMPTY_SOCIO);
   const [activeTab, setActiveTab] = useState("empresa");
+  const [equipe,    setEquipe]    = useState<{ id: string; nome: string; papel_rotinas: string }[]>([]);
 
   const [loadingCnpj, setLoadingCnpj] = useState(false);
   const [loadingCep,  setLoadingCep]  = useState(false);
@@ -394,6 +399,18 @@ export default function Empresas() {
   }, [user, page]);
 
   useEffect(() => { loadEmpresas(); }, [loadEmpresas]);
+
+  // Carrega membros da equipe que podem ser responsáveis
+  useEffect(() => {
+    if (!ownerUserId) return;
+    (supabase as any)
+      .from("usuarios_perfil")
+      .select("id, nome, papel_rotinas")
+      .eq("escritorio_owner_id", ownerUserId)
+      .in("papel_rotinas", ["responsavel", "ambos"])
+      .order("nome")
+      .then(({ data }: any) => setEquipe(data ?? []));
+  }, [ownerUserId]);
 
   useEffect(() => {
     if (!ownerUserId) return;
@@ -487,6 +504,9 @@ export default function Empresas() {
       codigo_dominio:       e.codigo_dominio       || "",
       plano_contas_dominio: e.plano_contas_dominio || "",
       codigo_contabil:      e.codigo_contabil      || "",
+      responsavel_fiscal_id:   e.responsavel_fiscal_id   || "",
+      responsavel_contabil_id: e.responsavel_contabil_id || "",
+      responsavel_pessoal_id:  e.responsavel_pessoal_id  || "",
     });
     const { data: sd } = await (supabase as any).from("socios").select("*").eq("empresa_id", emp.id).order("nome");
     setSocios((sd || []).map(s => ({
@@ -545,6 +565,9 @@ export default function Empresas() {
       tem_reinf:            form.tem_reinf,
       contribuinte_iss:     form.contribuinte_iss,
       contribuinte_icms:    form.contribuinte_icms,
+      responsavel_fiscal_id:   form.responsavel_fiscal_id   || null,
+      responsavel_contabil_id: form.responsavel_contabil_id || null,
+      responsavel_pessoal_id:  form.responsavel_pessoal_id  || null,
     };
 
     let empresaId: string | null = editingId;
@@ -563,6 +586,11 @@ export default function Empresas() {
       const { cep: _c, logradouro: _l, numero: _n, complemento: _co, bairro: _b, ...base } = payload;
       ({ data: saved, error } = await save(base));
       if (!error) toast({ title: "Atenção", description: "Execute a migration 20260331_socios_endereco.sql para habilitar os campos de endereço.", variant: "destructive" });
+    }
+
+    if (error?.message && ["responsavel_fiscal_id","responsavel_contabil_id","responsavel_pessoal_id"].some(c => error!.message.includes(c))) {
+      const { responsavel_fiscal_id: _f, responsavel_contabil_id: _c2, responsavel_pessoal_id: _p, ...base } = payload;
+      ({ data: saved, error } = await save(base));
     }
 
     if (error) { toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" }); return; }
@@ -730,7 +758,7 @@ export default function Empresas() {
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <Tabs value={activeTab} onValueChange={tab => { setActiveTab(tab); if (tab === "financeiro" && editingId) loadPcContas(editingId); }}>
-                  <TabsList className="grid w-full grid-cols-4">
+                  <TabsList className="grid w-full grid-cols-5">
                     <TabsTrigger value="empresa">Empresa</TabsTrigger>
                     <TabsTrigger value="endereco" className="flex items-center gap-1">
                       <MapPin className="h-3.5 w-3.5" /> Endereço
@@ -740,6 +768,9 @@ export default function Empresas() {
                     </TabsTrigger>
                     <TabsTrigger value="financeiro" className="flex items-center gap-1">
                       <Banknote className="h-3.5 w-3.5" /> Financeiro
+                    </TabsTrigger>
+                    <TabsTrigger value="monitoramento" className="flex items-center gap-1">
+                      <Monitor className="h-3.5 w-3.5" /> Monitoramento
                     </TabsTrigger>
                   </TabsList>
 
@@ -1025,6 +1056,47 @@ export default function Empresas() {
                             </div>
                           ))}
                         </div>
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  {/* ── Tab: Monitoramento ── */}
+                  <TabsContent value="monitoramento" className="space-y-5 pt-4">
+                    <div className="rounded-lg border bg-blue-50/50 p-4 text-sm text-muted-foreground">
+                      Defina qual membro da equipe é responsável por cada setor nesta empresa.
+                      As tarefas geradas automaticamente serão atribuídas a eles.
+                    </div>
+
+                    {equipe.length === 0 ? (
+                      <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                        Nenhum membro da equipe com papel de Responsável cadastrado.<br />
+                        Acesse <strong>Configuração → Equipe</strong> e defina o papel de cada membro.
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {[
+                          { label: "Responsável pelo setor Fiscal",   field: "responsavel_fiscal_id",   color: "text-blue-700" },
+                          { label: "Responsável pelo setor Contábil", field: "responsavel_contabil_id", color: "text-purple-700" },
+                          { label: "Responsável pelo Depto. Pessoal", field: "responsavel_pessoal_id",  color: "text-amber-700" },
+                        ].map(({ label, field, color }) => (
+                          <div key={field} className="space-y-1.5">
+                            <Label className={`font-medium ${color}`}>{label}</Label>
+                            <Select
+                              value={(form as any)[field] || "_nenhum"}
+                              onValueChange={v => setForm(p => ({ ...p, [field]: v === "_nenhum" ? "" : v }))}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecionar responsável..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="_nenhum">— Não atribuído —</SelectItem>
+                                {equipe.map(m => (
+                                  <SelectItem key={m.id} value={m.id}>{m.nome}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </TabsContent>
