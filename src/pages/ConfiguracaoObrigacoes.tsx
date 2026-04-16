@@ -222,15 +222,39 @@ function ObrigacaoDialog({
         ? cnpjMatch[0].replace(/\D/g, "").replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5")
         : null;
 
-      // ── Extrai competência MM/YYYY ─────────────────────────────────────────
-      const compMatch = /\b(\d{2})\/(\d{4})\b/.exec(fullText);
-      const competencia = compMatch && parseInt(compMatch[1]) >= 1 && parseInt(compMatch[1]) <= 12
-        ? `${compMatch[1]}/${compMatch[2]}` : null;
+      // ── Extrai competência: MM/YYYY ou mês por extenso (ex: Março/2026) ────
+      const MESES: Record<string, string> = {
+        JANEIRO:"01", FEVEREIRO:"02", MARCO:"03", ABRIL:"04", MAIO:"05", JUNHO:"06",
+        JULHO:"07", AGOSTO:"08", SETEMBRO:"09", OUTUBRO:"10", NOVEMBRO:"11", DEZEMBRO:"12",
+        JAN:"01", FEV:"02", MAR:"03", ABR:"04", MAI:"05", JUN:"06",
+        JUL:"07", AGO:"08", SET:"09", OUT:"10", NOV:"11", DEZ:"12",
+      };
+      let competencia: string | null = null;
+      // Tenta mês numérico MM/YYYY (evita pegar datas completas DD/MM/YYYY)
+      const compNum = /(?<!\d)(\d{2})\/(\d{4})(?!\d)/.exec(fullText);
+      if (compNum && parseInt(compNum[1]) >= 1 && parseInt(compNum[1]) <= 12)
+        competencia = `${compNum[1]}/${compNum[2]}`;
+      // Tenta mês por extenso (ex: Março/2026, MARÇO/2026)
+      if (!competencia) {
+        for (const [nome, num] of Object.entries(MESES)) {
+          const re = new RegExp(`${nome}[\\s\\/\\-]+(\\d{4})`, "i");
+          const mm = re.exec(upper);
+          if (mm) { competencia = `${num}/${mm[1]}`; break; }
+        }
+      }
 
       // ── Extrai data de vencimento e dia ───────────────────────────────────
-      const vencMatch = /(?:VENCIMENTO|VENC\.?)[:\s]+(\d{2})[\/\-](\d{2})[\/\-](\d{4})/i.exec(fullText);
-      const vencimento   = vencMatch ? `${vencMatch[1]}/${vencMatch[2]}/${vencMatch[3]}` : null;
-      const diaVencimento = vencMatch ? parseInt(vencMatch[1]) : null;
+      // Padrão 1: "Vencimento 20/04/2026" ou "Data de Vencimento 20/04/2026"
+      const vencMatch =
+        /(?:DATA\s+DE\s+)?VENCIMENTO[:\s]+(\d{2})[\/\-](\d{2})[\/\-](\d{4})/i.exec(fullText) ||
+        /(?:VENC\.?)[:\s]+(\d{2})[\/\-](\d{2})[\/\-](\d{4})/i.exec(fullText);
+      // Padrão 2: qualquer DD/MM/YYYY que apareça no texto (fallback)
+      const vencFallback = !vencMatch
+        ? /\b(\d{2})[\/\-](\d{2})[\/\-](\d{4})\b/.exec(fullText)
+        : null;
+      const vencArr = vencMatch ?? vencFallback;
+      const vencimento    = vencArr ? `${vencArr[1]}/${vencArr[2]}/${vencArr[3]}` : null;
+      const diaVencimento = vencArr ? parseInt(vencArr[1]) : null;
 
       // ── Detecta palavras-chave do tipo de obrigação ───────────────────────
       const frases = [
