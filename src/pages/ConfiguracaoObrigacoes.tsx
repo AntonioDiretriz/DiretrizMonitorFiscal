@@ -138,12 +138,13 @@ function empresaMatchesRegra(emp: any, r: RegraAtivacao): boolean {
 
 // ── Dialog Nova / Editar Obrigação ─────────────────────────────────────────────
 function ObrigacaoDialog({
-  open, onOpenChange, initial, onSaved,
+  open, onOpenChange, initial, onSaved, allModelos,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   initial?: RotinaModelo | null;
   onSaved: () => void;
+  allModelos?: RotinaModelo[];
 }) {
   const { toast } = useToast();
   const [form, setForm] = useState(EMPTY_FORM);
@@ -155,6 +156,8 @@ function ObrigacaoDialog({
   const [analisandoPdf, setAnalisandoPdf] = useState(false);
   const [pdfAnalisado, setPdfAnalisado] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [replicarOpen, setReplicarOpen] = useState(false);
+  const [replicarBusca, setReplicarBusca] = useState("");
 
   useEffect(() => {
     if (open) {
@@ -419,6 +422,71 @@ function ObrigacaoDialog({
 
           {/* ── Aba Dados ── */}
           <TabsContent value="dados" className="space-y-3 pt-2">
+
+          {/* Botão replicar — só em nova obrigação */}
+          {!initial && allModelos && allModelos.length > 0 && (
+            <div className="space-y-2">
+              {!replicarOpen ? (
+                <Button type="button" variant="outline" size="sm" className="w-full text-xs gap-1.5"
+                  onClick={() => setReplicarOpen(true)}>
+                  <RotateCcw className="h-3.5 w-3.5" /> Replicar de uma obrigação existente
+                </Button>
+              ) : (
+                <div className="rounded-lg border border-amber-200 bg-amber-50/40 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-amber-800 font-medium text-xs">Selecione a obrigação para replicar</Label>
+                    <button type="button" className="text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => { setReplicarOpen(false); setReplicarBusca(""); }}>✕ cancelar</button>
+                  </div>
+                  <Input
+                    autoFocus
+                    placeholder="Digite o nome da obrigação..."
+                    value={replicarBusca}
+                    onChange={e => setReplicarBusca(e.target.value)}
+                    className="bg-white text-sm"
+                  />
+                  {replicarBusca.length > 0 && (
+                    <div className="max-h-48 overflow-y-auto border rounded-md bg-white divide-y text-sm">
+                      {allModelos
+                        .filter(m => m.nome_rotina.toLowerCase().includes(replicarBusca.toLowerCase()) ||
+                                     m.codigo_rotina.toLowerCase().includes(replicarBusca.toLowerCase()))
+                        .slice(0, 10)
+                        .map(m => (
+                          <button key={m.id} type="button"
+                            className="w-full text-left px-3 py-2 hover:bg-amber-50 flex items-center justify-between gap-2"
+                            onClick={() => {
+                              setForm(p => ({
+                                ...p,
+                                tipo_rotina:      m.tipo_rotina,
+                                departamento:     m.departamento,
+                                periodicidade:    m.periodicidade,
+                                dia_vencimento:   m.dia_vencimento?.toString() ?? "",
+                                meses_offset:     m.meses_offset?.toString() ?? "1",
+                                margem_seguranca: m.margem_seguranca?.toString() ?? "3",
+                                descricao:        m.descricao ?? "",
+                                palavras_chave:   (m.palavras_chave ?? []).join(", "),
+                              }));
+                              setReplicarOpen(false);
+                              setReplicarBusca("");
+                              toast({ title: `Dados replicados de "${m.nome_rotina}"`, description: "Ajuste o nome e o código antes de salvar." });
+                            }}>
+                            <span className="font-medium">{m.nome_rotina}</span>
+                            <span className="text-xs text-muted-foreground">{m.codigo_rotina}</span>
+                          </button>
+                        ))}
+                      {allModelos.filter(m =>
+                        m.nome_rotina.toLowerCase().includes(replicarBusca.toLowerCase()) ||
+                        m.codigo_rotina.toLowerCase().includes(replicarBusca.toLowerCase())
+                      ).length === 0 && (
+                        <p className="text-center py-3 text-muted-foreground text-xs">Nenhuma obrigação encontrada</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <Label>Nome *</Label>
@@ -1533,6 +1601,7 @@ export default function ConfiguracaoObrigacoes() {
         onOpenChange={setDialogOpen}
         initial={editando}
         onSaved={load}
+        allModelos={modelos}
       />
 
       {/* Dialog: Incluir obrigação para empresa específica */}
