@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
-import { Save, Info, RotateCcw, Plus, Pencil, Trash2, PackageOpen, Building2 } from "lucide-react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { Save, Info, RotateCcw, Plus, Pencil, Trash2, PackageOpen, Building2, Upload, Bot, CheckCircle2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -136,6 +136,9 @@ function ObrigacaoDialog({
   const [novaRegra, setNovaRegra] = useState<RegraAtivacao>(REGRA_VAZIA);
   const [empresas, setEmpresas] = useState<any[]>([]);
   const [tab, setTab] = useState("dados");
+  const [analisandoPdf, setAnalisandoPdf] = useState(false);
+  const [pdfAnalisado, setPdfAnalisado] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -172,6 +175,54 @@ function ObrigacaoDialog({
 
   const f = (field: string) => (e: any) => setForm(p => ({ ...p, [field]: e.target.value }));
   const nr = (field: keyof RegraAtivacao) => (v: string) => setNovaRegra(p => ({ ...p, [field]: v }));
+
+  async function handleAnalisarPdf(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAnalisandoPdf(true);
+    setPdfAnalisado(false);
+    try {
+      // Lê o PDF como texto bruto (funciona para PDFs text-based do governo)
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const decoder = new TextDecoder("latin1");
+      const raw = decoder.decode(bytes);
+      const texts: string[] = [];
+      const re = /\(([^)\\]{1,200})\)/g;
+      let m;
+      while ((m = re.exec(raw)) !== null) {
+        const t = m[1].replace(/\\(\d{3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8))).replace(/\\n/g, " ").trim();
+        if (t.length > 3 && /[a-zA-Z]/.test(t)) texts.push(t);
+      }
+      const text = texts.join(" ").toUpperCase();
+
+      // Palavras-chave candidatas: frases com 4+ letras que aparecem no documento
+      const candidatas = new Set<string>();
+      const frases = [
+        "PGDAS-D","SIMPLES NACIONAL","DOCUMENTO DE ARRECADAÇÃO","DAS ","DAS-MEI",
+        "FGTS","SEFIP","FUNDO DE GARANTIA","INSS","GPS","GUIA DA PREVIDÊNCIA",
+        "PIS","COFINS","PIS/COFINS","ISS","IMPOSTO SOBRE SERVIÇOS","NFS-E",
+        "IRPJ","CSLL","DARF","DCTF","DECLARAÇÃO DE DÉBITOS","ECF","ECD",
+        "SPED","DEFIS","RAIS","ESOCIAL","E-SOCIAL","CAGED","DIRF",
+      ];
+      for (const f of frases) {
+        if (text.includes(f)) candidatas.add(f.trim());
+      }
+
+      if (candidatas.size > 0) {
+        const kws = Array.from(candidatas).join(", ");
+        setForm(p => ({ ...p, palavras_chave: kws }));
+        setPdfAnalisado(true);
+        toast({ title: "PDF analisado!", description: `${candidatas.size} palavra(s)-chave identificada(s).` });
+      } else {
+        toast({ title: "Nenhuma palavra-chave encontrada", description: "Tente adicionar manualmente no campo abaixo.", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Erro ao ler PDF", description: err.message, variant: "destructive" });
+    } finally {
+      setAnalisandoPdf(false);
+      e.target.value = "";
+    }
+  }
 
   async function handleSave() {
     if (!form.nome_rotina || !form.codigo_rotina || !form.tipo_rotina) {
@@ -330,8 +381,29 @@ function ObrigacaoDialog({
             <Label>Descrição</Label>
             <Textarea placeholder="Descrição opcional..." value={form.descricao} onChange={f("descricao")} rows={2} />
           </div>
-          <div className="rounded-lg border border-blue-200 bg-blue-50/40 p-3 space-y-1.5">
-            <Label className="text-blue-800 font-medium">Palavras-chave para identificação automática do PDF</Label>
+          <div className="rounded-lg border border-blue-200 bg-blue-50/40 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-blue-800 font-medium">Reconhecimento automático do documento</Label>
+              <label className="cursor-pointer">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf"
+                  className="hidden"
+                  onChange={handleAnalisarPdf}
+                  disabled={analisandoPdf}
+                />
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-blue-300 bg-white text-blue-700 hover:bg-blue-50 cursor-pointer">
+                  {analisandoPdf ? (
+                    <><Bot className="h-3.5 w-3.5 animate-pulse" /> Analisando...</>
+                  ) : pdfAnalisado ? (
+                    <><CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> PDF analisado</>
+                  ) : (
+                    <><Upload className="h-3.5 w-3.5" /> Cadastrar documento modelo</>
+                  )}
+                </span>
+              </label>
+            </div>
             <Input
               placeholder="Ex: PGDAS-D, Simples Nacional, Programa Gerador"
               value={form.palavras_chave}
@@ -339,7 +411,7 @@ function ObrigacaoDialog({
               className="bg-white"
             />
             <p className="text-xs text-blue-700">
-              Separe com vírgula. O robô usa essas palavras para identificar o tipo de obrigação ao ler o PDF.
+              Faça upload de um PDF modelo — o robô extrai as palavras-chave automaticamente. Ou preencha manualmente separando com vírgula.
             </p>
           </div>
           <div className="flex justify-end gap-2 pt-1">
