@@ -538,6 +538,7 @@ export default function CaixasPostais() {
                 <SortHeader col="vencimento" sortCol={sortCol} sortDir={sortDir} onSort={handleSort}>Vencimento</SortHeader>
                 <SortHeader col="dias" className="w-20" sortCol={sortCol} sortDir={sortDir} onSort={handleSort}>Dias</SortHeader>
                 <TableHead>Status</TableHead>
+                <TableHead>Notificação</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
@@ -577,6 +578,31 @@ export default function CaixasPostais() {
                       <div className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${st.bg} ${st.color}`}>
                         <Icon className="mr-1.5 h-3.5 w-3.5" />{st.label}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {(() => {
+                        const notifs = emailNotificacoes.filter(n => n.referencia_id === c.id);
+                        if (notifs.length === 0) return <span className="text-xs text-muted-foreground/40">—</span>;
+                        const ultimo = notifs[0];
+                        return (
+                          <div className="flex flex-col gap-0.5">
+                            {ultimo.status === "clicou" ? (
+                              <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium">
+                                <MousePointerClick className="h-3 w-3" /> WhatsApp
+                              </span>
+                            ) : ultimo.status === "aberto" ? (
+                              <span className="inline-flex items-center gap-1 text-blue-600 text-xs font-medium">
+                                <MailOpen className="h-3 w-3" /> Aberto
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-muted-foreground text-xs">
+                                <Mail className="h-3 w-3" /> Enviado
+                              </span>
+                            )}
+                            <span className="text-[10px] text-muted-foreground">{ultimo.dias_aviso} dias — {format(new Date(ultimo.enviado_em), "dd/MM")}</span>
+                          </div>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1 justify-end">
