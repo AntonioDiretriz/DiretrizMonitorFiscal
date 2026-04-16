@@ -67,12 +67,6 @@ interface RegrasMap {
 
 const DEPT_ORDER = ["Fiscal", "Contábil", "DP", "Gestão", "Legalização", "Financeiro"];
 
-const CRIT_COLOR: Record<string, string> = {
-  critica: "bg-red-100 text-red-700 border-red-200",
-  alta:    "bg-orange-100 text-orange-700 border-orange-200",
-  media:   "bg-yellow-100 text-yellow-700 border-yellow-200",
-  baixa:   "bg-green-100 text-green-700 border-green-200",
-};
 
 const PERIOD_LABEL: Record<string, string> = {
   mensal: "Mensal", trimestral: "Trimestral", anual: "Anual", eventual: "Eventual",
@@ -473,18 +467,6 @@ function ObrigacaoDialog({
               </Select>
             </div>
             <div>
-              <Label>Criticidade</Label>
-              <Select value={form.criticidade} onValueChange={v => setForm(p => ({ ...p, criticidade: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="critica">Crítica</SelectItem>
-                  <SelectItem value="alta">Alta</SelectItem>
-                  <SelectItem value="media">Média</SelectItem>
-                  <SelectItem value="baixa">Baixa</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
               <Label>Dia de Vencimento</Label>
               <Input type="number" min={1} max={31} placeholder="Ex: 20" value={form.dia_vencimento} onChange={f("dia_vencimento")} />
             </div>
@@ -848,9 +830,6 @@ function AddObrigacaoEmpresaDialog({ open, onOpenChange, empresa, modelos, regra
         </div>
         <div className="text-xs text-muted-foreground truncate">{m.departamento} · {PERIOD_LABEL[m.periodicidade] ?? m.periodicidade}</div>
       </div>
-      <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium border capitalize shrink-0 ${CRIT_COLOR[m.criticidade] ?? ""}`}>
-        {m.criticidade}
-      </span>
     </div>
   );
 
@@ -939,18 +918,6 @@ function AddObrigacaoEmpresaDialog({ open, onOpenChange, empresa, modelos, regra
                     <SelectItem value="trimestral">Trimestral</SelectItem>
                     <SelectItem value="anual">Anual</SelectItem>
                     <SelectItem value="eventual">Eventual</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Criticidade</Label>
-                <Select value={customForm.criticidade} onValueChange={v => setCustomForm(p => ({ ...p, criticidade: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="critica">Crítica</SelectItem>
-                    <SelectItem value="alta">Alta</SelectItem>
-                    <SelectItem value="media">Média</SelectItem>
-                    <SelectItem value="baixa">Baixa</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1437,7 +1404,6 @@ export default function ConfiguracaoObrigacoes() {
                 <tr className="border-b bg-gray-50 text-xs text-muted-foreground">
                   <th className="text-left px-4 py-2 w-[24%]">Obrigação</th>
                   <th className="text-left px-4 py-2 w-[8%]">Período</th>
-                  <th className="text-left px-4 py-2 w-[8%]">Criticidade</th>
                   <th className="text-left px-4 py-2 w-[16%]">Perfis</th>
                   <th className="text-center px-2 py-2 w-[13%]">
                     Dia Legal
@@ -1480,11 +1446,6 @@ export default function ConfiguracaoObrigacoes() {
                       </td>
                       <td className="px-4 py-2.5 text-muted-foreground text-xs">
                         {PERIOD_LABEL[modelo.periodicidade] ?? modelo.periodicidade}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium border capitalize ${CRIT_COLOR[modelo.criticidade] ?? ""}`}>
-                          {modelo.criticidade}
-                        </span>
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex flex-wrap gap-1">
