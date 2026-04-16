@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Building2, FileCheck, Bell, Settings, LogOut,
   Users, KeyRound, MailOpen, ChevronRight, Stethoscope,
   Banknote, CreditCard, ListChecks, Package, UserCheck, ClipboardList,
-  CalendarDays, BarChart2, User, BookOpen,
+  CalendarDays, BarChart2, User, BookOpen, Bot,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -77,9 +77,10 @@ export function AppSidebar() {
   ] : [];
 
   const rotinasItems = temModulo("rotinas") ? [
-    { title: "Tarefas",    url: "/rotinas",            icon: ClipboardList },
-    { title: "Calendário", url: "/rotinas/calendario", icon: CalendarDays  },
-    { title: "Dashboard",  url: "/rotinas/dashboard",  icon: BarChart2     },
+    { title: "Tarefas",    url: "/rotinas",             icon: ClipboardList },
+    { title: "Calendário", url: "/rotinas/calendario",  icon: CalendarDays  },
+    { title: "Dashboard",  url: "/rotinas/dashboard",   icon: BarChart2     },
+    { title: "Automação",  url: "/rotinas/automacao",   icon: Bot           },
   ] : [];
 
   const configItems = [

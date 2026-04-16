@@ -9,7 +9,7 @@ ALTER TABLE public.empresas
   ADD COLUMN IF NOT EXISTS possui_prolabore    BOOLEAN NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS possui_funcionario  BOOLEAN NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS tem_retencoes       BOOLEAN NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS tem_reinf           BOOLEAN NOT NULL DEFAULT false;
+  ADD COLUMN IF NOT EXISTS tem_reinf           BOOLEAnN NOT NULL DEFAULT false;
 
 -- ── Campos de integração Domínio (se não existirem) ─────────────────────────
 ALTER TABLE public.empresas

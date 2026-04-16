@@ -8,10 +8,21 @@
 --   não conseguem ler o próprio registro → AuthContext retorna null → aparece como Owner
 
 -- Adiciona política de leitura para o próprio membro
-CREATE POLICY IF NOT EXISTS "Team member reads own profile"
-  ON public.usuarios_perfil
-  FOR SELECT
-  USING (auth.uid() = user_id);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename  = 'usuarios_perfil'
+      AND policyname = 'Team member reads own profile'
+  ) THEN
+    CREATE POLICY "Team member reads own profile"
+      ON public.usuarios_perfil
+      FOR SELECT
+      USING (auth.uid() = user_id);
+  END IF;
+END;
+$$;
 
 -- Adiciona coluna papel_rotinas se ainda não existir
 ALTER TABLE public.usuarios_perfil

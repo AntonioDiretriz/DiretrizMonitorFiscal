@@ -128,9 +128,9 @@ export interface RotinaComentario {
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 
 export function useRotinas() {
-  const { user, isAdmin, perfilId } = useAuth();
+  const { user, isAdmin, perfilId, papelRotinas } = useAuth();
   return useQuery({
-    queryKey: ["rotinas", user?.id, perfilId],
+    queryKey: ["rotinas", user?.id, perfilId, papelRotinas],
     queryFn: async () => {
       if (!user) return [];
       const db = supabase as any;
@@ -139,9 +139,13 @@ export function useRotinas() {
         .select(`*, empresas(razao_social), responsavel:responsavel_id(nome, email), revisor:revisor_id(nome, email)`)
         .order("data_vencimento", { ascending: true });
 
-      // Membro da equipe: exibe apenas as rotinas onde é responsável ou revisor
       if (!isAdmin && perfilId) {
-        q = q.or(`responsavel_id.eq.${perfilId},revisor_id.eq.${perfilId}`);
+        if (papelRotinas === "gerente") {
+          // Gerente vê todas as rotinas do escritório — sem filtro de responsável
+        } else {
+          // Operacional: apenas as rotinas onde é o responsável
+          q = q.eq("responsavel_id", perfilId);
+        }
       }
 
       const { data, error } = await q;

@@ -230,13 +230,11 @@ export default function Certificados() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Duplicata: mesmo CNPJ (se preenchido) OU mesmo nome de empresa
+    // Duplicata: mesmo nome de empresa (case-insensitive)
     const cnpjNorm = form.cnpj.replace(/\D/g, "");
     const isDuplicate = certificados.some(c => {
       if (c.id === editingId) return false;
-      const cCnpj = ((c as any).cnpj || "").replace(/\D/g, "");
-      if (cnpjNorm && cCnpj) return cCnpj === cnpjNorm;
-      return c.empresa.toLowerCase() === form.empresa.toLowerCase();
+      return c.empresa.toLowerCase().trim() === form.empresa.toLowerCase().trim();
     });
 
     if (isDuplicate) {

@@ -36,6 +36,7 @@ interface RotinaModelo {
   meses_offset: number | null;
   margem_seguranca: number | null;
   descricao: string | null;
+  palavras_chave: string[] | null;
 }
 
 interface RegrasMap {
@@ -69,6 +70,7 @@ const EMPTY_FORM = {
   nome_rotina: "", codigo_rotina: "", tipo_rotina: "", departamento: "Fiscal",
   periodicidade: "mensal", criticidade: "alta",
   dia_vencimento: "", meses_offset: "1", margem_seguranca: "3", descricao: "",
+  palavras_chave: "",
 };
 
 // ── Tipos para regras de ativação ─────────────────────────────────────────────
@@ -149,6 +151,7 @@ function ObrigacaoDialog({
         meses_offset:    initial.meses_offset?.toString() ?? "1",
         margem_seguranca:initial.margem_seguranca?.toString() ?? "3",
         descricao:       initial.descricao ?? "",
+        palavras_chave:  (initial.palavras_chave ?? []).join(", "),
       } : EMPTY_FORM);
 
       // Carrega regras e empresas se editando
@@ -187,6 +190,9 @@ function ObrigacaoDialog({
         meses_offset:    form.meses_offset     ? parseInt(form.meses_offset)     : 1,
         margem_seguranca:form.margem_seguranca ? parseInt(form.margem_seguranca) : 3,
         descricao:       form.descricao || null,
+        palavras_chave:  form.palavras_chave
+          ? form.palavras_chave.split(",").map(s => s.trim()).filter(Boolean)
+          : [],
         ativo:           true,
       };
       const { error } = initial
@@ -323,6 +329,18 @@ function ObrigacaoDialog({
           <div>
             <Label>Descrição</Label>
             <Textarea placeholder="Descrição opcional..." value={form.descricao} onChange={f("descricao")} rows={2} />
+          </div>
+          <div className="rounded-lg border border-blue-200 bg-blue-50/40 p-3 space-y-1.5">
+            <Label className="text-blue-800 font-medium">Palavras-chave para identificação automática do PDF</Label>
+            <Input
+              placeholder="Ex: PGDAS-D, Simples Nacional, Programa Gerador"
+              value={form.palavras_chave}
+              onChange={f("palavras_chave")}
+              className="bg-white"
+            />
+            <p className="text-xs text-blue-700">
+              Separe com vírgula. O robô usa essas palavras para identificar o tipo de obrigação ao ler o PDF.
+            </p>
           </div>
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>

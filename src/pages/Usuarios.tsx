@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Users, Trash2, Pencil, KeyRound, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -19,10 +18,8 @@ import { MODULES, ALL_MODULE_IDS, type ModuleId } from "@/lib/modules";
 type UsuarioPerfil = Tables<"usuarios_perfil">;
 
 const PAPEL_ROTINAS_OPTIONS = [
-  { value: "nenhum",      label: "Não participa" },
-  { value: "responsavel", label: "Responsável"   },
-  { value: "revisor",     label: "Revisor"       },
-  { value: "ambos",       label: "Resp. e Revisor" },
+  { value: "gerente",     label: "Gerente"     },
+  { value: "operacional", label: "Operacional" },
 ];
 
 const TODOS_DEPARTAMENTOS = ["Fiscal", "Contábil", "DP", "Gestão", "Legalização", "Financeiro"];
@@ -33,7 +30,7 @@ const EMPTY_FORM = {
   is_admin: false,
   pode_incluir: false, pode_editar: false, pode_excluir: false,
   modulos: [] as ModuleId[],
-  papel_rotinas: "nenhum",
+  papel_rotinas: "",
   departamentos: [] as string[],
 };
 
@@ -96,7 +93,7 @@ export default function Usuarios() {
       is_admin: u.is_admin,
       pode_incluir: u.pode_incluir, pode_editar: u.pode_editar, pode_excluir: u.pode_excluir,
       modulos: (u.modulos ?? []) as ModuleId[],
-      papel_rotinas: (u as any).papel_rotinas ?? "nenhum",
+      papel_rotinas: (u as any).papel_rotinas ?? "",
       departamentos: (u as any).departamentos ?? [],
     });
     setActiveTab("dados");
@@ -257,7 +254,10 @@ export default function Usuarios() {
             </Button>
           </DialogTrigger>
 
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent
+            style={{ maxWidth: "min(900px, 95vw)", maxHeight: "92vh" }}
+            className="overflow-y-auto"
+          >
             <DialogHeader>
               <DialogTitle>{editingId ? "Editar Membro" : "Cadastrar na Equipe"}</DialogTitle>
             </DialogHeader>
@@ -266,22 +266,22 @@ export default function Usuarios() {
               {/* ── Tabs: Dados | Acesso | [módulo por módulo selecionado] ── */}
               <Tabs value={activeTab} onValueChange={setActiveTab}>
 
-                {/* TabsList scrollável horizontalmente */}
-                <div className="overflow-x-auto pb-1">
-                  <TabsList className="inline-flex w-max gap-0 h-9">
-                    <TabsTrigger value="dados" className="text-xs px-3">Dados</TabsTrigger>
-                    <TabsTrigger value="acesso" className="text-xs px-3 flex items-center gap-1">
-                      <ShieldCheck className="h-3 w-3" />Acesso
+                {/* TabsList com quebra de linha — usa style inline para sobrepor inline-flex do shadcn */}
+                <TabsList
+                  style={{ display: "flex", flexWrap: "wrap", height: "auto" }}
+                  className="gap-1 p-1 rounded-lg w-full"
+                >
+                  <TabsTrigger value="dados" className="text-xs px-3 h-8">Dados</TabsTrigger>
+                  <TabsTrigger value="acesso" className="text-xs px-3 h-8 flex items-center gap-1">
+                    <ShieldCheck className="h-3 w-3" />Acesso
+                  </TabsTrigger>
+                  {visibleModuleTabs.map(m => (
+                    <TabsTrigger key={m.id} value={m.id} className="text-xs px-3 h-8 flex items-center gap-1">
+                      <m.icon className="h-3 w-3" />
+                      {m.label}
                     </TabsTrigger>
-                    {/* Aba por módulo — aparece somente se o módulo estiver selecionado (ou se for admin) */}
-                    {visibleModuleTabs.map(m => (
-                      <TabsTrigger key={m.id} value={m.id} className="text-xs px-3 flex items-center gap-1">
-                        <m.icon className="h-3 w-3" />
-                        {m.label}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                </div>
+                  ))}
+                </TabsList>
 
                 {/* ── Aba: Dados ── */}
                 <TabsContent value="dados" className="space-y-4 pt-2">
@@ -467,10 +467,8 @@ export default function Usuarios() {
                             {PAPEL_ROTINAS_OPTIONS.map(o => {
                               const selected = form.papel_rotinas === o.value;
                               const descs: Record<string, string> = {
-                                nenhum:      "Não aparece na seleção de responsável/revisor",
-                                responsavel: "Pode ser atribuído como Responsável pela execução",
-                                revisor:     "Pode ser atribuído como Revisor antes do envio",
-                                ambos:       "Pode ser Responsável ou Revisor conforme a tarefa",
+                                gerente:     "Vê e executa todas as tarefas do escritório; pode fiscalizar o operacional",
+                                operacional: "Vê apenas as empresas onde é responsável e executa suas tarefas",
                               };
                               return (
                                 <label key={o.value}
@@ -493,7 +491,7 @@ export default function Usuarios() {
                         </div>
 
                         {/* Departamentos */}
-                        {form.papel_rotinas !== "nenhum" && (
+                        {form.papel_rotinas !== "" && (
                           <div className="space-y-2">
                             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Departamentos sob responsabilidade</p>
                             <p className="text-xs text-muted-foreground">As tarefas geradas automaticamente serão atribuídas a este membro conforme o departamento marcado.</p>
@@ -557,6 +555,7 @@ export default function Usuarios() {
                     )}
                   </TabsContent>
                 ))}
+
               </Tabs>
 
               <Button type="submit" className="w-full">
@@ -606,10 +605,11 @@ export default function Usuarios() {
                   <TableCell>{moduloLabel(u)}</TableCell>
                   <TableCell>
                     {(() => {
-                      const papel = (u as any).papel_rotinas ?? "nenhum";
+                      const papel = (u as any).papel_rotinas ?? "";
                       const opt = PAPEL_ROTINAS_OPTIONS.find(o => o.value === papel);
-                      if (!opt || papel === "nenhum") return <span className="text-xs text-muted-foreground italic">—</span>;
-                      return <Badge variant="outline" className="text-[10px]">{opt.label}</Badge>;
+                      if (!opt) return <span className="text-xs text-muted-foreground italic">—</span>;
+                      const cor = papel === "gerente" ? "text-blue-700 border-blue-300" : "text-amber-700 border-amber-300";
+                      return <Badge variant="outline" className={`text-[10px] ${cor}`}>{opt.label}</Badge>;
                     })()}
                   </TableCell>
                   <TableCell>

@@ -2,26 +2,25 @@ import { useState, useEffect, useMemo } from "react";
 import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO, addMonths, setDate, subDays, getDaysInMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  Plus, Search, Filter, ClipboardList, Clock, AlertTriangle,
+  Plus, Search, ClipboardList, Clock, AlertTriangle,
   CheckCircle, LayoutGrid, List, ChevronRight, Building2, User,
   CalendarDays, Trash2, Sparkles,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  useRotinas, useCreateRotina, useDeleteRotina, useCatalogoObrigacoes,
+  useRotinas, useCreateRotina, useDeleteRotina,
   useGerarObrigacoes,
   type Rotina, type RotinaStatus, type RotinaRisco,
 } from "@/hooks/useRotinas";
@@ -43,11 +42,6 @@ const ETAPA_CONFIG: Record<string, { label: string; color: string; bg: string }>
 };
 
 const ETAPA_ORDER = ["preparar", "revisar", "enviar", "concluido"];
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function getCompetenciaMes(): string {
-  return format(startOfMonth(new Date()), "yyyy-MM-dd");
-}
 
 // ── Criar Rotina Dialog ───────────────────────────────────────────────────────
 interface ObrigacaoItem {
@@ -424,7 +418,7 @@ function NovaRotinaDialog({ open, onOpenChange, empresas, equipe }: NovaRotinaDi
 }
 
 // ── Helpers (shared) ─────────────────────────────────────────────────────────
-function resolvePerfilCodigo(regime: string, atividade: string, prolabore: boolean, funcionario: boolean): string {
+function resolvePerfilCodigo(regime: string, atividade: string, _prolabore: boolean, funcionario: boolean): string {
   const r = regime === "simples" ? "SN" : regime === "presumido" ? "LP" : regime === "real" ? "LR" : null;
   const a = atividade === "servico" ? "SERV" : atividade === "comercio" ? "COM" : atividade === "misto" ? "MIX" : null;
   if (!r || !a) return "—";
@@ -440,7 +434,6 @@ interface GerarDialogProps {
 }
 
 function GerarRotinasPerfilDialog({ open, onOpenChange, empresas, equipe }: GerarDialogProps) {
-  const { user, ownerUserId } = useAuth();
   const { toast } = useToast();
   const createRotina = useCreateRotina();
 
@@ -809,7 +802,7 @@ export default function Rotinas() {
 
   // Filters
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterEmpresa, setFilterEmpresa] = useState("_todos");
+  const [selectedEmpresaId, setSelectedEmpresaId] = useState("_todos");
   const [filterStatus, setFilterStatus] = useState("_todos");
   const [filterTipo, setFilterTipo] = useState("_todos");
   const [filterMes, setFilterMes] = useState(format(new Date(), "yyyy-MM"));
@@ -870,7 +863,7 @@ export default function Rotinas() {
     // Mes filter (por competência ou vencimento)
     list = list.filter(r => rotinaMatchesMes(r, mesStart, mesEnd));
 
-    if (filterEmpresa !== "_todos") list = list.filter(r => r.empresa_id === filterEmpresa);
+    if (selectedEmpresaId !== "_todos") list = list.filter(r => r.empresa_id === selectedEmpresaId);
     if (filterStatus  !== "_todos") list = list.filter(r => r.status === filterStatus);
     if (filterTipo    !== "_todos") list = list.filter(r => r.tipo === filterTipo);
     if (searchTerm) {
@@ -881,7 +874,7 @@ export default function Rotinas() {
       );
     }
     return list;
-  }, [rotinas, filterEmpresa, filterStatus, filterTipo, searchTerm, filterMes]);
+  }, [rotinas, selectedEmpresaId, filterStatus, filterTipo, searchTerm, filterMes]);
 
   // ── Kanban grouping ──
   const kanbanCols = useMemo(() => {
@@ -897,6 +890,26 @@ export default function Rotinas() {
     const set = new Set(rotinas.map(r => r.tipo));
     return Array.from(set).sort();
   }, [rotinas]);
+
+  // ── Contagem de rotinas por empresa no mês ──
+  const contByEmpresa = useMemo(() => {
+    const map: Record<string, { total: number; atrasadas: number; pendentes: number }> = {};
+    const hoje = new Date();
+    rotinasMes.forEach(r => {
+      const eid = r.empresa_id ?? "_sem_empresa";
+      if (!map[eid]) map[eid] = { total: 0, atrasadas: 0, pendentes: 0 };
+      map[eid].total++;
+      if (!["concluida", "nao_aplicavel"].includes(r.status)) {
+        map[eid].pendentes++;
+        if (parseISO(r.data_vencimento) < hoje) map[eid].atrasadas++;
+      }
+    });
+    return map;
+  }, [rotinasMes]);
+
+  const empresaAtual = selectedEmpresaId !== "_todos"
+    ? empresas.find(e => e.id === selectedEmpresaId)
+    : null;
 
   async function handleDelete(id: string) {
     try {
@@ -916,9 +929,9 @@ export default function Rotinas() {
   ];
 
   return (
-    <div className="flex-1 space-y-6 p-6">
+    <div className="flex-1 flex flex-col p-6 gap-4 min-h-0">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: NAVY }}>Rotinas</h1>
           <p className="text-sm text-muted-foreground">Gestão de obrigações e tarefas contábeis</p>
@@ -954,7 +967,7 @@ export default function Rotinas() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
         {kpiCards.map(k => (
           <Card key={k.label}>
             <CardContent className="p-4 flex items-center gap-3">
@@ -970,104 +983,169 @@ export default function Rotinas() {
         ))}
       </div>
 
-      {/* Filters bar */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-wrap gap-3 items-end">
-            {/* Mês */}
-            <div className="min-w-[140px]">
-              <Label className="text-xs text-muted-foreground">Competência</Label>
-              <Input
-                type="month"
-                value={filterMes}
-                onChange={e => setFilterMes(e.target.value)}
-                className="h-9 text-sm"
-              />
-            </div>
+      {/* Main two-panel layout */}
+      <div className="flex gap-4 flex-1 min-h-0">
 
-            {/* Empresa */}
-            <div className="min-w-[200px]">
-              <Label className="text-xs text-muted-foreground">Empresa</Label>
-              <Select value={filterEmpresa} onValueChange={setFilterEmpresa}>
-                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Todas" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_todos">Todas</SelectItem>
-                  {empresas.map(e => <SelectItem key={e.id} value={e.id}>{e.razao_social}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+        {/* ── Left: company list ── */}
+        <div className="w-60 shrink-0 flex flex-col gap-2">
+          {/* Month picker */}
+          <div>
+            <Label className="text-xs text-muted-foreground">Competência</Label>
+            <Input
+              type="month"
+              value={filterMes}
+              onChange={e => setFilterMes(e.target.value)}
+              className="h-9 text-sm mt-1"
+            />
+          </div>
 
-            {/* Status */}
-            <div className="min-w-[160px]">
-              <Label className="text-xs text-muted-foreground">Status</Label>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mt-1">Empresas</p>
+
+          <div className="flex flex-col gap-1 overflow-y-auto">
+            {/* "Todas" option */}
+            <button
+              onClick={() => setSelectedEmpresaId("_todos")}
+              className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm text-left transition-colors ${
+                selectedEmpresaId === "_todos"
+                  ? "text-white font-semibold"
+                  : "hover:bg-muted text-gray-700"
+              }`}
+              style={selectedEmpresaId === "_todos" ? { backgroundColor: NAVY } : {}}
+            >
+              <span className="truncate">Todas as empresas</span>
+              <span className={`text-xs ml-1 shrink-0 font-bold ${selectedEmpresaId === "_todos" ? "text-white/80" : "text-gray-400"}`}>
+                {rotinasMes.length}
+              </span>
+            </button>
+
+            {/* Per-company rows */}
+            {empresas
+              .filter(e => (contByEmpresa[e.id]?.total ?? 0) > 0)
+              .map(e => {
+                const c = contByEmpresa[e.id] ?? { total: 0, atrasadas: 0, pendentes: 0 };
+                const isActive = selectedEmpresaId === e.id;
+                return (
+                  <button
+                    key={e.id}
+                    onClick={() => setSelectedEmpresaId(e.id)}
+                    className={`flex items-start justify-between px-3 py-2 rounded-lg text-sm text-left transition-colors ${
+                      isActive ? "text-white font-semibold" : "hover:bg-muted text-gray-700"
+                    }`}
+                    style={isActive ? { backgroundColor: NAVY } : {}}
+                  >
+                    <span className="truncate flex-1 leading-snug">{e.razao_social}</span>
+                    <div className="flex flex-col items-end ml-1 shrink-0 gap-0.5">
+                      <span className={`text-xs font-bold ${isActive ? "text-white/80" : "text-gray-400"}`}>{c.total}</span>
+                      {c.atrasadas > 0 && (
+                        <span className={`text-[10px] font-semibold ${isActive ? "text-red-200" : "text-red-500"}`}>
+                          {c.atrasadas} atr.
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
+            }
+
+            {/* Empresas sem rotinas no mês */}
+            {empresas
+              .filter(e => !(contByEmpresa[e.id]?.total > 0))
+              .map(e => {
+                const isActive = selectedEmpresaId === e.id;
+                return (
+                  <button
+                    key={e.id}
+                    onClick={() => setSelectedEmpresaId(e.id)}
+                    className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm text-left transition-colors ${
+                      isActive ? "text-white font-semibold" : "hover:bg-muted text-gray-400"
+                    }`}
+                    style={isActive ? { backgroundColor: NAVY } : {}}
+                  >
+                    <span className="truncate">{e.razao_social}</span>
+                    <span className="text-xs ml-1 shrink-0">0</span>
+                  </button>
+                );
+              })
+            }
+          </div>
+        </div>
+
+        {/* ── Right: rotinas panel ── */}
+        <div className="flex-1 flex flex-col gap-3 min-w-0">
+
+          {/* Sub-header: empresa selecionada + filtros */}
+          <div className="flex flex-wrap items-end gap-2">
+            {empresaAtual && (
+              <div className="flex items-center gap-2 mr-2">
+                <Building2 className="h-4 w-4 shrink-0" style={{ color: NAVY }} />
+                <span className="font-semibold text-sm" style={{ color: NAVY }}>{empresaAtual.razao_social}</span>
+                <button
+                  className="text-xs text-muted-foreground hover:text-gray-600 underline"
+                  onClick={() => setSelectedEmpresaId("_todos")}
+                >
+                  ver todas
+                </button>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2 flex-1 items-end">
+              {/* Status */}
               <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Todos" /></SelectTrigger>
+                <SelectTrigger className="h-8 text-xs w-[150px]"><SelectValue placeholder="Status" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="_todos">Todos</SelectItem>
+                  <SelectItem value="_todos">Todos os status</SelectItem>
                   {(Object.entries(STATUS_CONFIG) as [RotinaStatus, { label: string }][]).map(([k, v]) => (
                     <SelectItem key={k} value={k}>{v.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            </div>
 
-            {/* Tipo */}
-            <div className="min-w-[150px]">
-              <Label className="text-xs text-muted-foreground">Tipo</Label>
+              {/* Tipo */}
               <Select value={filterTipo} onValueChange={setFilterTipo}>
-                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Todos" /></SelectTrigger>
+                <SelectTrigger className="h-8 text-xs w-[130px]"><SelectValue placeholder="Tipo" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="_todos">Todos</SelectItem>
+                  <SelectItem value="_todos">Todos os tipos</SelectItem>
                   {tiposDisponiveis.map(t => <SelectItem key={t} value={t}>{t.toUpperCase()}</SelectItem>)}
                 </SelectContent>
               </Select>
-            </div>
 
-            {/* Search */}
-            <div className="flex-1 min-w-[200px]">
-              <Label className="text-xs text-muted-foreground">Buscar</Label>
-              <div className="relative">
+              {/* Search */}
+              <div className="relative flex-1 min-w-[160px]">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
-                  placeholder="Título ou empresa..."
+                  placeholder="Buscar título..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  className="h-9 pl-8 text-sm"
+                  className="h-8 pl-8 text-xs"
                 />
               </div>
-            </div>
 
-            {/* View toggle */}
-            <div className="flex gap-1 ml-auto">
-              <Button
-                size="sm"
-                variant={viewMode === "lista" ? "default" : "outline"}
-                style={viewMode === "lista" ? { backgroundColor: NAVY } : {}}
-                onClick={() => setViewMode("lista")}
-              >
-                <List className="h-4 w-4" />
-              </Button>
-              <Button
-                size="sm"
-                variant={viewMode === "kanban" ? "default" : "outline"}
-                style={viewMode === "kanban" ? { backgroundColor: NAVY } : {}}
-                onClick={() => setViewMode("kanban")}
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </Button>
+              {/* View toggle */}
+              <div className="flex gap-1 ml-auto">
+                <Button size="sm" variant={viewMode === "lista" ? "default" : "outline"}
+                  style={viewMode === "lista" ? { backgroundColor: NAVY } : {}}
+                  onClick={() => setViewMode("lista")} className="h-8 w-8 p-0">
+                  <List className="h-4 w-4" />
+                </Button>
+                <Button size="sm" variant={viewMode === "kanban" ? "default" : "outline"}
+                  style={viewMode === "kanban" ? { backgroundColor: NAVY } : {}}
+                  onClick={() => setViewMode("kanban")} className="h-8 w-8 p-0">
+                  <LayoutGrid className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Content */}
-      {isLoading ? (
-        <div className="flex items-center justify-center h-40 text-muted-foreground">Carregando...</div>
-      ) : viewMode === "lista" ? (
-        <ListaView rotinas={filtered} onSelect={r => setSelectedRotinaId(r.id)} onDelete={handleDelete} />
-      ) : (
-        <KanbanView cols={kanbanCols} onSelect={r => setSelectedRotinaId(r.id)} />
-      )}
+          {/* Content */}
+          {isLoading ? (
+            <div className="flex items-center justify-center h-40 text-muted-foreground">Carregando...</div>
+          ) : viewMode === "lista" ? (
+            <ListaView rotinas={filtered} onSelect={r => setSelectedRotinaId(r.id)} onDelete={handleDelete} />
+          ) : (
+            <KanbanView cols={kanbanCols} onSelect={r => setSelectedRotinaId(r.id)} />
+          )}
+        </div>
+      </div>
 
       {/* Detalhe drawer */}
       {selectedRotina && (

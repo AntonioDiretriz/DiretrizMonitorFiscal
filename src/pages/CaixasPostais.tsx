@@ -273,6 +273,25 @@ export default function CaixasPostais() {
     const numero        = parseInt(form.numero);
     const dataVencimento = format(addDays(toDate(form.data_inicio), 365), "yyyy-MM-dd");
 
+    // Bloqueia duplicata: mesma empresa ativa
+    if (!editingId) {
+      const cnpjNorm = form.cnpj.replace(/\D/g, "");
+      const duplicata = caixas.find(c => {
+        if (c.contrato_status === "rescindido") return false;
+        const cCnpj = ((c as any).cnpj || "").replace(/\D/g, "");
+        if (cnpjNorm && cCnpj) return cCnpj === cnpjNorm;
+        return c.empresa.toLowerCase() === form.empresa.toLowerCase().trim();
+      });
+      if (duplicata) {
+        toast({
+          title: "Caixa postal duplicada",
+          description: `Já existe uma caixa postal ativa para "${form.empresa}". Edite o registro existente.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     // Check if the chosen number belongs to a rescinded box (re-rental)
     const existente = caixas.find(c => c.numero === numero && c.contrato_status === "rescindido");
 

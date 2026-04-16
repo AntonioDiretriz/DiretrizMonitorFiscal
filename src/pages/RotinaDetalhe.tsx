@@ -3,7 +3,7 @@ import { format, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   X, CheckCircle, Clock, AlertTriangle, Send, Eye, FileText,
-  MessageSquare, Plus, Link, Trash2, ListChecks, ShieldAlert,
+  MessageSquare, Plus, Link, Trash2, ListChecks, ShieldAlert, Upload, Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -120,6 +120,7 @@ export default function RotinaDetalhe({ rotina, onClose, onUpdated }: Props) {
   const [devolvendo, setDevolvendo]   = useState(false);
   const [motivoDevolucao, setMotivoDevolucao] = useState("");
   const [novaTarefa, setNovaTarefa]   = useState("");
+  const [uploadingFile, setUploadingFile] = useState(false);
 
   const today = new Date();
   const venc  = new Date(rotina.data_vencimento + "T12:00:00");
@@ -201,6 +202,54 @@ export default function RotinaDetalhe({ rotina, onClose, onUpdated }: Props) {
       rotina_id: rotina.id, nome: novaTarefa.trim(), ordem: tarefas.length,
     });
     setNovaTarefa("");
+  };
+
+  // Upload de comprovante → Supabase Storage → dispara automação
+  const uploadComprovante = async (file: File) => {
+    if (!user || !rotina.empresa_id) return;
+    setUploadingFile(true);
+    try {
+      // Busca CNPJ da empresa
+      const { data: emp } = await (supabase as any)
+        .from("empresas").select("cnpj").eq("id", rotina.empresa_id).single();
+      const cnpj = (emp?.cnpj ?? "").replace(/\D/g, "");
+      const competencia = rotina.competencia
+        ? rotina.competencia.slice(0, 7).replace("-", "")
+        : new Date().toISOString().slice(0, 7).replace("-", "");
+      const tipo = rotina.tipo.toLowerCase();
+      const ext  = file.name.split(".").pop() ?? "pdf";
+      const path = `${tipo}/${cnpj}/${competencia}/${Date.now()}_${file.name}`;
+
+      // Upload para o bucket
+      const { error: upErr } = await supabase.storage
+        .from("obrigacoes-docs")
+        .upload(path, file, { upsert: false, contentType: file.type });
+      if (upErr) throw upErr;
+
+      const { data: { publicUrl } } = supabase.storage.from("obrigacoes-docs").getPublicUrl(path);
+
+      // Chama a Edge Function para processar
+      const { data: efData, error: efErr } = await supabase.functions.invoke(
+        "processar-arquivo-rotina",
+        { body: { arquivo_path: path, arquivo_url: publicUrl, user_id: user.id } }
+      );
+      if (efErr) throw efErr;
+
+      if (efData?.ok) {
+        toast({ title: "Comprovante enviado — rotina concluída automaticamente!" });
+      } else {
+        // Se automação não encontrou config, só registra como evidência
+        await createEvid.mutateAsync({
+          rotina_id: rotina.id, tipo: "comprovante",
+          arquivo_url: publicUrl, observacao: `Arquivo: ${file.name}`,
+        });
+        toast({ title: "Comprovante anexado à evidência." });
+      }
+    } catch (err: any) {
+      toast({ title: "Erro no upload", description: err.message, variant: "destructive" });
+    } finally {
+      setUploadingFile(false);
+    }
   };
 
   return (
@@ -442,9 +491,41 @@ export default function RotinaDetalhe({ rotina, onClose, onUpdated }: Props) {
                 </div>
               )}
               {rotina.status !== "concluida" && (
-                <div className="space-y-3 border-t pt-3">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase">Registrar Evidência</p>
+                <div className="space-y-4 border-t pt-3">
+
+                  {/* Upload automático */}
+                  <div className="rounded-lg border-2 border-dashed border-blue-200 bg-blue-50/40 p-4 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Bot className="h-4 w-4 text-blue-600" />
+                      <p className="text-xs font-semibold text-blue-700">Upload com automação</p>
+                    </div>
+                    <p className="text-xs text-blue-600">
+                      Faça o upload do comprovante e o sistema conclui a obrigação automaticamente (se configurado em Automação de Rotinas).
+                    </p>
+                    <label className="cursor-pointer block">
+                      <input
+                        type="file"
+                        accept=".pdf,.xlsx,.xml,.png,.jpg"
+                        className="sr-only"
+                        onChange={e => { if (e.target.files?.[0]) uploadComprovante(e.target.files[0]); }}
+                        disabled={uploadingFile}
+                      />
+                      <div className="flex items-center justify-center gap-2 rounded-md border border-blue-300 bg-white hover:bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 transition-colors">
+                        <Upload className="h-3.5 w-3.5" />
+                        {uploadingFile ? "Enviando..." : "Selecionar arquivo (PDF, XML, XLSX...)"}
+                      </div>
+                    </label>
+                    {(rotina as any).arquivo_url && (
+                      <a href={(rotina as any).arquivo_url} target="_blank" rel="noreferrer"
+                        className="text-xs text-blue-600 underline flex items-center gap-1">
+                        <FileText className="h-3 w-3" /> Ver arquivo anexado
+                      </a>
+                    )}
+                  </div>
+
+                  {/* Evidência manual */}
                   <div className="space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase">Ou registrar manualmente</p>
                     <Select value={evidForm.tipo} onValueChange={v => setEvidForm({ ...evidForm, tipo: v })}>
                       <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent>

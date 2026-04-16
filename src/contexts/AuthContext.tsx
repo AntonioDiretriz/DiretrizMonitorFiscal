@@ -11,6 +11,7 @@ interface AuthContextType {
   user: User | null;
   ownerUserId: string | null;
   perfilId: string | null;
+  papelRotinas: string | null;
   displayName: string;
   loading: boolean;
   podeIncluir: boolean;
@@ -28,6 +29,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   ownerUserId: null,
   perfilId: null,
+  papelRotinas: null,
   displayName: "",
   loading: true,
   podeIncluir: true,
@@ -85,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const ownerUserId = perfil?.escritorio_owner_id ?? session?.user?.id ?? null;
   // perfilId: the usuarios_perfil.id for team members (null for owner)
   const perfilId = perfil?.id ?? null;
+  const papelRotinas = (perfil as any)?.papel_rotinas ?? null;
   const displayName = perfil?.nome || session?.user?.email?.split("@")[0] || "";
   const isAdmin = isOwner || perfil?.is_admin === true;
 
@@ -105,6 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: session?.user ?? null,
       ownerUserId,
       perfilId,
+      papelRotinas,
       displayName,
       loading,
       podeIncluir,

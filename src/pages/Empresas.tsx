@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
@@ -346,6 +346,7 @@ const EMPTY_FORM = {
 export default function Empresas() {
   const { user, podeIncluir: PODE_INCLUIR, podeEditar: PODE_EDITAR, podeExcluir: PODE_EXCLUIR, ownerUserId } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [empresas,   setEmpresas]   = useState<Tables<"empresas">[]>([]);
@@ -360,7 +361,7 @@ export default function Empresas() {
   const [socios,    setSocios]    = useState<Socio[]>([]);
   const [socioForm, setSocioForm] = useState<Socio>(EMPTY_SOCIO);
   const [activeTab, setActiveTab] = useState("empresa");
-  const [equipe,    setEquipe]    = useState<{ id: string; nome: string; papel_rotinas: string }[]>([]);
+  const [equipe,    setEquipe]    = useState<{ id: string; nome: string }[]>([]);
 
   const [loadingCnpj, setLoadingCnpj] = useState(false);
   const [loadingCep,  setLoadingCep]  = useState(false);
@@ -400,14 +401,13 @@ export default function Empresas() {
 
   useEffect(() => { loadEmpresas(); }, [loadEmpresas]);
 
-  // Carrega membros da equipe que podem ser responsáveis
+  // Carrega todos os membros da equipe (sem filtro de papel)
   useEffect(() => {
     if (!ownerUserId) return;
     (supabase as any)
       .from("usuarios_perfil")
-      .select("id, nome, papel_rotinas")
+      .select("id, nome")
       .eq("escritorio_owner_id", ownerUserId)
-      .in("papel_rotinas", ["responsavel", "ambos"])
       .order("nome")
       .then(({ data }: any) => setEquipe(data ?? []));
   }, [ownerUserId]);
@@ -751,26 +751,26 @@ export default function Empresas() {
               </DialogTrigger>
             )}
 
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{editingId ? "Editar Empresa" : "Cadastrar Empresa"}</DialogTitle>
               </DialogHeader>
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <Tabs value={activeTab} onValueChange={tab => { setActiveTab(tab); if (tab === "financeiro" && editingId) loadPcContas(editingId); }}>
-                  <TabsList className="grid w-full grid-cols-5">
-                    <TabsTrigger value="empresa">Empresa</TabsTrigger>
-                    <TabsTrigger value="endereco" className="flex items-center gap-1">
-                      <MapPin className="h-3.5 w-3.5" /> Endereço
+                  <TabsList className="flex w-full">
+                    <TabsTrigger value="empresa" className="flex-1 min-w-0">Empresa</TabsTrigger>
+                    <TabsTrigger value="endereco" className="flex-1 min-w-0 flex items-center justify-center gap-1">
+                      <MapPin className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">Endereço</span>
                     </TabsTrigger>
-                    <TabsTrigger value="socios" className="flex items-center gap-1">
-                      <Users2 className="h-3.5 w-3.5" /> Sócios {socios.length > 0 && `(${socios.length})`}
+                    <TabsTrigger value="socios" className="flex-1 min-w-0 flex items-center justify-center gap-1">
+                      <Users2 className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">Sócios {socios.length > 0 && `(${socios.length})`}</span>
                     </TabsTrigger>
-                    <TabsTrigger value="financeiro" className="flex items-center gap-1">
-                      <Banknote className="h-3.5 w-3.5" /> Financeiro
+                    <TabsTrigger value="financeiro" className="flex-1 min-w-0 flex items-center justify-center gap-1">
+                      <Banknote className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">Financeiro</span>
                     </TabsTrigger>
-                    <TabsTrigger value="monitoramento" className="flex items-center gap-1">
-                      <Monitor className="h-3.5 w-3.5" /> Monitoramento
+                    <TabsTrigger value="monitoramento" className="flex-1 min-w-0 flex items-center justify-center gap-1">
+                      <Monitor className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">Monitoramento</span>
                     </TabsTrigger>
                   </TabsList>
 
@@ -1068,9 +1068,21 @@ export default function Empresas() {
                     </div>
 
                     {equipe.length === 0 ? (
-                      <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                        Nenhum membro da equipe com papel de Responsável cadastrado.<br />
-                        Acesse <strong>Configuração → Equipe</strong> e defina o papel de cada membro.
+                      <div className="rounded-lg border border-dashed p-8 text-center space-y-3">
+                        <p className="text-sm text-muted-foreground">
+                          Nenhum membro cadastrado na equipe ainda.
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Cadastre os funcionários em <strong>Configuração → Equipe</strong> para poder vinculá-los às empresas.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => { setDialogOpen(false); navigate("/configuracao/equipe"); }}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white"
+                          style={{ backgroundColor: "#10143D" }}
+                        >
+                          Ir para Configuração → Equipe
+                        </button>
                       </div>
                     ) : (
                       <div className="space-y-4">

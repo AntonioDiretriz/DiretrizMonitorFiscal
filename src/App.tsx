@@ -25,6 +25,7 @@ import Obrigacoes from "./pages/Obrigacoes";
 import Rotinas from "./pages/Rotinas";
 import CalendarioRotinas from "./pages/CalendarioRotinas";
 import DashboardRotinas from "./pages/DashboardRotinas";
+import AutomacaoRotinas from "./pages/AutomacaoRotinas";
 import DiagnosticoFiscal from "./pages/DiagnosticoFiscal";
 import ConfiguracaoObrigacoes from "./pages/ConfiguracaoObrigacoes";
 import NotFound from "./pages/NotFound";
@@ -65,6 +66,7 @@ const App = () => (
               <Route path="/rotinas" element={<Rotinas />} />
               <Route path="/rotinas/calendario" element={<CalendarioRotinas />} />
               <Route path="/rotinas/dashboard" element={<DashboardRotinas />} />
+              <Route path="/rotinas/automacao" element={<AutomacaoRotinas />} />
               <Route path="/diagnostico-fiscal" element={<DiagnosticoFiscal />} />
               <Route path="/configuracao/obrigacoes" element={<ConfiguracaoObrigacoes />} />
             </Route>
