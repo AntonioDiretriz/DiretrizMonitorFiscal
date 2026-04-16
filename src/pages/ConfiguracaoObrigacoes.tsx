@@ -182,39 +182,99 @@ function ObrigacaoDialog({
     setAnalisandoPdf(true);
     setPdfAnalisado(false);
     try {
-      // Lê o PDF como texto bruto (funciona para PDFs text-based do governo)
       const bytes = new Uint8Array(await file.arrayBuffer());
       const decoder = new TextDecoder("latin1");
       const raw = decoder.decode(bytes);
       const texts: string[] = [];
-      const re = /\(([^)\\]{1,200})\)/g;
-      let m;
-      while ((m = re.exec(raw)) !== null) {
-        const t = m[1].replace(/\\(\d{3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8))).replace(/\\n/g, " ").trim();
-        if (t.length > 3 && /[a-zA-Z]/.test(t)) texts.push(t);
-      }
-      const text = texts.join(" ").toUpperCase();
 
-      // Palavras-chave candidatas: frases com 4+ letras que aparecem no documento
-      const candidatas = new Set<string>();
+      // Método 1: strings entre parênteses — formato padrão PDF
+      const re1 = /\(([^)\\]{1,300})\)/g;
+      let m: RegExpExecArray | null;
+      while ((m = re1.exec(raw)) !== null) {
+        const t = m[1]
+          .replace(/\\(\d{3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)))
+          .replace(/\\n/g, " ").replace(/\\r/g, " ").replace(/\\\\/g, "\\")
+          .trim();
+        if (t.length > 1 && /[a-zA-Z0-9]/.test(t)) texts.push(t);
+      }
+
+      // Método 2: strings hexadecimais <XXXX> — PDFs modernos
+      const re2 = /<([0-9A-Fa-f]{4,})>/g;
+      while ((m = re2.exec(raw)) !== null) {
+        const hex = m[1];
+        let decoded = "";
+        for (let i = 0; i < hex.length - 3; i += 4) {
+          const code = parseInt(hex.slice(i, i + 4), 16);
+          if (code > 31 && code < 65535) decoded += String.fromCharCode(code);
+        }
+        if (decoded.trim().length > 2 && /[a-zA-Z0-9]/.test(decoded))
+          texts.push(decoded.trim());
+      }
+
+      const fullText = texts.join(" ");
+      // Remove acentos para comparação robusta
+      const upper = fullText.toUpperCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+      // ── Extrai CNPJ ───────────────────────────────────────────────────────
+      const cnpjMatch = /\d{2}[\.\s]?\d{3}[\.\s]?\d{3}[\/\s]?\d{4}[-\s]?\d{2}/.exec(fullText);
+      const cnpjDetectado = cnpjMatch
+        ? cnpjMatch[0].replace(/\D/g, "").replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5")
+        : null;
+
+      // ── Extrai competência MM/YYYY ─────────────────────────────────────────
+      const compMatch = /\b(\d{2})\/(\d{4})\b/.exec(fullText);
+      const competencia = compMatch && parseInt(compMatch[1]) >= 1 && parseInt(compMatch[1]) <= 12
+        ? `${compMatch[1]}/${compMatch[2]}` : null;
+
+      // ── Extrai data de vencimento e dia ───────────────────────────────────
+      const vencMatch = /(?:VENCIMENTO|VENC\.?)[:\s]+(\d{2})[\/\-](\d{2})[\/\-](\d{4})/i.exec(fullText);
+      const vencimento   = vencMatch ? `${vencMatch[1]}/${vencMatch[2]}/${vencMatch[3]}` : null;
+      const diaVencimento = vencMatch ? parseInt(vencMatch[1]) : null;
+
+      // ── Detecta palavras-chave do tipo de obrigação ───────────────────────
       const frases = [
-        "PGDAS-D","SIMPLES NACIONAL","DOCUMENTO DE ARRECADAÇÃO","DAS ","DAS-MEI",
-        "FGTS","SEFIP","FUNDO DE GARANTIA","INSS","GPS","GUIA DA PREVIDÊNCIA",
-        "PIS","COFINS","PIS/COFINS","ISS","IMPOSTO SOBRE SERVIÇOS","NFS-E",
-        "IRPJ","CSLL","DARF","DCTF","DECLARAÇÃO DE DÉBITOS","ECF","ECD",
-        "SPED","DEFIS","RAIS","ESOCIAL","E-SOCIAL","CAGED","DIRF",
+        "PGDAS-D","PGDAS","SIMPLES NACIONAL","PROGRAMA GERADOR",
+        "DOCUMENTO DE ARRECADACAO","DAS","DAS-MEI","GUIA DAS","SIMEI",
+        "FGTS","SEFIP","FUNDO DE GARANTIA","GRRF","DARF FGTS",
+        "INSS","GPS","GUIA DA PREVIDENCIA","INSTITUTO NACIONAL",
+        "PIS/COFINS","PIS","COFINS","CONTRIBUICAO SOCIAL",
+        "ISS","IMPOSTO SOBRE SERVICOS","NFS-E","NOTA FISCAL SERVICO",
+        "IRPJ","CSLL","IMPOSTO DE RENDA","DARF IRPJ",
+        "DCTF","DECLARACAO DE DEBITOS","CREDITOS TRIBUTARIOS FEDERAIS",
+        "ECF","ESCRITURACAO CONTABIL FISCAL","IRPJ/CSL",
+        "ECD","ESCRITURACAO CONTABIL DIGITAL","SPED CONTABIL",
+        "DEFIS","RAIS","ESOCIAL","E-SOCIAL","CAGED","DIRF","ICMS",
       ];
+      const candidatas = new Set<string>();
       for (const f of frases) {
-        if (text.includes(f)) candidatas.add(f.trim());
+        const norm = f.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        if (upper.includes(norm)) candidatas.add(f.trim());
       }
 
-      if (candidatas.size > 0) {
-        const kws = Array.from(candidatas).join(", ");
-        setForm(p => ({ ...p, palavras_chave: kws }));
+      const achouAlgo = candidatas.size > 0 || cnpjDetectado || competencia || vencimento;
+
+      if (achouAlgo) {
+        if (candidatas.size > 0)
+          setForm(p => ({ ...p, palavras_chave: Array.from(candidatas).join(", ") }));
+        if (diaVencimento)
+          setForm(p => ({ ...p, dia_vencimento: String(diaVencimento) }));
         setPdfAnalisado(true);
-        toast({ title: "PDF analisado!", description: `${candidatas.size} palavra(s)-chave identificada(s).` });
+
+        const detalhes = [
+          candidatas.size > 0 ? `${candidatas.size} palavra(s)-chave` : "",
+          cnpjDetectado ? `CNPJ: ${cnpjDetectado}` : "",
+          competencia    ? `Competência: ${competencia}` : "",
+          vencimento     ? `Vencimento: ${vencimento}` : "",
+        ].filter(Boolean).join(" · ");
+
+        toast({ title: "PDF analisado com sucesso!", description: detalhes });
       } else {
-        toast({ title: "Nenhuma palavra-chave encontrada", description: "Tente adicionar manualmente no campo abaixo.", variant: "destructive" });
+        toast({
+          title: "Nenhuma informação encontrada",
+          description: "O PDF pode ser escaneado (imagem) ou usar codificação não suportada. Preencha as palavras-chave manualmente.",
+          variant: "destructive",
+        });
       }
     } catch (err: any) {
       toast({ title: "Erro ao ler PDF", description: err.message, variant: "destructive" });
