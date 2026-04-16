@@ -928,15 +928,24 @@ export default function Certificados() {
       </Card>
 
       {/* Rastreamento de Notificações por Email */}
-      {emailNotificacoes.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Mail className="h-4 w-4 text-blue-500" />
-              Notificações de Email Enviadas
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Mail className="h-4 w-4 text-blue-500" />
+            Rastreamento de Notificações por Email
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Alertas automáticos disparados 30, 15 e 7 dias antes do vencimento
+          </p>
+        </CardHeader>
+        <CardContent className="p-0">
+          {emailNotificacoes.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
+              <Mail className="h-8 w-8 opacity-30" />
+              <p className="text-sm">Nenhum email enviado ainda</p>
+              <p className="text-xs">Os alertas aparecem aqui assim que forem disparados</p>
+            </div>
+          ) : (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -945,7 +954,7 @@ export default function Certificados() {
                   <TableHead>Enviado em</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Aberto em</TableHead>
-                  <TableHead>Clicou em</TableHead>
+                  <TableHead>Clicou WhatsApp em</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -988,9 +997,9 @@ export default function Certificados() {
                 })}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
