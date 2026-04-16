@@ -164,7 +164,7 @@ function CalendarioMes({
                   key={o.id}
                   className="truncate text-[10px] rounded px-1 mb-0.5 cursor-pointer"
                   style={{
-                    backgroundColor: STATUS_CONFIG[o.status]?.color + "25" ?? GRAY + "25",
+                    backgroundColor: (STATUS_CONFIG[o.status]?.color ?? GRAY) + "25",
                     color: STATUS_CONFIG[o.status]?.color ?? GRAY,
                   }}
                   title={`${TIPO_LABEL[o.tipo] ?? o.tipo}${o.empresas ? " — " + o.empresas.razao_social : ""}`}
@@ -209,7 +209,7 @@ export default function Obrigacoes() {
     if (!user) return;
     setLoading(true);
     const [obRes, empRes] = await Promise.all([
-      supabase.from("obrigacoes")
+      (supabase as any).from("obrigacoes")
         .select("*, empresas(razao_social)")
         .order("data_vencimento", { ascending: true }),
       supabase.from("empresas").select("id, razao_social").order("razao_social"),
@@ -238,8 +238,8 @@ export default function Obrigacoes() {
       status: "pendente",
     };
     const { error } = editingId
-      ? await supabase.from("obrigacoes").update(payload).eq("id", editingId)
-      : await supabase.from("obrigacoes").insert(payload);
+      ? await (supabase as any).from("obrigacoes").update(payload).eq("id", editingId)
+      : await (supabase as any).from("obrigacoes").insert(payload);
     if (error) { toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" }); return; }
     toast({ title: editingId ? "Obrigação atualizada!" : "Obrigação cadastrada!" });
     setForm(EMPTY_FORM); setEditingId(null); setDialogOpen(false); load();
@@ -259,7 +259,7 @@ export default function Obrigacoes() {
   };
 
   const handleDelete = async (id: string) => {
-    const { error } = await supabase.from("obrigacoes").delete().eq("id", id);
+    const { error } = await (supabase as any).from("obrigacoes").delete().eq("id", id);
     if (error) { toast({ title: "Erro ao excluir", variant: "destructive" }); return; }
     toast({ title: "Obrigação removida" }); load();
   };
@@ -267,7 +267,7 @@ export default function Obrigacoes() {
   const handleCumprir = async () => {
     if (!cumprimDialog) return;
     const data = dataCumprimento || format(new Date(), "yyyy-MM-dd");
-    const { error } = await supabase.from("obrigacoes")
+    const { error } = await (supabase as any).from("obrigacoes")
       .update({ status: "cumprida", data_cumprimento: data })
       .eq("id", cumprimDialog.id);
     if (error) { toast({ title: "Erro ao registrar", variant: "destructive" }); return; }
