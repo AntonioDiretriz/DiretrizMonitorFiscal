@@ -24,6 +24,28 @@ import {
 
 const NAVY = "#10143D";
 
+// Palavras-chave padrão por tipo de obrigação
+const PALAVRAS_CHAVE_PADRAO: Record<string, string> = {
+  das:         "DOCUMENTO DE ARRECADACAO, SIMPLES NACIONAL, DAS, PGDAS, GUIA DAS",
+  pgdas:       "PGDAS-D, PGDAS, SIMPLES NACIONAL, PROGRAMA GERADOR, DECLARATORIO, RECIBO PGDAS",
+  fgts:        "FGTS, SEFIP, FUNDO DE GARANTIA, GRRF, DARF FGTS",
+  inss:        "INSS, GPS, GUIA DA PREVIDENCIA, INSTITUTO NACIONAL",
+  iss:         "ISS, IMPOSTO SOBRE SERVICOS, NFS-E, NOTA FISCAL SERVICO",
+  irpj:        "IRPJ, CSLL, IMPOSTO DE RENDA, DARF IRPJ",
+  pis:         "PIS, COFINS, PIS/COFINS, CONTRIBUICAO SOCIAL",
+  dctf:        "DCTF, DECLARACAO DE DEBITOS, CREDITOS TRIBUTARIOS FEDERAIS",
+  ecf:         "ECF, ESCRITURACAO CONTABIL FISCAL, IRPJ/CSL",
+  ecd:         "ECD, ESCRITURACAO CONTABIL DIGITAL, SPED CONTABIL",
+  icms:        "ICMS, GUIA DE RECOLHIMENTO, SARE",
+  folha:       "FOLHA DE PAGAMENTO, HOLERITE, RECIBO DE SALARIO",
+  esocial:     "ESOCIAL, E-SOCIAL, EVENTOS PERIODICOS",
+  caged:       "CAGED, CADASTRO GERAL DE EMPREGADOS",
+  rais:        "RAIS, RELACAO ANUAL DE INFORMACOES",
+  dirf:        "DIRF, DECLARACAO DO IMPOSTO RETIDO NA FONTE",
+  defis:       "DEFIS, DECLARACAO DE INFORMACOES SOCIOECONOMICAS",
+  simei:       "SIMEI, DAS-MEI, MICROEMPREENDEDOR INDIVIDUAL",
+};
+
 interface RotinaModelo {
   id: string;
   nome_rotina: string;
@@ -154,7 +176,9 @@ function ObrigacaoDialog({
         meses_offset:    initial.meses_offset?.toString() ?? "1",
         margem_seguranca:initial.margem_seguranca?.toString() ?? "3",
         descricao:       initial.descricao ?? "",
-        palavras_chave:  (initial.palavras_chave ?? []).join(", "),
+        palavras_chave:  (initial.palavras_chave ?? []).length > 0
+          ? (initial.palavras_chave ?? []).join(", ")
+          : (PALAVRAS_CHAVE_PADRAO[initial.tipo_rotina?.toLowerCase() ?? ""] ?? ""),
       } : EMPTY_FORM);
 
       // Carrega regras e empresas se editando
@@ -412,7 +436,19 @@ function ObrigacaoDialog({
             </div>
             <div>
               <Label>Tipo *</Label>
-              <Input placeholder="Ex: das" value={form.tipo_rotina} onChange={f("tipo_rotina")} />
+              <Input
+                placeholder="Ex: das"
+                value={form.tipo_rotina}
+                onChange={e => {
+                  const tipo = e.target.value;
+                  setForm(p => {
+                    const padrao = PALAVRAS_CHAVE_PADRAO[tipo.toLowerCase()] ?? "";
+                    const kw = (!p.palavras_chave || p.palavras_chave === (PALAVRAS_CHAVE_PADRAO[p.tipo_rotina?.toLowerCase()] ?? ""))
+                      ? padrao : p.palavras_chave;
+                    return { ...p, tipo_rotina: tipo, palavras_chave: kw };
+                  });
+                }}
+              />
             </div>
             <div>
               <Label>Departamento</Label>
