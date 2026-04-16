@@ -1426,7 +1426,20 @@ export default function ConfiguracaoObrigacoes() {
                   return (
                     <tr key={modelo.id} className={`border-b last:border-0 ${idx % 2 === 0 ? "" : "bg-gray-50/40"}`}>
                       <td className="px-4 py-2.5">
-                        <div className="font-medium">{modelo.nome_rotina}</div>
+                        <div className="font-medium flex items-center gap-1.5">
+                          {modelo.nome_rotina}
+                          {modelo.palavras_chave && modelo.palavras_chave.length > 0 ? (
+                            <span title={`IA configurada: ${modelo.palavras_chave.join(", ")}`}
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-700 border border-green-200">
+                              <Bot className="h-2.5 w-2.5" /> IA
+                            </span>
+                          ) : (
+                            <span title="Sem palavras-chave — upload de documento modelo necessário"
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-600 border border-amber-200">
+                              <Bot className="h-2.5 w-2.5" /> Configurar
+                            </span>
+                          )}
+                        </div>
                         <div className="text-xs text-muted-foreground">{modelo.codigo_rotina}</div>
                       </td>
                       <td className="px-4 py-2.5 text-muted-foreground text-xs">
