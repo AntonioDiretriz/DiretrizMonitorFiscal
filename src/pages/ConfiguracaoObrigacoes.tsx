@@ -483,9 +483,14 @@ function ObrigacaoDialog({
             <Label>Descrição</Label>
             <Textarea placeholder="Descrição opcional..." value={form.descricao} onChange={f("descricao")} rows={2} />
           </div>
-          <div className="rounded-lg border border-blue-200 bg-blue-50/40 p-3 space-y-2">
+          <div className="rounded-lg border border-blue-200 bg-blue-50/40 p-3">
             <div className="flex items-center justify-between">
-              <Label className="text-blue-800 font-medium">Reconhecimento automático do documento</Label>
+              <div>
+                <Label className="text-blue-800 font-medium">Reconhecimento automático do documento</Label>
+                <p className="text-xs text-blue-600 mt-0.5">
+                  Faça upload de um PDF modelo para o robô aprender a identificar este documento automaticamente.
+                </p>
+              </div>
               <label className="cursor-pointer">
                 <input
                   ref={fileInputRef}
@@ -498,23 +503,14 @@ function ObrigacaoDialog({
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-blue-300 bg-white text-blue-700 hover:bg-blue-50 cursor-pointer">
                   {analisandoPdf ? (
                     <><Bot className="h-3.5 w-3.5 animate-pulse" /> Analisando...</>
-                  ) : pdfAnalisado ? (
-                    <><CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> PDF analisado</>
+                  ) : pdfAnalisado || (form.palavras_chave && form.palavras_chave.length > 0) ? (
+                    <><CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> IA configurada</>
                   ) : (
                     <><Upload className="h-3.5 w-3.5" /> Cadastrar documento modelo</>
                   )}
                 </span>
               </label>
             </div>
-            <Input
-              placeholder="Ex: PGDAS-D, Simples Nacional, Programa Gerador"
-              value={form.palavras_chave}
-              onChange={f("palavras_chave")}
-              className="bg-white"
-            />
-            <p className="text-xs text-blue-700">
-              Faça upload de um PDF modelo — o robô extrai as palavras-chave automaticamente. Ou preencha manualmente separando com vírgula.
-            </p>
           </div>
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
