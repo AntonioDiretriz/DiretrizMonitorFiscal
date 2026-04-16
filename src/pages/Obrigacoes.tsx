@@ -3,8 +3,10 @@ import { format, addMonths, subMonths, startOfMonth, endOfMonth, differenceInDay
 import { ptBR } from "date-fns/locale";
 import {
   Plus, ChevronLeft, ChevronRight, CheckCircle, AlertTriangle,
-  Clock, Pencil, Trash2, Search, Filter,
+  Clock, Pencil, Trash2, Search, Filter, Eye, History,
+  User, CalendarCheck, AlertCircle, Zap,
 } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ExportButton } from "@/components/ExportButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -198,6 +200,9 @@ export default function Obrigacoes() {
   const [form, setForm]             = useState(EMPTY_FORM);
   const [cumprimDialog, setCumprimDialog] = useState<Obrigacao | null>(null);
   const [dataCumprimento, setDataCumprimento] = useState("");
+  const [obsCumprimento, setObsCumprimento] = useState("");
+  const [drawerObrigacao, setDrawerObrigacao] = useState<Obrigacao | null>(null);
+  const [historico, setHistorico] = useState<any[]>([]);
 
   // Filtros lista
   const [filtroEmpresa, setFiltroEmpresa] = useState("todas");
@@ -264,15 +269,50 @@ export default function Obrigacoes() {
     toast({ title: "Obrigação removida" }); load();
   };
 
+  const loadHistorico = useCallback(async (obrigacaoId: string) => {
+    const { data } = await (supabase as any)
+      .from("rotinas_historico")
+      .select("*")
+      .eq("obrigacao_id", obrigacaoId)
+      .order("created_at", { ascending: false });
+    setHistorico(data ?? []);
+  }, []);
+
   const handleCumprir = async () => {
     if (!cumprimDialog) return;
     const data = dataCumprimento || format(new Date(), "yyyy-MM-dd");
+    const dataExec = new Date(data + "T12:00:00");
+    const dataVenc = new Date(cumprimDialog.data_vencimento + "T12:00:00");
+    const diasAtraso = Math.max(0, differenceInDays(dataExec, dataVenc));
+    const noPrazo = dataExec <= dataVenc;
+
     const { error } = await (supabase as any).from("obrigacoes")
       .update({ status: "cumprida", data_cumprimento: data })
       .eq("id", cumprimDialog.id);
     if (error) { toast({ title: "Erro ao registrar", variant: "destructive" }); return; }
-    toast({ title: "Obrigação cumprida!" });
-    setCumprimDialog(null); setDataCumprimento(""); load();
+
+    // Grava no histórico
+    const { data: perfil } = await supabase.from("usuarios_perfil").select("nome").eq("user_id", user!.id).maybeSingle();
+    await (supabase as any).from("rotinas_historico").insert({
+      user_id:             ownerUserId,
+      obrigacao_id:        cumprimDialog.id,
+      empresa_id:          cumprimDialog.empresa_id,
+      tipo:                cumprimDialog.tipo,
+      competencia:         cumprimDialog.competencia ? format(new Date(cumprimDialog.competencia + "T12:00:00"), "MM/yyyy") : null,
+      data_vencimento:     cumprimDialog.data_vencimento,
+      data_execucao:       new Date().toISOString(),
+      executado_por:       user!.id,
+      executado_por_nome:  (perfil as any)?.nome ?? user!.email ?? "Usuário",
+      no_prazo:            noPrazo,
+      dias_atraso:         diasAtraso,
+      forma:               "manual",
+      status_anterior:     cumprimDialog.status,
+      status_novo:         "cumprida",
+      observacao:          obsCumprimento || null,
+    });
+
+    toast({ title: noPrazo ? "Obrigação cumprida no prazo!" : `Obrigação cumprida com ${diasAtraso}d de atraso`, variant: noPrazo ? "default" : "destructive" });
+    setCumprimDialog(null); setDataCumprimento(""); setObsCumprimento(""); load();
   };
 
   // KPIs
@@ -549,10 +589,16 @@ export default function Obrigacoes() {
                         <TableCell><StatusBadge status={o.status} /></TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1 justify-end">
+                            <Button
+                              variant="ghost" size="icon" title="Histórico de execução"
+                              onClick={() => { setDrawerObrigacao(o); loadHistorico(o.id); }}
+                            >
+                              <Eye className="h-4 w-4 text-blue-500" />
+                            </Button>
                             {podeEditar && o.status === "pendente" && (
                               <Button
                                 variant="ghost" size="icon" title="Marcar como cumprida"
-                                onClick={() => { setCumprimDialog(o); setDataCumprimento(format(new Date(), "yyyy-MM-dd")); }}
+                                onClick={() => { setCumprimDialog(o); setDataCumprimento(format(new Date(), "yyyy-MM-dd")); setObsCumprimento(""); }}
                               >
                                 <CheckCircle className="h-4 w-4 text-green-600" />
                               </Button>
@@ -593,6 +639,90 @@ export default function Obrigacoes() {
         </TabsContent>
       </Tabs>
 
+      {/* Drawer: histórico de execução */}
+      <Sheet open={!!drawerObrigacao} onOpenChange={v => !v && setDrawerObrigacao(null)}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          {drawerObrigacao && (
+            <>
+              <SheetHeader className="mb-4">
+                <SheetTitle className="text-lg flex items-center gap-2">
+                  <History className="h-5 w-5 text-blue-500" />
+                  Histórico de Execução
+                </SheetTitle>
+                <div className="text-sm text-muted-foreground space-y-0.5">
+                  <p><span className="font-medium">{TIPO_LABEL[drawerObrigacao.tipo] ?? drawerObrigacao.tipo}</span></p>
+                  {drawerObrigacao.empresas && <p>{drawerObrigacao.empresas.razao_social}</p>}
+                  <p>Competência: {format(new Date(drawerObrigacao.competencia + "T12:00:00"), "MM/yyyy")} · Vencimento: {format(new Date(drawerObrigacao.data_vencimento + "T12:00:00"), "dd/MM/yyyy")}</p>
+                </div>
+              </SheetHeader>
+
+              {/* Status atual */}
+              <div className="mb-4 rounded-lg border p-3 flex items-center justify-between">
+                <span className="text-sm font-medium">Situação atual</span>
+                <StatusBadge status={drawerObrigacao.status} />
+              </div>
+
+              <h3 className="font-semibold text-sm mb-3">Registro de Atividades</h3>
+
+              {historico.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+                  <History className="h-10 w-10 opacity-20" />
+                  <p className="text-sm">Nenhuma atividade registrada</p>
+                  <p className="text-xs text-center">O histórico é criado automaticamente<br/>ao marcar a obrigação como cumprida</p>
+                </div>
+              ) : (
+                <div className="relative">
+                  <div className="absolute left-4 top-0 bottom-0 w-px bg-border" />
+                  <div className="space-y-4 pl-10">
+                    {historico.map((h: any) => {
+                      const noPrazo = h.no_prazo;
+                      const forma = h.forma === "manual" ? "Manual" : h.forma === "automatica" ? "Automático" : "Sistema";
+                      return (
+                        <div key={h.id} className="relative">
+                          <div className={`absolute -left-6 w-5 h-5 rounded-full border-2 flex items-center justify-center
+                            ${noPrazo ? "bg-green-500 border-green-500" : "bg-red-500 border-red-500"}`}>
+                            {noPrazo
+                              ? <CheckCircle className="h-3 w-3 text-white" />
+                              : <AlertCircle className="h-3 w-3 text-white" />}
+                          </div>
+                          <div className={`rounded-lg border p-3 ${noPrazo ? "border-green-100 bg-green-50/30" : "border-red-100 bg-red-50/30"}`}>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className={`text-xs font-semibold ${noPrazo ? "text-green-700" : "text-red-700"}`}>
+                                {noPrazo ? "Cumprida no prazo" : `Cumprida com ${h.dias_atraso}d de atraso`}
+                              </span>
+                              <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium
+                                ${h.forma === "manual" ? "bg-blue-100 text-blue-700" : "bg-violet-100 text-violet-700"}`}>
+                                {h.forma === "manual" ? <User className="h-2.5 w-2.5" /> : <Zap className="h-2.5 w-2.5" />}
+                                {forma}
+                              </span>
+                            </div>
+                            <div className="space-y-0.5 text-xs text-muted-foreground">
+                              <div className="flex gap-2 items-center">
+                                <CalendarCheck className="h-3 w-3 shrink-0" />
+                                <span>Executado em {format(new Date(h.data_execucao), "dd/MM/yyyy 'às' HH:mm")}</span>
+                              </div>
+                              <div className="flex gap-2 items-center">
+                                <User className="h-3 w-3 shrink-0" />
+                                <span>Por: {h.executado_por_nome || "—"}</span>
+                              </div>
+                              {h.observacao && (
+                                <div className="mt-1 rounded bg-muted/40 px-2 py-1 text-xs italic">
+                                  "{h.observacao}"
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
+
       {/* Dialog: registrar cumprimento */}
       <Dialog open={!!cumprimDialog} onOpenChange={o => { if (!o) setCumprimDialog(null); }}>
         <DialogContent className="max-w-xs">
@@ -609,6 +739,10 @@ export default function Obrigacoes() {
               <div className="space-y-2">
                 <Label>Data de Cumprimento</Label>
                 <Input type="date" value={dataCumprimento} onChange={e => setDataCumprimento(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Observação (opcional)</Label>
+                <Input placeholder="Ex: protocolo 12345, enviado via portal..." value={obsCumprimento} onChange={e => setObsCumprimento(e.target.value)} />
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" className="flex-1" onClick={() => setCumprimDialog(null)}>Cancelar</Button>
