@@ -1,12 +1,34 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const RESEND_API_KEY            = Deno.env.get("RESEND_API_KEY");
+const SUPABASE_URL              = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const WHATSAPP_NUMBER           = Deno.env.get("WHATSAPP_NUMBER") ?? "5581994058847";
+const FUNCTIONS_BASE            = `${SUPABASE_URL.replace("https://", "https://").split(".supabase.co")[0]}.supabase.co/functions/v1`;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+// ── Registra notificação e retorna o ID para rastreamento ──────────────────
+async function criarNotificacao(params: {
+  user_id: string;
+  tipo: string;
+  referencia_id: string;
+  destinatario_email: string;
+  destinatario_nome?: string;
+  assunto: string;
+  dias_aviso: number;
+}): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("email_notificacoes")
+    .insert(params)
+    .select("id")
+    .single();
+  if (error) { console.error("criarNotificacao:", error); return null; }
+  return data?.id ?? null;
+}
+
+// ── Envia email via Resend ────────────────────────────────────────────────
 async function sendEmail(to: string, subject: string, html: string) {
   if (!RESEND_API_KEY) {
     console.warn("RESEND_API_KEY not set — skipping email to", to);
@@ -19,7 +41,7 @@ async function sendEmail(to: string, subject: string, html: string) {
       Authorization: `Bearer ${RESEND_API_KEY}`,
     },
     body: JSON.stringify({
-      from: "Monitor Fiscal <noreply@diretriz.com.br>",
+      from: "Diretriz <noreply@diretriz.cnt.br>",
       to,
       subject,
       html,
@@ -31,97 +53,172 @@ async function sendEmail(to: string, subject: string, html: string) {
   }
 }
 
+// ── URL de rastreamento de abertura (pixel) ───────────────────────────────
+function pixelUrl(notifId: string) {
+  return `${FUNCTIONS_BASE}/track-email-open?id=${notifId}`;
+}
+
+// ── URL de rastreamento de clique + redirecionamento ──────────────────────
+function clickUrl(notifId: string, destino: string) {
+  return `${FUNCTIONS_BASE}/track-email-click?id=${notifId}&dest=${encodeURIComponent(destino)}`;
+}
+
+// ── Link WhatsApp ─────────────────────────────────────────────────────────
+function whatsappLink(mensagem: string) {
+  return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(mensagem)}`;
+}
+
+// ── Template base de email ────────────────────────────────────────────────
+function emailBase(titulo: string, corpo: string, notifId: string, cta?: { label: string; url: string }) {
+  const botao = cta
+    ? `<div style="text-align:center;margin:32px 0">
+         <a href="${cta.url}" style="background:#1a56db;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:15px">${cta.label}</a>
+       </div>`
+    : "";
+  return `
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f9fafb;padding:24px;border-radius:12px">
+      <div style="background:#1a56db;padding:20px 24px;border-radius:8px 8px 0 0;text-align:center">
+        <span style="color:#fff;font-size:22px;font-weight:bold">Diretriz Contabilidade</span>
+      </div>
+      <div style="background:#fff;padding:28px 32px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb">
+        <h2 style="color:#111827;margin-top:0">${titulo}</h2>
+        ${corpo}
+        ${botao}
+        <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
+        <p style="color:#9ca3af;font-size:12px;text-align:center">
+          Diretriz Contabilidade e Consultoria · <a href="https://diretriz.cnt.br" style="color:#9ca3af">diretriz.cnt.br</a>
+        </p>
+      </div>
+      <img src="${pixelUrl(notifId)}" width="1" height="1" style="display:none" />
+    </div>`;
+}
+
 serve(async () => {
   const today = new Date();
-  const in7 = new Date(today); in7.setDate(today.getDate() + 7);
-  const in30 = new Date(today); in30.setDate(today.getDate() + 30);
-  const fmt = (d: Date) => d.toISOString().split("T")[0];
+  const in7   = new Date(today); in7.setDate(today.getDate() + 7);
+  const in15  = new Date(today); in15.setDate(today.getDate() + 15);
+  const in30  = new Date(today); in30.setDate(today.getDate() + 30);
+  const fmt   = (d: Date) => d.toISOString().split("T")[0];
 
-  // ── Certidões expiring in 7 or 30 days ──────────────────────────────────
+  const nivelPorDias = (dias: number) => dias <= 7 ? "critico" : dias <= 15 ? "urgente" : "aviso";
+  const diasDe = (dateStr: string) => {
+    if (dateStr === fmt(in7))  return 7;
+    if (dateStr === fmt(in15)) return 15;
+    return 30;
+  };
+
+  // ── Certidões vencendo em 7, 15 ou 30 dias ──────────────────────────────
   const { data: certidoes } = await supabase
     .from("certidoes")
     .select("*, empresas(razao_social, email_responsavel)")
-    .in("data_validade", [fmt(in7), fmt(in30)])
+    .in("data_validade", [fmt(in7), fmt(in15), fmt(in30)])
     .in("status", ["regular", "vencendo"]);
 
   for (const cert of certidoes ?? []) {
     const email = cert.empresas?.email_responsavel;
     if (!email) continue;
-    const dias = cert.data_validade === fmt(in7) ? 7 : 30;
-    await sendEmail(
-      email,
-      `[Monitor Fiscal] Certidão vencendo em ${dias} dias — ${cert.empresas?.razao_social}`,
+    const dias  = diasDe(cert.data_validade);
+    const razao = cert.empresas?.razao_social ?? "";
+    const assunto = `[Diretriz] Certidão vencendo em ${dias} dias — ${razao}`;
+
+    const notifId = await criarNotificacao({
+      user_id: cert.user_id, tipo: "certidao", referencia_id: cert.id,
+      destinatario_email: email, assunto, dias_aviso: dias,
+    });
+    if (!notifId) continue;
+
+    await sendEmail(email, assunto, emailBase(
+      `Certidão vencendo em ${dias} dias`,
       `<p>Olá,</p>
        <p>A certidão <strong>${cert.tipo.replace(/_/g, " ").toUpperCase()}</strong> da empresa
-       <strong>${cert.empresas?.razao_social}</strong> vence em <strong>${dias} dias</strong>
-       (${cert.data_validade}).</p>
-       <p>Acesse o Monitor Fiscal para renová-la.</p>`
-    );
-    // Create alert in the system
+       <strong>${razao}</strong> vence em <strong>${dias} dias</strong> (${cert.data_validade}).</p>
+       <p>Acesse o sistema para acompanhar a renovação.</p>`,
+      notifId
+    ));
+
     await supabase.from("alertas").insert({
-      user_id: cert.user_id,
-      empresa_id: cert.empresa_id,
-      certidao_id: cert.id,
-      nivel: dias === 7 ? "critico" : "aviso",
+      user_id: cert.user_id, empresa_id: cert.empresa_id, certidao_id: cert.id,
+      nivel: nivelPorDias(dias),
       titulo: `Certidão vencendo em ${dias} dias`,
-      mensagem: `A certidão ${cert.tipo} de ${cert.empresas?.razao_social} vence em ${dias} dias.`,
+      mensagem: `A certidão ${cert.tipo} de ${razao} vence em ${dias} dias (${cert.data_validade}).`,
       acao_recomendada: "Renove a certidão antes do vencimento para evitar irregularidades.",
     });
   }
 
-  // ── Certificados expiring in 7 or 30 days ────────────────────────────────
+  // ── Certificados Digitais vencendo em 7, 15 ou 30 dias ──────────────────
   const { data: certificados } = await supabase
     .from("certificados")
     .select("*")
-    .in("data_vencimento", [fmt(in7), fmt(in30)]);
+    .in("data_validade", [fmt(in7), fmt(in15), fmt(in30)]);
 
   for (const cert of certificados ?? []) {
     if (!cert.email_cliente) continue;
-    const dias = cert.data_vencimento === fmt(in7) ? 7 : 30;
-    await sendEmail(
-      cert.email_cliente,
-      `[Monitor Fiscal] Certificado Digital vencendo em ${dias} dias — ${cert.empresa}`,
+    const dias    = diasDe(cert.data_validade);
+    const assunto = `[Diretriz] Certificado Digital vencendo em ${dias} dias — ${cert.empresa}`;
+    const waMsg   = `Olá! Sou da Diretriz Contabilidade. O certificado digital ${cert.tipo} da empresa ${cert.empresa} vence em ${dias} dias (${cert.data_validade}). Podemos agendar a renovação?`;
+
+    const notifId = await criarNotificacao({
+      user_id: cert.user_id, tipo: "certificado", referencia_id: cert.id,
+      destinatario_email: cert.email_cliente, destinatario_nome: cert.empresa,
+      assunto, dias_aviso: dias,
+    });
+    if (!notifId) continue;
+
+    await sendEmail(cert.email_cliente, assunto, emailBase(
+      `Certificado Digital vencendo em ${dias} dias`,
       `<p>Olá,</p>
-       <p>O certificado digital <strong>${cert.tipo}</strong> da empresa
+       <p>O <strong>Certificado Digital ${cert.tipo}</strong> da empresa
        <strong>${cert.empresa}</strong> vence em <strong>${dias} dias</strong>
-       (${cert.data_vencimento}).</p>
-       <p>Contate seu contador para a renovação.</p>`
-    );
-    // Create alert
+       (${cert.data_validade}).</p>
+       <p>Entre em contato conosco para agendar a renovação com antecedência e evitar interrupções nos seus serviços digitais.</p>`,
+      notifId,
+      { label: "📲 Falar no WhatsApp", url: clickUrl(notifId, whatsappLink(waMsg)) }
+    ));
+
     await supabase.from("alertas").insert({
-      user_id: cert.user_id,
-      nivel: dias === 7 ? "critico" : "aviso",
+      user_id: cert.user_id, nivel: nivelPorDias(dias),
       titulo: `Certificado digital vencendo em ${dias} dias`,
-      mensagem: `O certificado ${cert.tipo} de ${cert.empresa} vence em ${dias} dias.`,
+      mensagem: `O certificado ${cert.tipo} de ${cert.empresa} vence em ${dias} dias (${cert.data_validade}).`,
       acao_recomendada: "Providencie a renovação do certificado digital.",
     });
   }
 
-  // ── Caixas Postais expiring in 7 or 30 days ─────────────────────────────
+  // ── Caixas Postais vencendo em 7, 15 ou 30 dias ─────────────────────────
   const { data: caixas } = await supabase
     .from("caixas_postais")
     .select("*")
-    .in("data_vencimento", [fmt(in7), fmt(in30)])
+    .in("data_vencimento", [fmt(in7), fmt(in15), fmt(in30)])
     .eq("contrato_status", "ativo");
 
   for (const caixa of caixas ?? []) {
-    const dias = caixa.data_vencimento === fmt(in7) ? 7 : 30;
+    const dias    = diasDe(caixa.data_vencimento);
+    const assunto = `[Diretriz] Caixa Postal vencendo em ${dias} dias — ${caixa.empresa}`;
+    const waMsg   = `Olá! Sou da Diretriz Contabilidade. O contrato da Caixa Postal nº ${caixa.numero} da empresa ${caixa.empresa} vence em ${dias} dias (${caixa.data_vencimento}). Podemos providenciar a renovação?`;
+
     if (caixa.email_responsavel) {
-      await sendEmail(
-        caixa.email_responsavel,
-        `[Monitor Fiscal] Caixa Postal vencendo em ${dias} dias — ${caixa.empresa}`,
-        `<p>Olá,</p>
-         <p>O contrato da Caixa Postal <strong>nº ${caixa.numero}</strong> da empresa
-         <strong>${caixa.empresa}</strong> vence em <strong>${dias} dias</strong>
-         (${caixa.data_vencimento}).</p>
-         <p>Acesse o Monitor Fiscal para realizar a renovação.</p>`
-      );
+      const notifId = await criarNotificacao({
+        user_id: caixa.user_id, tipo: "caixa_postal", referencia_id: caixa.id,
+        destinatario_email: caixa.email_responsavel, destinatario_nome: caixa.empresa,
+        assunto, dias_aviso: dias,
+      });
+
+      if (notifId) {
+        await sendEmail(caixa.email_responsavel, assunto, emailBase(
+          `Caixa Postal vencendo em ${dias} dias`,
+          `<p>Olá,</p>
+           <p>O contrato da <strong>Caixa Postal nº ${caixa.numero}</strong> da empresa
+           <strong>${caixa.empresa}</strong> vence em <strong>${dias} dias</strong>
+           (${caixa.data_vencimento}).</p>
+           <p>Entre em contato conosco para renovar o contrato com antecedência e manter o endereço postal ativo.</p>`,
+          notifId,
+          { label: "📲 Falar no WhatsApp", url: clickUrl(notifId, whatsappLink(waMsg)) }
+        ));
+      }
     }
+
     await supabase.from("alertas").insert({
-      user_id: caixa.user_id,
-      empresa_id: caixa.empresa_id,
-      caixa_postal_id: caixa.id,
-      nivel: dias === 7 ? "critico" : "aviso",
+      user_id: caixa.user_id, empresa_id: caixa.empresa_id, caixa_postal_id: caixa.id,
+      nivel: nivelPorDias(dias),
       titulo: `Caixa Postal vencendo em ${dias} dias`,
       mensagem: `O contrato da Caixa Postal nº ${caixa.numero} de ${caixa.empresa} vence em ${dias} dias (${caixa.data_vencimento}).`,
       acao_recomendada: "Renove o contrato da caixa postal antes do vencimento.",
@@ -137,33 +234,35 @@ serve(async () => {
     .in("status", ["pendente", "aprovado"]);
 
   for (const conta of contasPagar ?? []) {
-    const dias = conta.data_vencimento === fmt(in3) ? 3 : 7;
+    const dias  = conta.data_vencimento === fmt(in3) ? 3 : 7;
     const email = conta.empresas?.email_responsavel;
     if (email) {
-      await sendEmail(
-        email,
-        `[Monitor Fiscal] Conta a pagar vencendo em ${dias} dias — ${conta.fornecedor}`,
-        `<p>Olá,</p>
-         <p>A conta a pagar para <strong>${conta.fornecedor}</strong>
-         no valor de <strong>R$ ${Number(conta.valor).toFixed(2).replace(".", ",")}</strong>
-         vence em <strong>${dias} dias</strong> (${conta.data_vencimento}).</p>
-         <p>Acesse o Monitor Fiscal para registrar o pagamento.</p>`
-      );
+      const assunto = `[Diretriz] Conta a pagar vencendo em ${dias} dias — ${conta.fornecedor}`;
+      const notifId = await criarNotificacao({
+        user_id: conta.user_id, tipo: "conta_pagar", referencia_id: conta.id,
+        destinatario_email: email, assunto, dias_aviso: dias,
+      });
+      if (notifId) {
+        await sendEmail(email, assunto, emailBase(
+          `Conta a pagar vencendo em ${dias} dias`,
+          `<p>Olá,</p>
+           <p>A conta a pagar para <strong>${conta.fornecedor}</strong>
+           no valor de <strong>R$ ${Number(conta.valor).toFixed(2).replace(".", ",")}</strong>
+           vence em <strong>${dias} dias</strong> (${conta.data_vencimento}).</p>
+           <p>Acesse o sistema para registrar o pagamento.</p>`,
+          notifId
+        ));
+      }
     }
+
     const titulo = `Conta a pagar: ${conta.fornecedor} vence em ${dias} dias`;
     const { data: jaExiste } = await supabase
-      .from("alertas")
-      .select("id")
-      .eq("user_id", conta.user_id)
-      .eq("titulo", titulo)
-      .eq("resolvida", false)
-      .limit(1);
+      .from("alertas").select("id")
+      .eq("user_id", conta.user_id).eq("titulo", titulo).eq("resolvida", false).limit(1);
     if (!jaExiste || jaExiste.length === 0) {
       await supabase.from("alertas").insert({
-        user_id: conta.user_id,
-        empresa_id: conta.empresa_id,
-        nivel: dias === 3 ? "critico" : "aviso",
-        titulo,
+        user_id: conta.user_id, empresa_id: conta.empresa_id,
+        nivel: dias === 3 ? "critico" : "aviso", titulo,
         mensagem: `Conta a pagar para ${conta.fornecedor} no valor de R$ ${Number(conta.valor).toFixed(2).replace(".", ",")} vence em ${dias} dias (${conta.data_vencimento}).`,
         acao_recomendada: "Registre o pagamento antes do vencimento para evitar juros.",
       });
@@ -187,56 +286,50 @@ serve(async () => {
 
   for (const socio of aniversariantes) {
     const tituloAlerta = `Aniversário hoje: ${socio.nome}`;
-
-    // Evita duplicar alerta no mesmo dia
     const { data: jaExiste } = await supabase
-      .from("alertas")
-      .select("id")
-      .eq("user_id", socio.user_id)
-      .eq("titulo", tituloAlerta)
-      .gte("created_at", fmt(today))
-      .limit(1);
-
+      .from("alertas").select("id")
+      .eq("user_id", socio.user_id).eq("titulo", tituloAlerta)
+      .gte("created_at", fmt(today)).limit(1);
     if (jaExiste && jaExiste.length > 0) continue;
 
-    // Insere alerta no sistema
     await supabase.from("alertas").insert({
-      user_id:            socio.user_id,
-      empresa_id:         socio.empresa_id,
-      nivel:              "info",
-      titulo:             tituloAlerta,
-      mensagem:           `Hoje é aniversário de ${socio.nome}, sócio de ${socio.empresas?.razao_social}. Não se esqueça de parabenizá-lo!`,
-      acao_recomendada:   "Envie uma mensagem de parabéns ao sócio.",
+      user_id: socio.user_id, empresa_id: socio.empresa_id, nivel: "info",
+      titulo: tituloAlerta,
+      mensagem: `Hoje é aniversário de ${socio.nome}, sócio de ${socio.empresas?.razao_social}. Não se esqueça de parabenizá-lo!`,
+      acao_recomendada: "Envie uma mensagem de parabéns ao sócio.",
     });
 
-    // Envia e-mail para o dono do escritório
     const { data: ownerData } = await supabase.auth.admin.getUserById(socio.user_id);
     const ownerEmail = ownerData?.user?.email;
     if (ownerEmail) {
       const idade = today.getFullYear() - Number((socio.data_nascimento as string).split("-")[0]);
-      await sendEmail(
-        ownerEmail,
-        `[Diretriz] Aniversário hoje: ${socio.nome} (${socio.empresas?.razao_social})`,
-        `<p>Olá,</p>
-         <p>Hoje é aniversário de <strong>${socio.nome}</strong> 🎂, sócio de
-         <strong>${socio.empresas?.razao_social}</strong>
-         ${socio.cargo ? `(${socio.cargo})` : ""} — <strong>${idade} anos</strong>.</p>
-         ${socio.email
-           ? `<p>E-mail do sócio: <a href="mailto:${socio.email}">${socio.email}</a></p>`
-           : ""}
-         <p>Não se esqueça de enviar os parabéns!</p>
-         <p style="color:#888;font-size:12px">Diretriz — Sistema de Gestão Contábil</p>`
-      );
+      const assunto = `[Diretriz] Aniversário hoje: ${socio.nome} (${socio.empresas?.razao_social})`;
+      const notifId = await criarNotificacao({
+        user_id: socio.user_id, tipo: "aniversario", referencia_id: socio.id,
+        destinatario_email: ownerEmail, assunto, dias_aviso: 0,
+      });
+      if (notifId) {
+        await sendEmail(ownerEmail, assunto, emailBase(
+          `Aniversário hoje: ${socio.nome}`,
+          `<p>Olá,</p>
+           <p>Hoje é aniversário de <strong>${socio.nome}</strong>, sócio de
+           <strong>${socio.empresas?.razao_social}</strong>
+           ${socio.cargo ? `(${socio.cargo})` : ""} — <strong>${idade} anos</strong>.</p>
+           ${socio.email ? `<p>E-mail do sócio: <a href="mailto:${socio.email}">${socio.email}</a></p>` : ""}
+           <p>Não se esqueça de enviar os parabéns!</p>`,
+          notifId
+        ));
+      }
     }
   }
 
   return new Response(
     JSON.stringify({
       ok: true,
-      certidoes:      certidoes?.length      ?? 0,
-      certificados:   certificados?.length   ?? 0,
-      caixas:         caixas?.length         ?? 0,
-      contas_pagar:   contasPagar?.length    ?? 0,
+      certidoes:       certidoes?.length    ?? 0,
+      certificados:    certificados?.length ?? 0,
+      caixas:          caixas?.length       ?? 0,
+      contas_pagar:    contasPagar?.length  ?? 0,
       aniversariantes: aniversariantes.length,
     }),
     { headers: { "Content-Type": "application/json" } }
