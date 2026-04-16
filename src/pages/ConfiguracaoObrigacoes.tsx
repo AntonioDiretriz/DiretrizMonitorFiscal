@@ -556,11 +556,9 @@ function ObrigacaoDialog({
             </div>
             <div>
               <Label>Tipo *</Label>
-              <Input
-                placeholder="Ex: das"
+              <Select
                 value={form.tipo_rotina}
-                onChange={e => {
-                  const tipo = e.target.value;
+                onValueChange={tipo => {
                   setForm(p => {
                     const padrao = PALAVRAS_CHAVE_PADRAO[tipo.toLowerCase()] ?? "";
                     const kw = (!p.palavras_chave || p.palavras_chave === (PALAVRAS_CHAVE_PADRAO[p.tipo_rotina?.toLowerCase()] ?? ""))
@@ -568,7 +566,33 @@ function ObrigacaoDialog({
                     return { ...p, tipo_rotina: tipo, palavras_chave: kw };
                   });
                 }}
-              />
+              >
+                <SelectTrigger><SelectValue placeholder="Selecione o tipo..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="das">DAS — Simples Nacional</SelectItem>
+                  <SelectItem value="pgdas">PGDAS-D — Declaração Simples</SelectItem>
+                  <SelectItem value="defis">DEFIS — Declaração Simples Anual</SelectItem>
+                  <SelectItem value="simei">SIMEI / DAS-MEI</SelectItem>
+                  <SelectItem value="dctf">DCTFWeb</SelectItem>
+                  <SelectItem value="efd">EFD-Contribuições</SelectItem>
+                  <SelectItem value="reinf">EFD-Reinf</SelectItem>
+                  <SelectItem value="ecf">ECF — Escrituração Contábil Fiscal</SelectItem>
+                  <SelectItem value="ecd">ECD — Escrituração Contábil Digital</SelectItem>
+                  <SelectItem value="fgts">FGTS / SEFIP</SelectItem>
+                  <SelectItem value="inss">INSS / GPS</SelectItem>
+                  <SelectItem value="irpj">IRPJ / CSLL</SelectItem>
+                  <SelectItem value="pis">PIS / COFINS</SelectItem>
+                  <SelectItem value="iss">ISS</SelectItem>
+                  <SelectItem value="icms">ICMS</SelectItem>
+                  <SelectItem value="folha">Folha de Pagamento</SelectItem>
+                  <SelectItem value="esocial">eSocial</SelectItem>
+                  <SelectItem value="caged">CAGED</SelectItem>
+                  <SelectItem value="rais">RAIS</SelectItem>
+                  <SelectItem value="dirf">DIRF</SelectItem>
+                  <SelectItem value="nfe">NF-e / NFC-e</SelectItem>
+                  <SelectItem value="outro">Outro</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label>Departamento</Label>
