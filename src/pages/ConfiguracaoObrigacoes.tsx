@@ -179,9 +179,9 @@ function ObrigacaoDialog({
   const [replicarBusca, setReplicarBusca] = useState("");
   const [gerandoCodigo, setGerandoCodigo] = useState(false);
 
-  async function gerarCodigo() {
-    const dept = DEPT_PREFIX[form.departamento] ?? form.departamento.slice(0, 4).toUpperCase();
-    const tipo = form.tipo_rotina.trim().toLowerCase();
+  async function gerarCodigo(overrideDept?: string, overrideTipo?: string) {
+    const dept = DEPT_PREFIX[overrideDept ?? form.departamento] ?? (overrideDept ?? form.departamento).slice(0, 4).toUpperCase();
+    const tipo = (overrideTipo ?? form.tipo_rotina).trim().toLowerCase();
     const sigla = TIPO_SIGLA[tipo] ?? tipo.slice(0, 5).toUpperCase();
     const prefixo = `${dept}-${sigla}-`;
     setGerandoCodigo(true);
@@ -193,8 +193,10 @@ function ObrigacaoDialog({
       .map((r: any) => parseInt(r.codigo_rotina.replace(prefixo, ""), 10))
       .filter((n: number) => !isNaN(n));
     const proximo = numeros.length > 0 ? Math.max(...numeros) + 1 : 1;
-    setForm(p => ({ ...p, codigo_rotina: `${prefixo}${String(proximo).padStart(3, "0")}` }));
+    const novo = `${prefixo}${String(proximo).padStart(3, "0")}`;
+    setForm(p => ({ ...p, codigo_rotina: novo }));
     setGerandoCodigo(false);
+    return novo;
   }
 
   useEffect(() => {
@@ -492,10 +494,10 @@ function ObrigacaoDialog({
                         .map(m => (
                           <button key={m.id} type="button"
                             className="w-full text-left px-3 py-2 hover:bg-amber-50 flex items-center justify-between gap-2"
-                            onClick={() => {
+                            onClick={async () => {
                               setForm(p => ({
                                 ...p,
-                                codigo_rotina:    m.codigo_rotina,
+                                codigo_rotina:    "",
                                 tipo_rotina:      m.tipo_rotina,
                                 departamento:     m.departamento,
                                 periodicidade:    m.periodicidade,
@@ -507,7 +509,8 @@ function ObrigacaoDialog({
                               }));
                               setReplicarOpen(false);
                               setReplicarBusca("");
-                              toast({ title: `Dados replicados de "${m.nome_rotina}"`, description: "Ajuste o nome e o código se necessário antes de salvar." });
+                              await gerarCodigo(m.departamento, m.tipo_rotina);
+                              toast({ title: `Dados replicados de "${m.nome_rotina}"`, description: "Código gerado automaticamente. Ajuste o nome antes de salvar." });
                             }}>
                             <span className="font-medium">{m.nome_rotina}</span>
                             <span className="text-xs text-muted-foreground">{m.codigo_rotina}</span>
@@ -546,7 +549,7 @@ function ObrigacaoDialog({
                   size="sm"
                   className="shrink-0 text-xs px-2"
                   disabled={!form.departamento || !form.tipo_rotina || gerandoCodigo}
-                  onClick={gerarCodigo}
+                  onClick={() => gerarCodigo()}
                   title="Gera automaticamente com base no Departamento e Tipo"
                 >
                   {gerandoCodigo ? "..." : "Gerar"}
