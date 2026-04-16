@@ -457,6 +457,7 @@ function ObrigacaoDialog({
                             onClick={() => {
                               setForm(p => ({
                                 ...p,
+                                codigo_rotina:    m.codigo_rotina,
                                 tipo_rotina:      m.tipo_rotina,
                                 departamento:     m.departamento,
                                 periodicidade:    m.periodicidade,
@@ -468,7 +469,7 @@ function ObrigacaoDialog({
                               }));
                               setReplicarOpen(false);
                               setReplicarBusca("");
-                              toast({ title: `Dados replicados de "${m.nome_rotina}"`, description: "Ajuste o nome e o código antes de salvar." });
+                              toast({ title: `Dados replicados de "${m.nome_rotina}"`, description: "Ajuste o nome e o código se necessário antes de salvar." });
                             }}>
                             <span className="font-medium">{m.nome_rotina}</span>
                             <span className="text-xs text-muted-foreground">{m.codigo_rotina}</span>
@@ -494,7 +495,7 @@ function ObrigacaoDialog({
             </div>
             <div>
               <Label>Código *</Label>
-              <Input placeholder="Ex: FIS-SN-002" value={form.codigo_rotina} onChange={f("codigo_rotina")} className="uppercase" />
+              <Input placeholder="Ex: FIS-EFD-001 (DEPT-SIGLA-NNN)" value={form.codigo_rotina} onChange={f("codigo_rotina")} className="uppercase" />
             </div>
             <div>
               <Label>Tipo *</Label>
