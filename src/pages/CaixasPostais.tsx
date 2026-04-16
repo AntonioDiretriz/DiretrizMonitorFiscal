@@ -26,8 +26,11 @@ import {
   Plus, MailOpen, AlertTriangle, XCircle, CheckCircle2,
   Pencil, RefreshCw, History, Ban, Loader2,
   ChevronsUpDown, ChevronUp, ChevronDown,
-  Mail, MousePointerClick, Clock,
+  Mail, MousePointerClick, Clock, Eye,
 } from "lucide-react";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
 import { ExportButton } from "@/components/ExportButton";
 import { useToast } from "@/hooks/use-toast";
 import { format, addDays, differenceInDays } from "date-fns";
@@ -115,6 +118,7 @@ export default function CaixasPostais() {
   const [sortCol, setSortCol] = useState<SortCol>("vencimento");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [emailNotificacoes, setEmailNotificacoes] = useState<any[]>([]);
+  const [drawerCaixa, setDrawerCaixa] = useState<CaixaPostal | null>(null);
 
   const loadEmailNotificacoes = useCallback(async () => {
     if (!user) return;
@@ -689,6 +693,9 @@ export default function CaixasPostais() {
                             <RefreshCw className="h-4 w-4 text-green-600" />
                           </Button>
                         )}
+                        <Button variant="ghost" size="icon" title="Rastreamento de notificações" onClick={() => setDrawerCaixa(c)}>
+                          <Eye className="h-4 w-4 text-blue-500" />
+                        </Button>
                         <Button variant="ghost" size="icon" title="Histórico de renovações" onClick={() => handleOpenHistorico(c)}>
                           <History className="h-4 w-4 text-muted-foreground" />
                         </Button>
@@ -968,6 +975,101 @@ export default function CaixasPostais() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      {/* Drawer de Rastreamento */}
+      <Sheet open={!!drawerCaixa} onOpenChange={v => !v && setDrawerCaixa(null)}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          {drawerCaixa && (() => {
+            const notifs = emailNotificacoes
+              .filter(n => n.referencia_id === drawerCaixa.id)
+              .sort((a, b) => new Date(a.enviado_em).getTime() - new Date(b.enviado_em).getTime());
+            const milestones = [30, 15, 7];
+            return (
+              <>
+                <SheetHeader className="mb-4">
+                  <SheetTitle className="text-lg">{drawerCaixa.empresa}</SheetTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Caixa #{drawerCaixa.numero} · CNPJ {drawerCaixa.cnpj}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Vencimento: <span className="font-medium">{format(new Date(drawerCaixa.data_vencimento + "T12:00:00"), "dd/MM/yyyy")}</span>
+                  </p>
+                </SheetHeader>
+
+                <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-blue-500" /> Rastreamento de Alertas por Email
+                </h3>
+
+                {notifs.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+                    <Mail className="h-10 w-10 opacity-20" />
+                    <p className="text-sm">Nenhum alerta enviado ainda</p>
+                    <p className="text-xs text-center">Os alertas serão disparados automaticamente<br/>30, 15 e 7 dias antes do vencimento</p>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    {/* Linha vertical da timeline */}
+                    <div className="absolute left-4 top-0 bottom-0 w-px bg-border" />
+                    <div className="space-y-6 pl-10">
+                      {milestones.map(dias => {
+                        const n = notifs.find(x => x.dias_aviso === dias);
+                        return (
+                          <div key={dias} className="relative">
+                            {/* Círculo na timeline */}
+                            <div className={`absolute -left-6 w-5 h-5 rounded-full border-2 flex items-center justify-center text-[9px] font-bold
+                              ${n ? (n.status === "clicou" ? "bg-green-500 border-green-500 text-white" : n.status === "aberto" ? "bg-blue-500 border-blue-500 text-white" : "bg-primary border-primary text-white") : "bg-muted border-muted-foreground/30 text-muted-foreground"}`}>
+                              {dias}d
+                            </div>
+                            <div className={`rounded-lg border p-3 ${n ? "bg-card" : "bg-muted/30 opacity-50"}`}>
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs font-semibold">Alerta de {dias} dias</span>
+                                {n ? (
+                                  <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full
+                                    ${n.status === "clicou" ? "bg-green-100 text-green-700" : n.status === "aberto" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600"}`}>
+                                    {n.status === "clicou" ? <><MousePointerClick className="h-3 w-3" /> WhatsApp clicado</> :
+                                     n.status === "aberto" ? <><MailOpen className="h-3 w-3" /> Email aberto</> :
+                                     <><Mail className="h-3 w-3" /> Enviado</>}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">Não disparado</span>
+                                )}
+                              </div>
+                              {n && (
+                                <div className="space-y-1 text-xs text-muted-foreground">
+                                  <div className="flex gap-2">
+                                    <Mail className="h-3 w-3 mt-0.5 shrink-0" />
+                                    <span>Enviado em {format(new Date(n.enviado_em), "dd/MM/yyyy 'às' HH:mm")}</span>
+                                  </div>
+                                  {n.aberto_em && (
+                                    <div className="flex gap-2 text-blue-600">
+                                      <MailOpen className="h-3 w-3 mt-0.5 shrink-0" />
+                                      <span>Aberto em {format(new Date(n.aberto_em), "dd/MM/yyyy 'às' HH:mm")}</span>
+                                    </div>
+                                  )}
+                                  {n.clicou_em && (
+                                    <div className="flex gap-2 text-green-600">
+                                      <MousePointerClick className="h-3 w-3 mt-0.5 shrink-0" />
+                                      <span>WhatsApp em {format(new Date(n.clicou_em), "dd/MM/yyyy 'às' HH:mm")}</span>
+                                    </div>
+                                  )}
+                                  <div className="flex gap-2">
+                                    <Clock className="h-3 w-3 mt-0.5 shrink-0" />
+                                    <span>Para: {n.destinatario_email || "—"}</span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </SheetContent>
+      </Sheet>
 
     </div>
   );
