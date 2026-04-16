@@ -779,6 +779,80 @@ export default function Certificados() {
         </div>
       </div>
 
+      {/* Rastreamento de Notificações por Email */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Mail className="h-4 w-4 text-blue-500" />
+            Rastreamento de Notificações por Email
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Alertas automáticos disparados 30, 15 e 7 dias antes do vencimento
+          </p>
+        </CardHeader>
+        <CardContent className="p-0">
+          {emailNotificacoes.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
+              <Mail className="h-8 w-8 opacity-30" />
+              <p className="text-sm">Nenhum email enviado ainda</p>
+              <p className="text-xs">Os alertas aparecem aqui assim que forem disparados</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Empresa</TableHead>
+                  <TableHead>Aviso</TableHead>
+                  <TableHead>Enviado em</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Aberto em</TableHead>
+                  <TableHead>Clicou WhatsApp em</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {emailNotificacoes.map((n: any) => {
+                  const cert = certificados.find(c => c.id === n.referencia_id);
+                  return (
+                    <TableRow key={n.id}>
+                      <TableCell className="font-medium">{n.destinatario_nome || cert?.empresa || "—"}</TableCell>
+                      <TableCell>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${n.dias_aviso <= 7 ? "bg-red-100 text-red-700" : n.dias_aviso <= 15 ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
+                          {n.dias_aviso} dias
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {format(new Date(n.enviado_em), "dd/MM/yyyy HH:mm")}
+                      </TableCell>
+                      <TableCell>
+                        {n.status === "clicou" ? (
+                          <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium">
+                            <MousePointerClick className="h-3.5 w-3.5" /> WhatsApp
+                          </span>
+                        ) : n.status === "aberto" ? (
+                          <span className="inline-flex items-center gap-1 text-blue-600 text-xs font-medium">
+                            <MailOpen className="h-3.5 w-3.5" /> Aberto
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-muted-foreground text-xs">
+                            <Clock className="h-3.5 w-3.5" /> Enviado
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {n.aberto_em ? format(new Date(n.aberto_em), "dd/MM HH:mm") : "—"}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {n.clicou_em ? format(new Date(n.clicou_em), "dd/MM HH:mm") : "—"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Filtro rápido */}
       <div className="flex items-center gap-2 mb-2">
         <span className="text-sm text-muted-foreground mr-2 font-medium">Filtro Rápido:</span>
@@ -953,79 +1027,6 @@ export default function Certificados() {
         </CardContent>
       </Card>
 
-      {/* Rastreamento de Notificações por Email */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Mail className="h-4 w-4 text-blue-500" />
-            Rastreamento de Notificações por Email
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Alertas automáticos disparados 30, 15 e 7 dias antes do vencimento
-          </p>
-        </CardHeader>
-        <CardContent className="p-0">
-          {emailNotificacoes.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
-              <Mail className="h-8 w-8 opacity-30" />
-              <p className="text-sm">Nenhum email enviado ainda</p>
-              <p className="text-xs">Os alertas aparecem aqui assim que forem disparados</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Empresa</TableHead>
-                  <TableHead>Aviso</TableHead>
-                  <TableHead>Enviado em</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Aberto em</TableHead>
-                  <TableHead>Clicou WhatsApp em</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {emailNotificacoes.map((n: any) => {
-                  const cert = certificados.find(c => c.id === n.referencia_id);
-                  return (
-                    <TableRow key={n.id}>
-                      <TableCell className="font-medium">{n.destinatario_nome || cert?.empresa || "—"}</TableCell>
-                      <TableCell>
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${n.dias_aviso <= 7 ? "bg-red-100 text-red-700" : n.dias_aviso <= 15 ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
-                          {n.dias_aviso} dias
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {format(new Date(n.enviado_em), "dd/MM/yyyy HH:mm")}
-                      </TableCell>
-                      <TableCell>
-                        {n.status === "clicou" ? (
-                          <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium">
-                            <MousePointerClick className="h-3.5 w-3.5" /> WhatsApp
-                          </span>
-                        ) : n.status === "aberto" ? (
-                          <span className="inline-flex items-center gap-1 text-blue-600 text-xs font-medium">
-                            <MailOpen className="h-3.5 w-3.5" /> Aberto
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-muted-foreground text-xs">
-                            <Clock className="h-3.5 w-3.5" /> Enviado
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {n.aberto_em ? format(new Date(n.aberto_em), "dd/MM HH:mm") : "—"}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {n.clicou_em ? format(new Date(n.clicou_em), "dd/MM HH:mm") : "—"}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }
