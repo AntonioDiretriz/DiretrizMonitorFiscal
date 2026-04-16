@@ -82,6 +82,25 @@ function calcPrazoInterno(diaLegal: string, diasMargem: string): string {
 }
 
 
+// Prefixos por departamento
+const DEPT_PREFIX: Record<string, string> = {
+  "Fiscal":      "FIS",
+  "Contábil":    "CONT",
+  "DP":          "DP",
+  "Gestão":      "GEST",
+  "Legalização": "LEG",
+  "Financeiro":  "FIN",
+};
+
+// Siglas por tipo
+const TIPO_SIGLA: Record<string, string> = {
+  das: "SN", pgdas: "SN", fgts: "FGTS", inss: "INSS", iss: "ISS",
+  irpj: "IRPJ", csll: "CSLL", pis: "PIS", cofins: "COF", dctf: "DCTF",
+  ecf: "ECF", ecd: "ECD", icms: "ICMS", folha: "FOLHA", esocial: "ESOC",
+  caged: "CAG", rais: "RAIS", dirf: "DIRF", defis: "DEFIS", simei: "MEI",
+  efd: "EFD", sped: "SPED", reinf: "REINF", nfe: "NFE", nfce: "NFCE",
+};
+
 const EMPTY_FORM = {
   nome_rotina: "", codigo_rotina: "", tipo_rotina: "", departamento: "Fiscal",
   periodicidade: "mensal", criticidade: "alta",
@@ -158,6 +177,25 @@ function ObrigacaoDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [replicarOpen, setReplicarOpen] = useState(false);
   const [replicarBusca, setReplicarBusca] = useState("");
+  const [gerandoCodigo, setGerandoCodigo] = useState(false);
+
+  async function gerarCodigo() {
+    const dept = DEPT_PREFIX[form.departamento] ?? form.departamento.slice(0, 4).toUpperCase();
+    const tipo = form.tipo_rotina.trim().toLowerCase();
+    const sigla = TIPO_SIGLA[tipo] ?? tipo.slice(0, 5).toUpperCase();
+    const prefixo = `${dept}-${sigla}-`;
+    setGerandoCodigo(true);
+    const { data } = await (supabase as any)
+      .from("rotina_modelo")
+      .select("codigo_rotina")
+      .ilike("codigo_rotina", `${prefixo}%`);
+    const numeros = (data ?? [])
+      .map((r: any) => parseInt(r.codigo_rotina.replace(prefixo, ""), 10))
+      .filter((n: number) => !isNaN(n));
+    const proximo = numeros.length > 0 ? Math.max(...numeros) + 1 : 1;
+    setForm(p => ({ ...p, codigo_rotina: `${prefixo}${String(proximo).padStart(3, "0")}` }));
+    setGerandoCodigo(false);
+  }
 
   useEffect(() => {
     if (open) {
@@ -495,7 +533,26 @@ function ObrigacaoDialog({
             </div>
             <div>
               <Label>Código *</Label>
-              <Input placeholder="Ex: FIS-EFD-001 (DEPT-SIGLA-NNN)" value={form.codigo_rotina} onChange={f("codigo_rotina")} className="uppercase" />
+              <div className="flex gap-1.5">
+                <Input
+                  placeholder="Ex: FIS-EFD-001"
+                  value={form.codigo_rotina}
+                  onChange={f("codigo_rotina")}
+                  className="uppercase flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 text-xs px-2"
+                  disabled={!form.departamento || !form.tipo_rotina || gerandoCodigo}
+                  onClick={gerarCodigo}
+                  title="Gera automaticamente com base no Departamento e Tipo"
+                >
+                  {gerandoCodigo ? "..." : "Gerar"}
+                </Button>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Preencha Departamento e Tipo, depois clique em Gerar</p>
             </div>
             <div>
               <Label>Tipo *</Label>
