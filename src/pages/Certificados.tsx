@@ -293,7 +293,17 @@ export default function Certificados() {
     }
 
     if (error) { toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" }); return; }
-    toast({ title: editingId ? "Certificado atualizado!" : "Certificado registrado!" });
+
+    // Auto-resolver alertas pendentes deste certificado ao renovar/atualizar
+    if (editingId) {
+      await supabase.from("alertas")
+        .update({ resolvida: true, lida: true })
+        .eq("user_id", ownerUserId!)
+        .eq("resolvida", false)
+        .ilike("titulo", `%${form.empresa.trim()}%`);
+    }
+
+    toast({ title: isRenovando ? "Certificado renovado!" : editingId ? "Certificado atualizado!" : "Certificado registrado!" });
     setDialogOpen(false);
     resetDialog();
     loadCertificados();

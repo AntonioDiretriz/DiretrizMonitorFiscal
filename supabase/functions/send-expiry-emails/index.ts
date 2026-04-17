@@ -157,6 +157,13 @@ serve(async () => {
     const assunto = `[Diretriz] Certificado Digital vencendo em ${dias} dias — ${cert.empresa}`;
     const waMsg   = `Olá! Sou da Diretriz Contabilidade. O certificado digital ${cert.tipo} da empresa ${cert.empresa} vence em ${dias} dias (${cert.data_validade}). Podemos agendar a renovação?`;
 
+    // Deduplicação: só envia se não houver alerta não-resolvido para este certificado com mesma contagem de dias
+    const { data: alertaExist } = await supabase.from("alertas")
+      .select("id").eq("user_id", cert.user_id)
+      .ilike("titulo", `%Certificado digital vencendo em ${dias} dias%`)
+      .eq("resolvida", false).limit(1);
+    if (alertaExist && alertaExist.length > 0) continue;
+
     const notifId = await criarNotificacao({
       user_id: cert.user_id, tipo: "certificado", referencia_id: cert.id,
       destinatario_email: cert.email_cliente, destinatario_nome: cert.empresa,
@@ -176,8 +183,9 @@ serve(async () => {
     ));
 
     await supabase.from("alertas").insert({
-      user_id: cert.user_id, nivel: nivelPorDias(dias),
-      titulo: `Certificado digital vencendo em ${dias} dias`,
+      user_id: cert.user_id, empresa_id: cert.empresa_id ?? null,
+      nivel: nivelPorDias(dias),
+      titulo: `Certificado digital vencendo em ${dias} dias — ${cert.empresa}`,
       mensagem: `O certificado ${cert.tipo} de ${cert.empresa} vence em ${dias} dias (${cert.data_validade}).`,
       acao_recomendada: "Providencie a renovação do certificado digital.",
     });
@@ -216,13 +224,20 @@ serve(async () => {
       }
     }
 
-    await supabase.from("alertas").insert({
-      user_id: caixa.user_id, empresa_id: caixa.empresa_id, caixa_postal_id: caixa.id,
-      nivel: nivelPorDias(dias),
-      titulo: `Caixa Postal vencendo em ${dias} dias`,
-      mensagem: `O contrato da Caixa Postal nº ${caixa.numero} de ${caixa.empresa} vence em ${dias} dias (${caixa.data_vencimento}).`,
-      acao_recomendada: "Renove o contrato da caixa postal antes do vencimento.",
-    });
+    // Deduplicação caixa postal
+    const { data: alertaCaixaExist } = await supabase.from("alertas")
+      .select("id").eq("user_id", caixa.user_id)
+      .ilike("titulo", `%Caixa Postal%${caixa.numero}%`)
+      .eq("resolvida", false).limit(1);
+    if (!alertaCaixaExist || alertaCaixaExist.length === 0) {
+      await supabase.from("alertas").insert({
+        user_id: caixa.user_id, empresa_id: caixa.empresa_id ?? null,
+        nivel: nivelPorDias(dias),
+        titulo: `Caixa Postal nº ${caixa.numero} vencendo em ${dias} dias — ${caixa.empresa}`,
+        mensagem: `O contrato da Caixa Postal nº ${caixa.numero} de ${caixa.empresa} vence em ${dias} dias (${caixa.data_vencimento}).`,
+        acao_recomendada: "Renove o contrato da caixa postal antes do vencimento.",
+      });
+    }
   }
 
   // ── Contas a Pagar vencendo em 3 ou 7 dias ───────────────────────────────

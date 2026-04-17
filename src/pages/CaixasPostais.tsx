@@ -390,6 +390,16 @@ export default function CaixasPostais() {
       contrato_status: "ativo",
     }).eq("id", selectedId);
 
+    // Auto-resolver alertas pendentes desta caixa postal
+    const caixaAtual = caixas.find(c => c.id === selectedId);
+    if (caixaAtual) {
+      await supabase.from("alertas")
+        .update({ resolvida: true, lida: true })
+        .eq("user_id", ownerUserId!)
+        .eq("resolvida", false)
+        .ilike("titulo", `%${caixaAtual.numero}%`);
+    }
+
     toast({ title: "Renovação registrada!", description: `Novo vencimento: ${format(toDate(novoVencimento), "dd/MM/yyyy")}.` });
     setRenovacaoOpen(false);
     setRenovacaoForm(EMPTY_RENOVACAO);
