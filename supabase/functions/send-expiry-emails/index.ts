@@ -63,16 +63,20 @@ function clickUrl(notifId: string, destino: string) {
   return `${FUNCTIONS_BASE}/track-email-click?id=${notifId}&dest=${encodeURIComponent(destino)}`;
 }
 
-// ── Link WhatsApp ─────────────────────────────────────────────────────────
-function whatsappLink(mensagem: string) {
-  return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(mensagem)}`;
-}
 
 // ── Template base de email ────────────────────────────────────────────────
-function emailBase(titulo: string, corpo: string, notifId: string, cta?: { label: string; url: string }) {
-  const botao = cta
+function emailBase(titulo: string, corpo: string, notifId: string, cta?: { label: string; urlApp: string; urlWeb: string }) {
+  const botoes = cta
     ? `<div style="text-align:center;margin:32px 0">
-         <a href="${cta.url}" style="background:#1a56db;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:15px">${cta.label}</a>
+         <p style="color:#6b7280;font-size:13px;margin-bottom:16px">Escolha como prefere falar conosco:</p>
+         <div style="display:inline-flex;gap:12px;flex-wrap:wrap;justify-content:center">
+           <a href="${cta.urlApp}" style="background:#25d366;color:#fff;padding:14px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px;display:inline-block">
+             📱 WhatsApp — Celular
+           </a>
+           <a href="${cta.urlWeb}" style="background:#128c7e;color:#fff;padding:14px 24px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px;display:inline-block">
+             💻 WhatsApp — Computador
+           </a>
+         </div>
        </div>`
     : "";
   return `
@@ -83,7 +87,7 @@ function emailBase(titulo: string, corpo: string, notifId: string, cta?: { label
       <div style="background:#fff;padding:28px 32px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb">
         <h2 style="color:#111827;margin-top:0">${titulo}</h2>
         ${corpo}
-        ${botao}
+        ${botoes}
         <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
         <p style="color:#9ca3af;font-size:12px;text-align:center">
           Diretriz Contabilidade e Consultoria · <a href="https://diretriz.cnt.br" style="color:#9ca3af">diretriz.cnt.br</a>
@@ -179,7 +183,11 @@ serve(async () => {
        (${cert.data_validade}).</p>
        <p>Entre em contato conosco para agendar a renovação com antecedência e evitar interrupções nos seus serviços digitais.</p>`,
       notifId,
-      { label: "📲 Falar no WhatsApp", url: clickUrl(notifId, whatsappLink(waMsg)) }
+      {
+        label: "WhatsApp",
+        urlApp: clickUrl(notifId, `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(waMsg)}`),
+        urlWeb: clickUrl(notifId, `https://web.whatsapp.com/send?phone=${WHATSAPP_NUMBER}&text=${encodeURIComponent(waMsg)}`),
+      }
     ));
 
     await supabase.from("alertas").insert({
@@ -219,7 +227,11 @@ serve(async () => {
            (${caixa.data_vencimento}).</p>
            <p>Entre em contato conosco para renovar o contrato com antecedência e manter o endereço postal ativo.</p>`,
           notifId,
-          { label: "📲 Falar no WhatsApp", url: clickUrl(notifId, whatsappLink(waMsg)) }
+          {
+            label: "WhatsApp",
+            urlApp: clickUrl(notifId, `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(waMsg)}`),
+            urlWeb: clickUrl(notifId, `https://web.whatsapp.com/send?phone=${WHATSAPP_NUMBER}&text=${encodeURIComponent(waMsg)}`),
+          }
         ));
       }
     }
