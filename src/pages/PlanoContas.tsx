@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+﻿import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, Pencil, Trash2, ChevronRight, ChevronDown, Upload, Building2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -364,100 +364,91 @@ export default function PlanoContas() {
     }
 
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+
+    const getWs = (wb: XLSX.WorkBook): XLSX.WorkSheet | undefined => {
+      const name = wb.SheetNames[0];
+      return (name ? wb.Sheets[name] : undefined) ||
+        Object.values(wb.Sheets).find((s: any) => s && s["!ref"]) ||
+        Object.values(wb.Sheets)[0];
+    };
+
+    const processRows = (rows: any[][]) => {
+      const norm = (s: string) => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+      let cClassif = 0, cCodigo = 1, cNat = 2, cNome = 3, cGrau = 5, dataStart = 0;
+      for (let ri = 0; ri < Math.min(rows.length, 20); ri++) {
+        const row: any[] = rows[ri] ?? [];
+        let found = false;
+        for (let ci = 0; ci < row.length; ci++) {
+          const h = norm(row[ci]);
+          if (h.includes("classific")) { cClassif = ci; found = true; }
+          else if (h.includes("descri") || h.includes("nome")) { cNome = ci; found = true; }
+          else if (h === "t" || h === "nat" || h === "natureza") cNat = ci;
+          else if (h === "grau") cGrau = ci;
+          else if (h === "cod" || h === "codigo") cCodigo = ci;
+        }
+        if (found) { dataStart = ri + 1; break; }
+      }
+      const estimaGrau = (code: string) => {
+        const parts = code.split(".");
+        if (parts.length > 1) return parts.length;
+        const l = code.length;
+        if (l <= 1) return 1; if (l <= 2) return 2; if (l <= 3) return 3;
+        if (l <= 5) return 4; return 5;
+      };
+      const parsed: ReturnType<typeof parseTxt> = [];
+      for (let ri = dataStart; ri < rows.length; ri++) {
+        const row: any[] = rows[ri] ?? [];
+        const rawCode   = String(row[cClassif] ?? "").trim();
+        const codigoRed = String(row[cCodigo]  ?? "").trim();
+        const natureza  = String(row[cNat]      ?? "").trim();
+        const nome      = String(row[cNome]     ?? "").trim();
+        const grauRaw   = String(row[cGrau]     ?? "").trim();
+        if (!rawCode || (!(/^\d+$/.test(rawCode)) && !(/^[\d.]+$/.test(rawCode)))) continue;
+        if (!nome || /^\d+$/.test(nome)) continue;
+        const nat = /^s/i.test(natureza) ? "S" : "A";
+        const grau = parseInt(grauRaw) || estimaGrau(rawCode);
+        const classificacao = /^\d+$/.test(rawCode) ? toDotted(rawCode, grau) : rawCode;
+        parsed.push({ classificacao, codigo: codigoRed || rawCode, natureza: nat, grau, nome, tipo: detectTipo(classificacao, nome) });
+      }
+      if (parsed.length === 0) {
+        const preview = rows.slice(0, 5).map((r: any[]) =>
+          (r ?? []).slice(0, 6).map((c: any) => String(c ?? "").substring(0, 15)).join(" | ")
+        ).join("\n");
+        toast({ title: `Arquivo lido (${rows.length} linhas) — nenhuma conta reconhecida`, description: `Linhas:\n${preview}\nColunas: classif=${cClassif} cod=${cCodigo} nome=${cNome}`, variant: "destructive", duration: 30000 });
+        return;
+      }
+      setImportPreview(parsed);
+      setImportOpen(true);
+    };
+
     const reader = new FileReader();
 
-    if (ext === "xlsx" || ext === "xls") {
+    if (ext === "xlsx") {
       reader.onload = ev => {
-        const ab = ev.target?.result as ArrayBuffer;
-        const bytes = new Uint8Array(ab);
-        const magic = Array.from(bytes.slice(0, 8)).map(b => b.toString(16).padStart(2, "0")).join(" ");
-        const isBIFF8  = bytes[0] === 0xD0 && bytes[1] === 0xCF;
-        const isOOXML  = bytes[0] === 0x50 && bytes[1] === 0x4B;
-        const headText = Array.from(bytes.slice(0, 300)).map(b => String.fromCharCode(b)).join("");
-        const isHTML   = headText.trimStart().startsWith("<") || /html/i.test(headText.slice(0, 100));
-
         let wb: XLSX.WorkBook | null = null;
-
-        if (isHTML) {
-          try { const t = new TextDecoder("latin1").decode(bytes); wb = XLSX.read(t, { type: "string" }); } catch { wb = null; }
-        } else if (isBIFF8) {
-          try { const bstr = Array.from(bytes).map(b => String.fromCharCode(b)).join(""); wb = XLSX.read(bstr, { type: "binary" }); } catch { wb = null; }
-        } else if (isOOXML) {
-          try { wb = XLSX.read(bytes, { type: "array" }); if (Object.keys(wb.Sheets).length === 0) wb = null; } catch { wb = null; }
-        }
-
-        if (!wb) { try { wb = XLSX.read(bytes, { type: "array" }); if (Object.keys(wb.Sheets).length === 0) wb = null; } catch { wb = null; } }
-        if (!wb) { try { const b = Array.from(bytes).map(b => String.fromCharCode(b)).join(""); wb = XLSX.read(b, { type: "binary" }); } catch { wb = null; } }
-        if (!wb) {
-          try { const t = new TextDecoder("latin1").decode(bytes); wb = XLSX.read(t, { type: "string" }); }
-          catch (e) { toast({ title: "Erro ao ler o arquivo", description: `Magic: ${magic} | ${String(e)}`, variant: "destructive", duration: 30000 }); return; }
-        }
-
-        const firstName = wb.SheetNames[0];
-        const ws = (firstName ? wb.Sheets[firstName] : undefined) ||
-          Object.values(wb.Sheets).find((s: any) => s && s["!ref"]) ||
-          Object.values(wb.Sheets)[0] as XLSX.WorkSheet | undefined;
-        if (!ws) {
-          toast({ title: "Planilha não encontrada", description: `Magic: ${magic} | isBIFF8:${isBIFF8} | Names: [${wb.SheetNames.join(", ")}] | Keys: [${Object.keys(wb.Sheets).join(", ")}] | firstName lookup: ${firstName ? (wb.Sheets[firstName] ? "ok" : "undefined") : "n/a"}`, variant: "destructive", duration: 30000 });
-          return;
-        }
-        const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: "" });
-
-        const norm = (s: string) => String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        let cClassif = 0, cCodigo = 1, cNat = 2, cNome = 3, cGrau = 5, dataStart = 0;
-        for (let ri = 0; ri < Math.min(rows.length, 20); ri++) {
-          const row: any[] = rows[ri] ?? [];
-          let found = false;
-          for (let ci = 0; ci < row.length; ci++) {
-            const h = norm(row[ci]);
-            if (h.includes("classific")) { cClassif = ci; found = true; }
-            else if (h.includes("descri") || h.includes("nome")) { cNome = ci; found = true; }
-            else if (h === "t" || h === "nat" || h === "natureza") cNat = ci;
-            else if (h === "grau") cGrau = ci;
-            else if (h === "cod" || h === "codigo") cCodigo = ci;
-          }
-          if (found) { dataStart = ri + 1; break; }
-        }
-
-        const estimaGrau = (code: string) => {
-          const parts = code.split(".");
-          if (parts.length > 1) return parts.length;
-          const l = code.length;
-          if (l <= 1) return 1; if (l <= 2) return 2; if (l <= 3) return 3;
-          if (l <= 5) return 4; return 5;
-        };
-
-        const parsed: ReturnType<typeof parseTxt> = [];
-        for (let ri = dataStart; ri < rows.length; ri++) {
-          const row: any[] = rows[ri] ?? [];
-          const rawCode   = String(row[cClassif] ?? "").trim();
-          const codigoRed = String(row[cCodigo]  ?? "").trim();
-          const natureza  = String(row[cNat]      ?? "").trim();
-          const nome      = String(row[cNome]     ?? "").trim();
-          const grauRaw   = String(row[cGrau]     ?? "").trim();
-          // Aceita "11201" (puro) ou "1.1.2.01" (já pontilhado)
-          if (!rawCode || (!(/^\d+$/.test(rawCode)) && !(/^[\d.]+$/.test(rawCode)))) continue;
-          if (!nome || /^\d+$/.test(nome)) continue;
-          const nat = /^s/i.test(natureza) ? "S" : "A";
-          const grau = parseInt(grauRaw) || estimaGrau(rawCode);
-          const classificacao = /^\d+$/.test(rawCode) ? toDotted(rawCode, grau) : rawCode;
-          parsed.push({ classificacao, codigo: codigoRed || rawCode, natureza: nat, grau, nome, tipo: detectTipo(classificacao, nome) });
-        }
-        if (parsed.length === 0) {
-          const preview = rows.slice(0, 5).map((r: any[]) =>
-            (r ?? []).slice(0, 6).map((c: any) => String(c ?? "").substring(0, 15)).join(" | ")
-          ).join("\n");
-          toast({ title: `Arquivo lido (${rows.length} linhas) — nenhuma conta reconhecida`, description: `Linhas:\n${preview}\nColunas: classif=${cClassif} cod=${cCodigo} nome=${cNome}`, variant: "destructive", duration: 30000 });
-          return;
-        }
-        setImportPreview(parsed);
-        setImportOpen(true);
+        try { wb = XLSX.read(new Uint8Array(ev.target?.result as ArrayBuffer), { type: "array" }); } catch { wb = null; }
+        if (!wb) { toast({ title: "Erro ao ler .xlsx", variant: "destructive" }); return; }
+        const ws = getWs(wb);
+        if (!ws) { toast({ title: "Planilha vazia", description: `Abas: [${wb.SheetNames.join(", ")}]`, variant: "destructive" }); return; }
+        processRows(XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: "" }));
       };
       reader.readAsArrayBuffer(file);
+    } else if (ext === "xls") {
+      // SheetJS recomenda readAsBinaryString para BIFF8 (.xls legado)
+      reader.onload = ev => {
+        const bstr = ev.target?.result as string;
+        const isHTML = bstr.trimStart().startsWith("<") || /^<html/i.test(bstr.slice(0, 100));
+        let wb: XLSX.WorkBook | null = null;
+        try { wb = XLSX.read(bstr, { type: isHTML ? "string" : "binary" }); } catch { wb = null; }
+        if (!wb) { toast({ title: "Erro ao ler .xls", variant: "destructive" }); return; }
+        const ws = getWs(wb);
+        if (!ws) { toast({ title: "Planilha vazia", description: `Abas: [${wb.SheetNames.join(", ")}] | Keys: [${Object.keys(wb.Sheets).join(", ")}]`, variant: "destructive", duration: 20000 }); return; }
+        processRows(XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: "" }));
+      };
+      reader.readAsBinaryString(file);
     } else {
       reader.onload = ev => {
-        const txt = ev.target?.result as string;
-        const parsed = parseTxt(txt);
+        const parsed = parseTxt(ev.target?.result as string);
         if (parsed.length === 0) {
           toast({ title: "Nenhuma conta reconhecida", description: "Verifique o formato do arquivo.", variant: "destructive" });
           return;
