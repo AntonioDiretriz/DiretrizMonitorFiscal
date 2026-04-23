@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+﻿import { useState, useEffect, useRef, useCallback } from "react";
 import { format, differenceInDays } from "date-fns";
 import {
   Upload, CheckCircle, XCircle, Clock, Link,
@@ -140,22 +140,24 @@ export default function Conciliacao() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [empresas,      setEmpresas]      = useState<Empresa[]>([]);
-  const [contas,        setContas]        = useState<ContaBancaria[]>([]);
-  const [transacoes,    setTransacoes]    = useState<Transacao[]>([]);
-  const [contasPagar,   setContasPagar]   = useState<ContaPagar[]>([]);
-  const [planoContas,   setPlanoContas]   = useState<PlanoContas[]>([]);
-  const [regras,        setRegras]        = useState<RegrasConciliacao[]>([]);
+  const [empresas,     setEmpresas]     = useState<Empresa[]>([]);
+  const [contas,       setContas]       = useState<ContaBancaria[]>([]);
+  const [transacoes,   setTransacoes]   = useState<Transacao[]>([]);
+  const [contasPagar,  setContasPagar]  = useState<ContaPagar[]>([]);
+  const [planoContas,  setPlanoContas]  = useState<PlanoContas[]>([]);
+  const [regras,       setRegras]       = useState<RegrasConciliacao[]>([]);
+  const [importacoes,  setImportacoes]  = useState<Importacao[]>([]);
 
   const [selectedEmpresa, setSelectedEmpresa] = useState<string | null>(null);
   const [selectedConta,   setSelectedConta]   = useState<string | null>(null);
+  const [selectedMes,     setSelectedMes]     = useState<string>("");
+  const [activeTab,       setActiveTab]       = useState<"pendentes" | "conciliados">("pendentes");
 
-  const [importacoes,    setImportacoes]    = useState<Importacao[]>([]);
-  const [showHistory,    setShowHistory]    = useState(false);
   const [uploading,      setUploading]      = useState(false);
+  const [loading,        setLoading]        = useState(true);
+  const [showHistory,    setShowHistory]    = useState(false);
   const [matchDialogId,  setMatchDialogId]  = useState<string | null>(null);
   const [selectedCpId,   setSelectedCpId]   = useState<string>("");
-  const [loading,        setLoading]        = useState(true);
   const [categorizando,  setCategorizando]  = useState<string | null>(null);
 
   // ── Load ──────────────────────────────────────────────────────────────────
@@ -164,7 +166,7 @@ export default function Conciliacao() {
     setLoading(true);
     const [cbRes, txRes, cpRes, empRes, rRes, impRes] = await Promise.all([
       supabase.from("contas_bancarias").select("id, empresa_id, banco, agencia, conta, tipo, descricao, saldo_inicial").order("banco"),
-      supabase.from("transacoes_bancarias").select("*").order("data", { ascending: false }).limit(500),
+      supabase.from("transacoes_bancarias").select("*").order("data", { ascending: false }).limit(2000),
       supabase.from("contas_pagar").select("id, fornecedor, valor, data_vencimento, status").in("status", ["pendente", "aprovado"]).order("data_vencimento"),
       supabase.from("empresas").select("id, razao_social").order("razao_social"),
       supabase.from("regras_conciliacao").select("id, padrao, plano_contas_id, tipo, automatica"),
@@ -181,19 +183,46 @@ export default function Conciliacao() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  // Reload plano_contas when empresa changes
+  // plano_contas por empresa
   useEffect(() => {
     setSelectedConta(null);
     if (!selectedEmpresa) { setPlanoContas([]); return; }
     supabase.from("plano_contas").select("id, nome, tipo, codigo")
-      .eq("empresa_id", selectedEmpresa)
-      .order("codigo").order("nome")
+      .eq("empresa_id", selectedEmpresa).order("codigo").order("nome")
       .then(({ data }) => setPlanoContas((data ?? []) as PlanoContas[]));
   }, [selectedEmpresa]);
 
-  const contasDaEmpresa = selectedEmpresa
-    ? contas.filter(c => c.empresa_id === selectedEmpresa)
-    : contas;
+  // mês padrão: mês mais recente das transações da conta selecionada
+  useEffect(() => {
+    const txConta = selectedConta ? transacoes.filter(t => t.conta_bancaria_id === selectedConta) : transacoes;
+    if (txConta.length === 0) { setSelectedMes(""); return; }
+    const meses = [...new Set(txConta.map(t => t.data.slice(0, 7)))].sort().reverse();
+    setSelectedMes(meses[0] ?? "");
+  }, [selectedConta, transacoes]);
+
+  const contasDaEmpresa = selectedEmpresa ? contas.filter(c => c.empresa_id === selectedEmpresa) : contas;
+
+  // meses disponíveis para a conta selecionada
+  const mesesDisponiveis = [...new Set(
+    (selectedConta ? transacoes.filter(t => t.conta_bancaria_id === selectedConta) : transacoes)
+      .map(t => t.data.slice(0, 7))
+  )].sort().reverse();
+
+  // ── Filtragem principal ───────────────────────────────────────────────────
+  const txBase = transacoes.filter(t =>
+    (!selectedConta || t.conta_bancaria_id === selectedConta) &&
+    (!selectedMes   || t.data.startsWith(selectedMes))
+  );
+  const txPendentes   = txBase.filter(t => t.status === "pendente");
+  const txConciliados = txBase.filter(t => t.status === "conciliado");
+  const txIgnorados   = txBase.filter(t => t.status === "ignorado");
+  const txAtivos      = activeTab === "pendentes" ? txPendentes : txConciliados;
+
+  const totalDebitos  = txBase.filter(t => t.tipo === "debito").reduce((s, t) => s + Number(t.valor), 0);
+  const totalCreditos = txBase.filter(t => t.tipo === "credito").reduce((s, t) => s + Number(t.valor), 0);
+
+  const planoById = Object.fromEntries(planoContas.map(p => [p.id, p]));
+  const importacoesFiltradas = importacoes.filter(i => !selectedConta || i.conta_bancaria_id === selectedConta);
 
   // ── Categorizar ───────────────────────────────────────────────────────────
   const salvarRegra = async (descricao: string, tipo: string, planoContasId: string) => {
@@ -245,7 +274,7 @@ export default function Conciliacao() {
       status: planoIds[i]?.automatica ? "conciliado" : "pendente",
       hash_dedup: t.hash,
       plano_contas_id: planoIds[i]?.plano_contas_id ?? null,
-      categorizado_por: planoIds[i] ? "regra" : "manual",
+      categorizado_por: planoIds[i] ? "regra" : null,
     }));
     const { error: insErr } = await supabase.from("transacoes_bancarias").upsert(rows, { onConflict: "user_id,conta_bancaria_id,hash_dedup", ignoreDuplicates: true });
     await supabase.from("importacoes_bancarias").update({ status: insErr ? "erro" : "concluido", erro_mensagem: insErr?.message ?? null }).eq("id", imp.id);
@@ -287,7 +316,7 @@ export default function Conciliacao() {
       status: planoIds[i]?.automatica ? "conciliado" : "pendente",
       hash_dedup: `pdf-${hash}-${i}`,
       plano_contas_id: planoIds[i]?.plano_contas_id ?? null,
-      categorizado_por: planoIds[i] ? "regra" : "manual",
+      categorizado_por: planoIds[i] ? "regra" : null,
     }));
     const { error: insErr } = await supabase.from("transacoes_bancarias").upsert(rows, { onConflict: "user_id,conta_bancaria_id,hash_dedup", ignoreDuplicates: true });
     await supabase.from("importacoes_bancarias").update({ status: insErr ? "erro" : "concluido", erro_mensagem: insErr?.message ?? null }).eq("id", imp.id);
@@ -296,7 +325,7 @@ export default function Conciliacao() {
       const autoCat  = planoIds.filter(Boolean).length;
       const autoConc = planoIds.filter(r => r?.automatica).length;
       toast({
-        title: `${txList.length} transações importadas do PDF${data.banco ? ` — ${data.banco}` : ""}!`,
+        title: `${txList.length} transações importadas do PDF!`,
         description: autoCat > 0 ? `${autoCat} categorizadas${autoConc > 0 ? `, ${autoConc} conciliadas automaticamente` : ""}.` : undefined,
       });
       loadAll();
@@ -322,10 +351,9 @@ export default function Conciliacao() {
   };
 
   const handleDeleteImportacao = async (imp: Importacao) => {
-    // Deleta transações desta importação e depois o registro
     await (supabase as any).from("transacoes_bancarias").delete().eq("importacao_id", imp.id);
     await (supabase as any).from("importacoes_bancarias").delete().eq("id", imp.id);
-    toast({ title: "Importação removida", description: "Você pode reimportar o arquivo agora." });
+    toast({ title: "Importação removida" });
     loadAll();
   };
 
@@ -342,27 +370,39 @@ export default function Conciliacao() {
     setMatchDialogId(null); setSelectedCpId(""); loadAll();
   };
 
-  const contasFiltradas      = transacoes.filter(t => !selectedConta || t.conta_bancaria_id === selectedConta);
-  const importacoesFiltradas = importacoes.filter(i => !selectedConta || i.conta_bancaria_id === selectedConta);
-  const pendentes   = contasFiltradas.filter(t => t.status === "pendente").length;
-  const conciliados = contasFiltradas.filter(t => t.status === "conciliado").length;
-  const ignorados   = contasFiltradas.filter(t => t.status === "ignorado").length;
-  const planoById   = Object.fromEntries(planoContas.map(p => [p.id, p]));
+  const fmtMoeda = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+  const fmtMes = (ym: string) => {
+    const [y, m] = ym.split("-");
+    const meses = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+    return `${meses[parseInt(m) - 1]}/${y}`;
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Conciliação Bancária</h1>
-        <p className="text-muted-foreground">Selecione a empresa, a conta e importe o extrato</p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Conciliação Bancária</h1>
+          <p className="text-sm text-muted-foreground">Selecione empresa, conta e mês para conciliar</p>
+        </div>
+        {selectedConta && podeIncluir && (
+          <>
+            <input ref={fileInputRef} type="file" accept=".ofx,.ofc,.csv,.pdf" className="hidden" onChange={handleFileImport} />
+            <Button onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+              {uploading
+                ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Importando...</>
+                : <><Upload className="mr-2 h-4 w-4" />Importar OFX / CSV / PDF</>}
+            </Button>
+          </>
+        )}
       </div>
 
-      {/* Seletores: Empresa → Conta → Import */}
+      {/* Filtros em cascata */}
       <div className="flex flex-wrap gap-3 items-center">
         <Select value={selectedEmpresa ?? "todas"} onValueChange={v => setSelectedEmpresa(v === "todas" ? null : v)}>
-          <SelectTrigger className="w-64">
+          <SelectTrigger className="w-60">
             <Building2 className="mr-2 h-4 w-4 text-muted-foreground shrink-0" />
-            <SelectValue placeholder="Todas as empresas" />
+            <SelectValue placeholder="Selecione a empresa" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todas">Todas as empresas</SelectItem>
@@ -376,7 +416,7 @@ export default function Conciliacao() {
           disabled={contasDaEmpresa.length === 0}
         >
           <SelectTrigger className="w-56">
-            <SelectValue placeholder={contasDaEmpresa.length === 0 ? "Nenhuma conta cadastrada" : "Todas as contas"} />
+            <SelectValue placeholder={contasDaEmpresa.length === 0 ? "Nenhuma conta" : "Selecione a conta"} />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todas">Todas as contas</SelectItem>
@@ -388,90 +428,135 @@ export default function Conciliacao() {
           </SelectContent>
         </Select>
 
-        {selectedConta && podeIncluir && (
-          <>
-            <input ref={fileInputRef} type="file" accept=".ofx,.ofc,.csv,.pdf" className="hidden" onChange={handleFileImport} />
-            <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-              {uploading
-                ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Importando...</>
-                : <><Upload className="mr-2 h-4 w-4" /> Importar PDF / OFX / CSV</>
-              }
-            </Button>
-          </>
-        )}
+        <Select
+          value={selectedMes || "todos"}
+          onValueChange={v => setSelectedMes(v === "todos" ? "" : v)}
+          disabled={mesesDisponiveis.length === 0}
+        >
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Mês" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos os meses</SelectItem>
+            {mesesDisponiveis.map(m => (
+              <SelectItem key={m} value={m}>{fmtMes(m)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-        {contasFiltradas.length > 0 && (
-          <div className="flex gap-3 ml-auto text-sm">
-            <span className="flex items-center gap-1" style={{ color: AMBER }}><Clock className="h-3.5 w-3.5" />{pendentes} pendentes</span>
-            <span className="flex items-center gap-1" style={{ color: GREEN }}><CheckCircle className="h-3.5 w-3.5" />{conciliados} conciliados</span>
-            <span className="flex items-center gap-1" style={{ color: GRAY }}><XCircle className="h-3.5 w-3.5" />{ignorados} ignorados</span>
-          </div>
+        {importacoesFiltradas.length > 0 && (
+          <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground ml-auto" onClick={() => setShowHistory(h => !h)}>
+            <History className="h-3.5 w-3.5" />
+            {showHistory ? "Ocultar" : "Ver"} histórico ({importacoesFiltradas.length})
+          </button>
         )}
       </div>
 
-      {/* Aviso: empresa sem contas cadastradas */}
+      {/* Aviso sem conta */}
       {selectedEmpresa && contasDaEmpresa.length === 0 && !loading && (
-        <div className="flex items-center gap-3 p-4 rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-800">
-          <Building2 className="h-5 w-5 shrink-0" />
-          <span>Esta empresa não possui contas bancárias cadastradas. Acesse <strong>Empresas → editar → aba Bancos</strong> para cadastrar.</span>
+        <div className="flex items-center gap-3 p-3 rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-800">
+          <Building2 className="h-4 w-4 shrink-0" />
+          Esta empresa não possui contas bancárias cadastradas. Acesse <strong className="mx-1">Empresas → editar → aba Bancos</strong>.
         </div>
       )}
 
-      {/* Regras ativas */}
-      {regras.length > 0 && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Tag className="h-3.5 w-3.5" />
-          {regras.length} regra{regras.length !== 1 ? "s" : ""} de categorização automática ativas
+      {/* KPIs do mês */}
+      {txBase.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Card>
+            <CardContent className="p-4 flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="h-3.5 w-3.5" style={{ color: AMBER }} />Pendentes</span>
+              <span className="text-2xl font-bold" style={{ color: AMBER }}>{txPendentes.length}</span>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground flex items-center gap-1"><CheckCircle className="h-3.5 w-3.5" style={{ color: GREEN }} />Conciliados</span>
+              <span className="text-2xl font-bold" style={{ color: GREEN }}>{txConciliados.length}</span>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">Total créditos</span>
+              <span className="text-lg font-semibold" style={{ color: GREEN }}>{fmtMoeda(totalCreditos)}</span>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">Total débitos</span>
+              <span className="text-lg font-semibold" style={{ color: RED }}>{fmtMoeda(totalDebitos)}</span>
+            </CardContent>
+          </Card>
         </div>
       )}
 
       {/* Histórico de importações */}
-      {importacoesFiltradas.length > 0 && (
-        <div>
-          <button
-            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground mb-2"
-            onClick={() => setShowHistory(h => !h)}
-          >
-            <History className="h-3.5 w-3.5" />
-            {showHistory ? "Ocultar" : "Ver"} histórico de importações ({importacoesFiltradas.length})
-          </button>
-          {showHistory && (
-            <Card className="mb-4">
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Arquivo</TableHead>
-                      <TableHead>Formato</TableHead>
-                      <TableHead>Transações</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Data</TableHead>
-                      <TableHead className="w-12"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {importacoesFiltradas.map(imp => (
-                      <TableRow key={imp.id}>
-                        <TableCell className="text-sm max-w-[200px] truncate">{imp.arquivo_nome ?? "—"}</TableCell>
-                        <TableCell><Badge variant="outline" className="uppercase text-xs">{imp.formato}</Badge></TableCell>
-                        <TableCell className="text-sm">{imp.total_transacoes ?? 0}</TableCell>
-                        <TableCell>
-                          <Badge style={{ backgroundColor: imp.status === "concluido" ? GREEN + "20" : imp.status === "erro" ? RED + "20" : AMBER + "20", color: imp.status === "concluido" ? GREEN : imp.status === "erro" ? RED : AMBER }}>
-                            {imp.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm">{format(new Date(imp.created_at), "dd/MM/yyyy HH:mm")}</TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="icon" title="Excluir importação" onClick={() => handleDeleteImportacao(imp)}>
-                            <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+      {showHistory && (
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Arquivo</TableHead>
+                  <TableHead>Formato</TableHead>
+                  <TableHead>Transações</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Data</TableHead>
+                  <TableHead className="w-10"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {importacoesFiltradas.map(imp => (
+                  <TableRow key={imp.id}>
+                    <TableCell className="text-sm truncate max-w-[180px]">{imp.arquivo_nome ?? "—"}</TableCell>
+                    <TableCell><Badge variant="outline" className="uppercase text-xs">{imp.formato}</Badge></TableCell>
+                    <TableCell className="text-sm">{imp.total_transacoes ?? 0}</TableCell>
+                    <TableCell>
+                      <Badge style={{ backgroundColor: imp.status === "concluido" ? GREEN + "20" : imp.status === "erro" ? RED + "20" : AMBER + "20", color: imp.status === "concluido" ? GREEN : imp.status === "erro" ? RED : AMBER }}>
+                        {imp.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm">{format(new Date(imp.created_at), "dd/MM/yyyy HH:mm")}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteImportacao(imp)}>
+                        <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Tabs Pendentes / Conciliados */}
+      {txBase.length > 0 && (
+        <div className="flex gap-1 border-b">
+          {(["pendentes", "conciliados"] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === tab
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {tab === "pendentes" ? "Pendentes" : "Conciliados"}
+              <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${
+                tab === "pendentes"
+                  ? "bg-amber-100 text-amber-700"
+                  : "bg-green-100 text-green-700"
+              }`}>
+                {tab === "pendentes" ? txPendentes.length : txConciliados.length}
+              </span>
+            </button>
+          ))}
+          {txIgnorados.length > 0 && (
+            <span className="px-4 py-2 text-sm text-muted-foreground">
+              {txIgnorados.length} ignorado{txIgnorados.length !== 1 ? "s" : ""}
+            </span>
           )}
         </div>
       )}
@@ -486,71 +571,65 @@ export default function Conciliacao() {
                 <TableHead>Descrição</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
-                <TableHead>Categoria</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead className="min-w-[200px]">Conta Contábil</TableHead>
                 <TableHead className="w-20"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
-              ) : contasFiltradas.length === 0 ? (
+                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+              ) : txAtivos.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <FileText className="h-8 w-8 opacity-30" />
-                      <p>{selectedConta ? "Nenhuma transação importada. Clique em Importar PDF / OFX / CSV." : "Selecione uma conta para ver as transações."}</p>
+                      {activeTab === "pendentes"
+                        ? <p>Nenhuma transação pendente{selectedMes ? ` em ${fmtMes(selectedMes)}` : ""}. {txConciliados.length > 0 ? "Todas conciliadas!" : "Importe um extrato para começar."}</p>
+                        : <p>Nenhuma transação conciliada{selectedMes ? ` em ${fmtMes(selectedMes)}` : ""}.</p>
+                      }
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : contasFiltradas.map(t => (
-                <TableRow key={t.id} className={t.status === "conciliado" ? "bg-green-50/30" : t.status === "ignorado" ? "opacity-50" : ""}>
+              ) : txAtivos.map(t => (
+                <TableRow key={t.id} className={activeTab === "conciliados" ? "bg-green-50/30" : ""}>
                   <TableCell className="text-sm">{format(new Date(t.data + "T12:00:00"), "dd/MM/yyyy")}</TableCell>
-                  <TableCell className="text-sm max-w-[200px] truncate" title={t.descricao}>{t.descricao}</TableCell>
+                  <TableCell className="text-sm max-w-[220px] truncate" title={t.descricao}>{t.descricao}</TableCell>
                   <TableCell>
                     <Badge style={{ backgroundColor: t.tipo === "credito" ? GREEN + "20" : RED + "20", color: t.tipo === "credito" ? GREEN : RED }}>
                       {t.tipo === "credito" ? "Crédito" : "Débito"}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right font-medium" style={{ color: t.tipo === "credito" ? GREEN : RED }}>
-                    {t.tipo === "credito" ? "+" : "-"} R$ {Number(t.valor).toFixed(2).replace(".", ",")}
-                  </TableCell>
-                  <TableCell className="min-w-[160px]">
-                    {t.status !== "ignorado" ? (
-                      <Select
-                        value={t.plano_contas_id ?? "none"}
-                        onValueChange={v => v !== "none" && handleCategorizar(t, v)}
-                        disabled={categorizando === t.id}
-                      >
-                        <SelectTrigger className="h-7 text-xs w-full">
-                          <SelectValue placeholder="Sem categoria">
-                            {t.plano_contas_id && planoById[t.plano_contas_id]
-                              ? <span className="flex items-center gap-1">
-                                  {t.categorizado_por === "regra" && <Tag className="h-3 w-3 text-blue-500 shrink-0" />}
-                                  {planoById[t.plano_contas_id].nome}
-                                </span>
-                              : <span className="text-muted-foreground">Sem categoria</span>
-                            }
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Sem categoria</SelectItem>
-                          {planoContas.map(p => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.codigo ? `${p.codigo} — ` : ""}{p.nome}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : <span className="text-xs text-muted-foreground">—</span>}
+                    {t.tipo === "credito" ? "+" : "−"} {fmtMoeda(Number(t.valor))}
                   </TableCell>
                   <TableCell>
-                    {t.status === "pendente"   && <Badge style={{ backgroundColor: AMBER + "20", color: AMBER }}>Pendente</Badge>}
-                    {t.status === "conciliado" && <Badge style={{ backgroundColor: GREEN + "20", color: GREEN }}>Conciliado</Badge>}
-                    {t.status === "ignorado"   && <Badge variant="secondary">Ignorado</Badge>}
+                    <Select
+                      value={t.plano_contas_id ?? "none"}
+                      onValueChange={v => v !== "none" && handleCategorizar(t, v)}
+                      disabled={categorizando === t.id}
+                    >
+                      <SelectTrigger className="h-7 text-xs w-full">
+                        <SelectValue placeholder="Sem categoria">
+                          {t.plano_contas_id && planoById[t.plano_contas_id]
+                            ? <span className="flex items-center gap-1">
+                                {t.categorizado_por === "regra" && <Tag className="h-3 w-3 text-blue-500 shrink-0" />}
+                                {planoById[t.plano_contas_id].nome}
+                              </span>
+                            : <span className="text-muted-foreground">Sem categoria</span>}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sem categoria</SelectItem>
+                        {planoContas.map(p => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.codigo ? `${p.codigo} — ` : ""}{p.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </TableCell>
                   <TableCell>
-                    {t.status === "pendente" && (
+                    {activeTab === "pendentes" && (
                       <div className="flex gap-1 justify-end">
                         {t.tipo === "debito" && (
                           <Button variant="ghost" size="icon" title="Conciliar com conta a pagar"
@@ -574,16 +653,16 @@ export default function Conciliacao() {
       {/* Dialog: conciliar com conta a pagar */}
       <Dialog open={!!matchDialogId} onOpenChange={o => { if (!o) setMatchDialogId(null); }}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Conciliar Transação</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground mb-3">Selecione a conta a pagar correspondente:</p>
+          <DialogHeader><DialogTitle>Conciliar com Conta a Pagar</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground mb-3">Selecione a conta a pagar correspondente a este débito:</p>
           <Select value={selectedCpId} onValueChange={setSelectedCpId}>
-            <SelectTrigger><SelectValue placeholder="Selecione uma conta a pagar..." /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
             <SelectContent>
               {contasPagar.map(cp => {
                 const dias = differenceInDays(new Date(cp.data_vencimento + "T12:00:00"), new Date());
                 return (
                   <SelectItem key={cp.id} value={cp.id}>
-                    {cp.fornecedor} — R$ {Number(cp.valor).toFixed(2).replace(".", ",")}
+                    {cp.fornecedor} — {fmtMoeda(Number(cp.valor))}
                     {" "}({dias < 0 ? `${Math.abs(dias)}d atrasada` : dias === 0 ? "hoje" : `${dias}d`})
                   </SelectItem>
                 );
