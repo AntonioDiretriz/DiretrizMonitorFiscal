@@ -72,8 +72,9 @@ export function AppSidebar() {
   const financeiroItems = temModulo("financeiro") ? [
     { title: "Visão Geral",    url: "/financeiro",   icon: Banknote   },
     { title: "Contas a Pagar", url: "/contas-pagar", icon: CreditCard },
-    { title: "Conciliação",    url: "/conciliacao",  icon: ListChecks },
-    { title: "Obrigações",     url: "/obrigacoes",   icon: ListChecks },
+    { title: "Conciliação",    url: "/conciliacao",        icon: ListChecks },
+    { title: "Regras",         url: "/regras-conciliacao", icon: ListChecks },
+    { title: "Obrigações",     url: "/obrigacoes",         icon: ListChecks },
   ] : [];
 
   const rotinasItems = temModulo("rotinas") ? [

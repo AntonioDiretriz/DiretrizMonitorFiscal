@@ -20,6 +20,7 @@ import Financeiro from "./pages/Financeiro";
 import ContasPagar from "./pages/ContasPagar";
 import PlanoContas from "./pages/PlanoContas";
 import Conciliacao from "./pages/Conciliacao";
+import RegrasConciliacao from "./pages/RegrasConciliacao";
 import Fornecedores from "./pages/Fornecedores";
 import Obrigacoes from "./pages/Obrigacoes";
 import Rotinas from "./pages/Rotinas";
@@ -61,6 +62,7 @@ const App = () => (
               <Route path="/contas-pagar" element={<ContasPagar />} />
               <Route path="/plano-contas" element={<PlanoContas />} />
               <Route path="/conciliacao" element={<Conciliacao />} />
+              <Route path="/regras-conciliacao" element={<RegrasConciliacao />} />
               <Route path="/fornecedores" element={<Fornecedores />} />
               <Route path="/obrigacoes" element={<Obrigacoes />} />
               <Route path="/rotinas" element={<Rotinas />} />
