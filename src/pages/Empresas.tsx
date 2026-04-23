@@ -11,13 +11,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Building2, Trash2, Loader2, Pencil, MapPin, UserPlus, Cake, Users2, Banknote, Upload, Monitor } from "lucide-react";
+import { Plus, Search, Building2, Trash2, Loader2, Pencil, MapPin, UserPlus, Cake, Users2, Banknote, Upload, Monitor, Landmark } from "lucide-react";
 import { ExportButton } from "@/components/ExportButton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { format, parseISO } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import type { Tables } from "@/integrations/supabase/types";
+import * as XLSX from "xlsx";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -88,50 +89,75 @@ function isNomeConta(v: string): boolean {
   return v.length >= 2 && /[A-Za-zÀ-ú]/.test(v);
 }
 
-function parseTxtPC(txt: string): { codigo: string; nome: string; tipo: PlanoContaTipo }[] {
-  const lines = txt.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-  if (lines.length === 0) return [];
-
-  // Detecta separador dominante
-  const sep = lines[0].includes("\t") ? "\t"
-    : lines[0].includes(";") ? ";"
-    : lines[0].includes("|") ? "|"
-    : null;
-
-  // Converte todas as linhas em arrays de colunas
-  const rows: string[][] = lines.map(line => {
-    if (sep) return line.split(sep).map(p => p.trim());
-    // Sem separador: tenta "código espaços nome"
-    const m = line.match(/^([\d][.\d-]*)\s+(.+)$/);
-    if (m) return [m[1], m[2]];
-    return [line];
-  });
-
-  const maxCols = Math.max(...rows.map(r => r.length));
-  if (maxCols < 2) return [];
-
-  // Testa todos os pares (codeCol, nameCol) e escolhe o que produz mais linhas válidas
-  let bestCode = 0, bestName = 1, bestCount = 0;
-
-  for (let ci = 0; ci < maxCols; ci++) {
-    for (let ni = 0; ni < maxCols; ni++) {
-      if (ci === ni) continue;
-      let count = 0;
-      for (const row of rows) {
-        if (isCodigoContabil(row[ci] ?? "") && isNomeConta(row[ni] ?? "")) count++;
-      }
-      if (count > bestCount) { bestCount = count; bestCode = ci; bestName = ni; }
-    }
+// Converte código Domínio sem pontos (11201009) → classificação dotada (1.1.2.01.009)
+function toDottedPC(code: string, grau: number): string {
+  const LENS = [1, 1, 1, 2, 3, 3];
+  const parts: string[] = [];
+  let pos = 0;
+  for (let i = 0; i < grau && i < LENS.length && pos < code.length; i++) {
+    parts.push(code.slice(pos, pos + LENS[i]));
+    pos += LENS[i];
   }
+  return parts.join(".");
+}
 
-  if (bestCount === 0) return [];
+function parseTxtPC(txt: string): { codigo: string; classificacao: string; natureza: string; grau: number; nome: string; tipo: PlanoContaTipo }[] {
+  const lines = txt.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const result: { codigo: string; classificacao: string; natureza: string; grau: number; nome: string; tipo: PlanoContaTipo }[] = [];
 
-  const result: { codigo: string; nome: string; tipo: PlanoContaTipo }[] = [];
-  for (const row of rows) {
-    const codigo = row[bestCode] ?? "";
-    const nome   = row[bestName] ?? "";
-    if (!isCodigoContabil(codigo) || !isNomeConta(nome)) continue;
-    result.push({ codigo, nome, tipo: detectTipoPC(nome) });
+  for (const line of lines) {
+    if (/classificaç[aã]o|c[oó]digo|descri[cç][aã]o/i.test(line)) continue;
+    if (!line.trim()) continue;
+
+    const tokens = line.split(/\s+/).filter(Boolean);
+
+    // ── Formato Domínio (arquivo TXT exportado) ─────────────────────────────
+    // empCod  seqNo  NOME  dominioCode  [S|A]  mascara  EMPRESA  cnpjEmp  grau  [cnpjCliente]
+    if (tokens.length >= 9 && /^\d+$/.test(tokens[0]) && /^\d+$/.test(tokens[1])) {
+      let ri = tokens.length - 1;
+      if (/^\d{11,14}$/.test(tokens[ri]) && ri > 9) {
+        const prev = tokens[ri - 1];
+        if (/^\d{1,2}$/.test(prev) && +prev >= 1 && +prev <= 9) ri--;
+      }
+      const grau = parseInt(tokens[ri]); ri--;
+      if (isNaN(grau) || grau < 1 || grau > 9) continue;
+      if (!/^\d{11,14}$/.test(tokens[ri])) continue;
+      ri--;
+      let mascaraIdx = -1;
+      for (let i = ri; i >= 4; i--) {
+        if (/^\d[\d.]+\d$/.test(tokens[i]) && tokens[i].includes(".")) { mascaraIdx = i; break; }
+      }
+      if (mascaraIdx < 0) continue;
+      const natureza = tokens[mascaraIdx - 1];
+      if (!/^[SA]$/i.test(natureza)) continue;
+      const dominioCode = tokens[mascaraIdx - 2];
+      if (!/^\d+$/.test(dominioCode)) continue;
+      const nome = tokens.slice(2, mascaraIdx - 2).join(" ").trim();
+      if (!nome) continue;
+      const classificacao = toDottedPC(dominioCode, grau);
+      result.push({ codigo: dominioCode, classificacao, natureza: natureza.toUpperCase(), grau, nome, tipo: detectTipoPC(classificacao.split(".")[0] === "1" ? "ativo" : nome) });
+      continue;
+    }
+
+    // ── Formato Excel/CSV com colunas: Classificação;Código;T;Descrição;CNPJ;Grau ─
+    let parts: string[] = [];
+    if (line.includes("\t"))     parts = line.split("\t").map(p => p.trim());
+    else if (line.includes(";")) parts = line.split(";").map(p => p.trim());
+    else {
+      const m = line.match(/^([\d.]+)\s+(\d+)\s+([SA])\s+(.+?)(?:\s+\d{11,14})?\s*(\d+)?\s*$/i);
+      if (m) parts = [m[1], m[2], m[3], m[4].trim(), "", m[5] ?? ""];
+    }
+    if (parts.length < 2) continue;
+    const rawCode  = parts[0];
+    if (!/^[\d.]+$/.test(rawCode)) continue;
+    const codigo   = parts[1] || parts[0];
+    const natureza = (parts[2] || "A").toUpperCase() === "S" ? "S" : "A";
+    const nome     = (parts[3] || "").trim();
+    const grauRaw  = parseInt(parts[5] ?? "");
+    const grau     = !isNaN(grauRaw) && grauRaw > 0 ? grauRaw : rawCode.split(".").length;
+    if (!nome || /^\d+$/.test(nome)) continue;
+    const classificacao = /^\d+$/.test(rawCode) ? toDottedPC(rawCode, grau) : rawCode;
+    result.push({ codigo, classificacao, natureza, grau, nome, tipo: detectTipoPC(classificacao.split(".")[0] === "1" ? "ativo" : nome) });
   }
   return result;
 }
@@ -351,6 +377,7 @@ export default function Empresas() {
 
   const [empresas,   setEmpresas]   = useState<Tables<"empresas">[]>([]);
   const [sociosMap,  setSociosMap]  = useState<Record<string, Socio[]>>({});
+  const [contasMap,  setContasMap]  = useState<Record<string, { banco: string; conta: string | null }[]>>({});
   const [search,     setSearch]     = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form,       setForm]       = useState(EMPTY_FORM);
@@ -372,6 +399,43 @@ export default function Empresas() {
   const [pcContas,        setPcContas]        = useState<{ id: string; codigo: string; nome: string; tipo: string }[]>([]);
   const pcFileRef = useRef<HTMLInputElement>(null);
 
+  // ── Contas Bancárias da Empresa ───────────────────────────────────────────
+  const EMPTY_CB = { banco: "", agencia: "", conta: "", tipo: "corrente", descricao: "", saldo_inicial: "" };
+  const [cbsEmpresa,    setCbsEmpresa]    = useState<{ id: string; banco: string; agencia: string | null; conta: string | null; tipo: string; descricao: string | null; saldo_inicial: number }[]>([]);
+  const [cbForm,        setCbForm]        = useState(EMPTY_CB);
+  const [cbEditingId,   setCbEditingId]   = useState<string | null>(null);
+  const [cbSaving,      setCbSaving]      = useState(false);
+
+  const loadCbsEmpresa = async (empresaId: string) => {
+    const { data } = await supabase.from("contas_bancarias").select("id, banco, agencia, conta, tipo, descricao, saldo_inicial").eq("empresa_id", empresaId).order("banco");
+    setCbsEmpresa(data ?? []);
+  };
+
+  const handleCbSubmit = async () => {
+    if (!cbForm.banco.trim() || !editingId) return;
+    setCbSaving(true);
+    const payload = {
+      user_id: ownerUserId!, empresa_id: editingId,
+      banco: cbForm.banco.trim(), agencia: cbForm.agencia || null,
+      conta: cbForm.conta || null, tipo: cbForm.tipo,
+      descricao: cbForm.descricao || null,
+      saldo_inicial: parseFloat(cbForm.saldo_inicial as string) || 0,
+    };
+    const { error } = cbEditingId
+      ? await supabase.from("contas_bancarias").update(payload).eq("id", cbEditingId)
+      : await supabase.from("contas_bancarias").insert(payload);
+    setCbSaving(false);
+    if (error) { toast({ title: "Erro ao salvar conta", description: error.message, variant: "destructive" }); return; }
+    toast({ title: cbEditingId ? "Conta atualizada!" : "Conta cadastrada!" });
+    setCbForm(EMPTY_CB); setCbEditingId(null);
+    loadCbsEmpresa(editingId);
+  };
+
+  const handleCbDelete = async (id: string) => {
+    await supabase.from("contas_bancarias").delete().eq("id", id);
+    setCbsEmpresa(prev => prev.filter(c => c.id !== id));
+  };
+
   const PAGE_SIZE = 20;
 
   // ── Load ──────────────────────────────────────────────────────────────────
@@ -389,13 +453,22 @@ export default function Empresas() {
 
     if (data && data.length > 0) {
       const ids = data.map(e => e.id);
-      const { data: sd } = await (supabase as any).from("socios").select("*").in("empresa_id", ids);
+      const [{ data: sd }, { data: cbd }] = await Promise.all([
+        (supabase as any).from("socios").select("*").in("empresa_id", ids),
+        (supabase as any).from("contas_bancarias").select("id, empresa_id, banco, conta").in("empresa_id", ids).order("banco"),
+      ]);
       const map: Record<string, Socio[]> = {};
       for (const s of sd ?? []) {
         if (!map[s.empresa_id]) map[s.empresa_id] = [];
         map[s.empresa_id].push({ nome: s.nome, cpf: s.cpf || "", data_nascimento: s.data_nascimento || "", email: s.email || "", cargo: s.cargo || "" });
       }
       setSociosMap(map);
+      const cbMap: Record<string, { banco: string; conta: string | null }[]> = {};
+      for (const c of cbd ?? []) {
+        if (!cbMap[c.empresa_id]) cbMap[c.empresa_id] = [];
+        cbMap[c.empresa_id].push({ banco: c.banco, conta: c.conta });
+      }
+      setContasMap(cbMap);
     }
   }, [user, page]);
 
@@ -518,6 +591,7 @@ export default function Empresas() {
     })));
     setActiveTab("empresa");
     loadPcContas(emp.id);
+    loadCbsEmpresa(emp.id);
     setDialogOpen(true);
   };
 
@@ -634,18 +708,100 @@ export default function Empresas() {
   const handlePcFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const txt = ev.target?.result as string;
-      const parsed = parseTxtPC(txt);
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+
+    const finish = (parsed: ReturnType<typeof parseTxtPC>) => {
       if (parsed.length === 0) {
-        toast({ title: "Nenhuma conta encontrada", description: "Verifique o formato do arquivo. Cada linha deve ter: código e nome separados por ; | tab ou espaço.", variant: "destructive" });
+        toast({ title: "Nenhuma conta encontrada", description: "Verifique o formato do arquivo.", variant: "destructive" });
         return;
       }
-      setPcPreview(parsed);
+      setPcPreview(parsed as any);
       setPcDialogOpen(true);
     };
-    reader.readAsText(file, "UTF-8");
+
+    const reader = new FileReader();
+
+    if (ext === "xlsx" || ext === "xls") {
+      reader.onload = ev => {
+        const ab = ev.target?.result as ArrayBuffer;
+        let wb: XLSX.WorkBook | null = null;
+        try {
+          wb = XLSX.read(new Uint8Array(ab), { type: "array" });
+          if (Object.keys(wb.Sheets).length === 0) wb = null;
+        } catch { wb = null; }
+        if (!wb) {
+          try {
+            const bstr = Array.from(new Uint8Array(ab)).map(b => String.fromCharCode(b)).join("");
+            wb = XLSX.read(bstr, { type: "binary" });
+          } catch (e) {
+            toast({ title: "Erro ao ler o arquivo", description: String(e), variant: "destructive", duration: 20000 });
+            return;
+          }
+        }
+        const ws = (Object.values(wb.Sheets).find((s: any) => s && s["!ref"]) ?? Object.values(wb.Sheets)[0]) as XLSX.WorkSheet | undefined;
+        if (!ws) {
+          toast({ title: `Planilha não encontrada`, description: `Abas: ${wb.SheetNames.join(", ")} | Sheets: ${Object.keys(wb.Sheets).length}`, variant: "destructive", duration: 20000 });
+          return;
+        }
+        const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: "" });
+
+        // Detecta colunas pelo cabeçalho (remove acentos para comparar)
+        const norm = (s: string) => String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        let cClassif = 0, cCodigo = 1, cNat = 2, cNome = 3, cGrau = 5, dataStart = 0;
+        for (let ri = 0; ri < Math.min(rows.length, 20); ri++) {
+          const row: any[] = rows[ri] ?? [];
+          let found = false;
+          for (let ci = 0; ci < row.length; ci++) {
+            const h = norm(row[ci]);
+            if (h.includes("classific")) { cClassif = ci; found = true; }
+            else if (h.includes("descri") || h.includes("nome")) { cNome = ci; found = true; }
+            else if (h === "t" || h === "nat" || h === "natureza") cNat = ci;
+            else if (h === "grau") cGrau = ci;
+            else if (h === "cod" || h === "codigo") cCodigo = ci;
+          }
+          if (found) { dataStart = ri + 1; break; }
+        }
+
+        // Estima grau pelo comprimento do código quando a coluna Grau está vazia
+        const estimaGrau = (code: string) => {
+          const parts = code.split(".");
+          if (parts.length > 1) return parts.length;
+          const l = code.length;
+          if (l <= 1) return 1; if (l <= 2) return 2; if (l <= 3) return 3;
+          if (l <= 5) return 4; return 5;
+        };
+
+        const result: ReturnType<typeof parseTxtPC> = [];
+        for (let ri = dataStart; ri < rows.length; ri++) {
+          const row: any[] = rows[ri] ?? [];
+          const rawCode   = String(row[cClassif] ?? "").trim();
+          const codigoRed = String(row[cCodigo]  ?? "").trim();
+          const natureza  = String(row[cNat]      ?? "").trim();
+          const nome      = String(row[cNome]     ?? "").trim();
+          const grauRaw   = String(row[cGrau]     ?? "").trim();
+          // Aceita "11201" (puro) ou "1.1.2.01" (já pontilhado)
+          if (!rawCode || (!(/^\d+$/.test(rawCode)) && !(/^[\d.]+$/.test(rawCode)))) continue;
+          if (!nome || /^\d+$/.test(nome)) continue;
+          const nat = /^s/i.test(natureza) ? "S" : "A";
+          const grau = parseInt(grauRaw) || estimaGrau(rawCode);
+          const classificacao = /^\d+$/.test(rawCode) ? toDottedPC(rawCode, grau) : rawCode;
+          result.push({ codigo: codigoRed || rawCode, classificacao, natureza: nat, grau, nome, tipo: detectTipoPC(classificacao.split(".")[0] === "1" ? "ativo" : nome) });
+        }
+
+        if (result.length === 0) {
+          const preview = rows.slice(0, 5).map((r: any[]) =>
+            (r ?? []).slice(0, 7).map((c: any) => String(c ?? "").substring(0, 20)).join(" | ")
+          ).join("\n");
+          toast({ title: `Arquivo lido (${rows.length} linhas) — nenhuma conta reconhecida`, description: `Linhas:\n${preview}\nColunas: classif=${cClassif} nome=${cNome} nat=${cNat} grau=${cGrau}`, variant: "destructive", duration: 30000 });
+          return;
+        }
+        finish(result);
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = ev => finish(parseTxtPC(ev.target?.result as string));
+      reader.readAsText(file, "latin1");
+    }
     e.target.value = "";
   };
 
@@ -657,7 +813,7 @@ export default function Empresas() {
     setPcImporting(true);
     // Apaga plano anterior desta empresa antes de reimportar
     await supabase.from("plano_contas").delete().eq("empresa_id", editingId);
-    const payload = pcPreview.map(c => ({ user_id: ownerUserId!, empresa_id: editingId, codigo: c.codigo, nome: c.nome, tipo: c.tipo, parent_id: null }));
+    const payload = pcPreview.map(c => ({ user_id: ownerUserId!, empresa_id: editingId, codigo: c.codigo, classificacao: c.classificacao, natureza: c.natureza, grau: c.grau, nome: c.nome, tipo: c.tipo, parent_id: null }));
     const { error } = await supabase.from("plano_contas").insert(payload);
     setPcImporting(false);
     if (error) { toast({ title: "Erro ao importar", description: error.message, variant: "destructive" }); return; }
@@ -714,7 +870,7 @@ export default function Empresas() {
   const resetDialog = () => {
     setEditingId(null); setForm(EMPTY_FORM);
     setSocios([]); setSocioForm(EMPTY_SOCIO); setActiveTab("empresa");
-    setPcContas([]);
+    setPcContas([]); setCbsEmpresa([]); setCbForm(EMPTY_CB); setCbEditingId(null);
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -757,20 +913,27 @@ export default function Empresas() {
               </DialogHeader>
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                <Tabs value={activeTab} onValueChange={tab => { setActiveTab(tab); if (tab === "financeiro" && editingId) loadPcContas(editingId); }}>
+                <Tabs value={activeTab} onValueChange={tab => {
+                  setActiveTab(tab);
+                  if (tab === "financeiro" && editingId) loadPcContas(editingId);
+                  if (tab === "contas_bancarias" && editingId) loadCbsEmpresa(editingId);
+                }}>
                   <TabsList className="flex w-full">
-                    <TabsTrigger value="empresa" className="flex-1 min-w-0">Empresa</TabsTrigger>
-                    <TabsTrigger value="endereco" className="flex-1 min-w-0 flex items-center justify-center gap-1">
-                      <MapPin className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">Endereço</span>
+                    <TabsTrigger value="empresa" className="flex-1 min-w-0 text-xs px-1">Empresa</TabsTrigger>
+                    <TabsTrigger value="endereco" className="flex-1 min-w-0 text-xs px-1">
+                      <MapPin className="h-3.5 w-3.5 shrink-0 mr-0.5" /><span className="truncate hidden sm:inline">Endereço</span>
                     </TabsTrigger>
-                    <TabsTrigger value="socios" className="flex-1 min-w-0 flex items-center justify-center gap-1">
-                      <Users2 className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">Sócios {socios.length > 0 && `(${socios.length})`}</span>
+                    <TabsTrigger value="socios" className="flex-1 min-w-0 text-xs px-1">
+                      <Users2 className="h-3.5 w-3.5 shrink-0 mr-0.5" /><span className="truncate">Sócios {socios.length > 0 && `(${socios.length})`}</span>
                     </TabsTrigger>
-                    <TabsTrigger value="financeiro" className="flex-1 min-w-0 flex items-center justify-center gap-1">
-                      <Banknote className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">Financeiro</span>
+                    <TabsTrigger value="financeiro" className="flex-1 min-w-0 text-xs px-1">
+                      <Banknote className="h-3.5 w-3.5 shrink-0 mr-0.5" /><span className="truncate hidden sm:inline">Financeiro</span>
                     </TabsTrigger>
-                    <TabsTrigger value="monitoramento" className="flex-1 min-w-0 flex items-center justify-center gap-1">
-                      <Monitor className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">Monitoramento</span>
+                    <TabsTrigger value="contas_bancarias" className="flex-1 min-w-0 text-xs px-1" disabled={!editingId}>
+                      <Landmark className="h-3.5 w-3.5 shrink-0 mr-0.5" /><span className="truncate">Bancos</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="monitoramento" className="flex-1 min-w-0 text-xs px-1">
+                      <Monitor className="h-3.5 w-3.5 shrink-0 mr-0.5" /><span className="truncate hidden sm:inline">Monitoram.</span>
                     </TabsTrigger>
                   </TabsList>
 
@@ -1028,9 +1191,9 @@ export default function Empresas() {
                         <p className="text-xs text-muted-foreground mb-2">
                           Faça upload de um arquivo TXT exportado do Domínio para importar automaticamente as contas no sistema.
                         </p>
-                        <input ref={pcFileRef} type="file" accept=".txt,.csv" className="hidden" onChange={handlePcFile} />
+                        <input ref={pcFileRef} type="file" accept=".txt,.csv,.xlsx,.xls" className="hidden" onChange={handlePcFile} />
                         <Button type="button" variant="outline" size="sm" onClick={() => pcFileRef.current?.click()}>
-                          <Upload className="mr-2 h-3.5 w-3.5" /> Importar TXT
+                          <Upload className="mr-2 h-3.5 w-3.5" /> Importar
                         </Button>
                       </div>
                       <p className="text-xs text-muted-foreground bg-muted/30 rounded p-3 leading-relaxed">
@@ -1057,6 +1220,100 @@ export default function Empresas() {
                           ))}
                         </div>
                       </div>
+                    )}
+                  </TabsContent>
+
+                  {/* ── Tab: Contas Bancárias ── */}
+                  <TabsContent value="contas_bancarias" className="space-y-4 pt-4">
+                    {!editingId ? (
+                      <p className="text-sm text-muted-foreground">Salve a empresa primeiro para cadastrar contas bancárias.</p>
+                    ) : (
+                      <>
+                        {/* Lista */}
+                        {cbsEmpresa.length > 0 && (
+                          <div className="space-y-2">
+                            {cbsEmpresa.map(cb => (
+                              <div key={cb.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/10">
+                                <div>
+                                  <p className="font-medium text-sm">{cb.banco}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {[cb.tipo, cb.agencia && `Ag: ${cb.agencia}`, cb.conta && `Cc: ${cb.conta}`, cb.descricao].filter(Boolean).join(" · ")}
+                                  </p>
+                                </div>
+                                <div className="flex gap-1 shrink-0">
+                                  {PODE_EDITAR && (
+                                    <Button variant="ghost" size="icon" type="button" onClick={() => {
+                                      setCbEditingId(cb.id);
+                                      setCbForm({ banco: cb.banco, agencia: cb.agencia ?? "", conta: cb.conta ?? "", tipo: cb.tipo, descricao: cb.descricao ?? "", saldo_inicial: String(cb.saldo_inicial) });
+                                    }}>
+                                      <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                                    </Button>
+                                  )}
+                                  {PODE_EXCLUIR && (
+                                    <Button variant="ghost" size="icon" type="button" onClick={() => handleCbDelete(cb.id)}>
+                                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Formulário */}
+                        {PODE_INCLUIR && (
+                          <div className="border rounded-lg p-4 space-y-3 bg-muted/5">
+                            <h5 className="font-semibold text-sm flex items-center gap-2">
+                              <Landmark className="h-4 w-4 text-primary" />
+                              {cbEditingId ? "Editar Conta Bancária" : "Adicionar Conta Bancária"}
+                            </h5>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="col-span-2 space-y-1">
+                                <Label className="text-xs">Banco *</Label>
+                                <Input placeholder="Ex: Bradesco, Itaú, Nubank..." value={cbForm.banco} onChange={e => setCbForm(p => ({ ...p, banco: e.target.value }))} />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Agência</Label>
+                                <Input placeholder="0000" value={cbForm.agencia} onChange={e => setCbForm(p => ({ ...p, agencia: e.target.value }))} />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Conta</Label>
+                                <Input placeholder="00000-0" value={cbForm.conta} onChange={e => setCbForm(p => ({ ...p, conta: e.target.value }))} />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Tipo</Label>
+                                <Select value={cbForm.tipo} onValueChange={v => setCbForm(p => ({ ...p, tipo: v }))}>
+                                  <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="corrente">Corrente</SelectItem>
+                                    <SelectItem value="poupanca">Poupança</SelectItem>
+                                    <SelectItem value="pagamento">Pagamento</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Saldo Inicial (R$)</Label>
+                                <Input type="number" step="0.01" placeholder="0,00" value={cbForm.saldo_inicial} onChange={e => setCbForm(p => ({ ...p, saldo_inicial: e.target.value }))} />
+                              </div>
+                              <div className="col-span-2 space-y-1">
+                                <Label className="text-xs">Apelido</Label>
+                                <Input placeholder="Ex: Conta Principal" value={cbForm.descricao} onChange={e => setCbForm(p => ({ ...p, descricao: e.target.value }))} />
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button type="button" size="sm" disabled={cbSaving} onClick={handleCbSubmit}>
+                                {cbSaving ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Plus className="mr-1 h-3.5 w-3.5" />}
+                                {cbEditingId ? "Salvar" : "Adicionar"}
+                              </Button>
+                              {cbEditingId && (
+                                <Button type="button" size="sm" variant="outline" onClick={() => { setCbEditingId(null); setCbForm(EMPTY_CB); }}>
+                                  Cancelar
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )}
                   </TabsContent>
 
@@ -1148,6 +1405,7 @@ export default function Empresas() {
                 <TableHead>CNPJ</TableHead>
                 <TableHead>Regime</TableHead>
                 <TableHead>Sócios</TableHead>
+                <TableHead>Bancos</TableHead>
                 <TableHead>Contato</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
@@ -1203,6 +1461,23 @@ export default function Empresas() {
                       )}
                     </TableCell>
                     <TableCell className="text-sm">
+                      {(contasMap[emp.id] ?? []).length === 0 ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <div className="space-y-0.5">
+                          {(contasMap[emp.id] ?? []).slice(0, 2).map((cb, i) => (
+                            <div key={i} className="flex items-center gap-1 text-xs">
+                              <Landmark className="h-3 w-3 text-muted-foreground shrink-0" />
+                              <span className="truncate max-w-[120px]">{cb.banco}{cb.conta ? ` — ${cb.conta}` : ""}</span>
+                            </div>
+                          ))}
+                          {(contasMap[emp.id] ?? []).length > 2 && (
+                            <span className="text-xs text-muted-foreground">+{(contasMap[emp.id] ?? []).length - 2} mais</span>
+                          )}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm">
                       {emp.telefone && <div>{emp.telefone}</div>}
                       {emp.email_responsavel && <div className="text-xs text-muted-foreground truncate max-w-[160px]">{emp.email_responsavel}</div>}
                     </TableCell>
@@ -1238,7 +1513,7 @@ export default function Empresas() {
                 );
               }) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                     <Building2 className="mx-auto h-8 w-8 mb-2 opacity-40" />
                     Nenhuma empresa cadastrada
                   </TableCell>
