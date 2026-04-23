@@ -806,7 +806,6 @@ export default function Empresas() {
 
     e.target.value = "";
   };
-  };
 
   const handlePcImportConfirm = async () => {
     if (!editingId) {
