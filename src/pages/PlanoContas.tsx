@@ -393,9 +393,12 @@ export default function PlanoContas() {
           catch (e) { toast({ title: "Erro ao ler o arquivo", description: `Magic: ${magic} | ${String(e)}`, variant: "destructive", duration: 30000 }); return; }
         }
 
-        const ws = (Object.values(wb.Sheets).find((s: any) => s && s["!ref"]) ?? Object.values(wb.Sheets)[0]) as XLSX.WorkSheet | undefined;
+        const firstName = wb.SheetNames[0];
+        const ws = (firstName ? wb.Sheets[firstName] : undefined) ||
+          Object.values(wb.Sheets).find((s: any) => s && s["!ref"]) ||
+          Object.values(wb.Sheets)[0] as XLSX.WorkSheet | undefined;
         if (!ws) {
-          toast({ title: "Planilha não encontrada", description: `Magic: ${magic} | isHTML:${isHTML} isBIFF8:${isBIFF8} | Abas: ${wb.SheetNames.join(", ")} | Sheets: ${Object.keys(wb.Sheets).length}`, variant: "destructive", duration: 30000 });
+          toast({ title: "Planilha não encontrada", description: `Magic: ${magic} | isBIFF8:${isBIFF8} | Names: [${wb.SheetNames.join(", ")}] | Keys: [${Object.keys(wb.Sheets).join(", ")}] | firstName lookup: ${firstName ? (wb.Sheets[firstName] ? "ok" : "undefined") : "n/a"}`, variant: "destructive", duration: 30000 });
           return;
         }
         const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: "" });
