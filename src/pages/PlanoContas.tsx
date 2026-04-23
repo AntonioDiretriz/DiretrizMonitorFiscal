@@ -369,23 +369,33 @@ export default function PlanoContas() {
     if (ext === "xlsx" || ext === "xls") {
       reader.onload = ev => {
         const ab = ev.target?.result as ArrayBuffer;
+        const bytes = new Uint8Array(ab);
+        const magic = Array.from(bytes.slice(0, 8)).map(b => b.toString(16).padStart(2, "0")).join(" ");
+        const isBIFF8  = bytes[0] === 0xD0 && bytes[1] === 0xCF;
+        const isOOXML  = bytes[0] === 0x50 && bytes[1] === 0x4B;
+        const headText = Array.from(bytes.slice(0, 300)).map(b => String.fromCharCode(b)).join("");
+        const isHTML   = headText.trimStart().startsWith("<") || /html/i.test(headText.slice(0, 100));
+
         let wb: XLSX.WorkBook | null = null;
-        try {
-          wb = XLSX.read(new Uint8Array(ab), { type: "array" });
-          if (Object.keys(wb.Sheets).length === 0) wb = null;
-        } catch { wb = null; }
-        if (!wb) {
-          try {
-            const bstr = Array.from(new Uint8Array(ab)).map(b => String.fromCharCode(b)).join("");
-            wb = XLSX.read(bstr, { type: "binary" });
-          } catch (e) {
-            toast({ title: "Erro ao ler o arquivo", description: String(e), variant: "destructive" });
-            return;
-          }
+
+        if (isHTML) {
+          try { const t = new TextDecoder("latin1").decode(bytes); wb = XLSX.read(t, { type: "string" }); } catch { wb = null; }
+        } else if (isBIFF8) {
+          try { const bstr = Array.from(bytes).map(b => String.fromCharCode(b)).join(""); wb = XLSX.read(bstr, { type: "binary" }); } catch { wb = null; }
+        } else if (isOOXML) {
+          try { wb = XLSX.read(bytes, { type: "array" }); if (Object.keys(wb.Sheets).length === 0) wb = null; } catch { wb = null; }
         }
+
+        if (!wb) { try { wb = XLSX.read(bytes, { type: "array" }); if (Object.keys(wb.Sheets).length === 0) wb = null; } catch { wb = null; } }
+        if (!wb) { try { const b = Array.from(bytes).map(b => String.fromCharCode(b)).join(""); wb = XLSX.read(b, { type: "binary" }); } catch { wb = null; } }
+        if (!wb) {
+          try { const t = new TextDecoder("latin1").decode(bytes); wb = XLSX.read(t, { type: "string" }); }
+          catch (e) { toast({ title: "Erro ao ler o arquivo", description: `Magic: ${magic} | ${String(e)}`, variant: "destructive", duration: 30000 }); return; }
+        }
+
         const ws = (Object.values(wb.Sheets).find((s: any) => s && s["!ref"]) ?? Object.values(wb.Sheets)[0]) as XLSX.WorkSheet | undefined;
         if (!ws) {
-          toast({ title: "Planilha não encontrada", description: `Abas: ${wb.SheetNames.join(", ")} | Sheets: ${Object.keys(wb.Sheets).length}`, variant: "destructive", duration: 20000 });
+          toast({ title: "Planilha não encontrada", description: `Magic: ${magic} | isHTML:${isHTML} isBIFF8:${isBIFF8} | Abas: ${wb.SheetNames.join(", ")} | Sheets: ${Object.keys(wb.Sheets).length}`, variant: "destructive", duration: 30000 });
           return;
         }
         const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: "" });
