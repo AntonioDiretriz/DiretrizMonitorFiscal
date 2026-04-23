@@ -125,6 +125,45 @@ function parseCSV(text: string) {
   return out;
 }
 
+// ── Domínio lançamentos parser (|6100| format) ────────────────────────────────
+function parseDominioLancamentos(text: string): {
+  data: string; descricao: string; valor: number; tipo: string;
+  hash: string; contraCode: string;
+}[] {
+  const lines = text.split(/\r?\n/).filter(l => l.startsWith("|6100|"));
+
+  // Auto-detect bank code: code that appears most in both debit and credit positions
+  const freq: Record<string, number> = {};
+  lines.forEach(l => {
+    const p = l.split("|");
+    [p[3], p[4]].forEach(c => { const t = c?.trim(); if (t) freq[t] = (freq[t] ?? 0) + 1; });
+  });
+  const bankCode = Object.entries(freq).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "8";
+
+  const out: { data: string; descricao: string; valor: number; tipo: string; hash: string; contraCode: string }[] = [];
+  lines.forEach(l => {
+    const p = l.split("|");
+    // |6100|DATE|DEBIT|CREDIT|VALUE||DESC||||
+    const rawDate    = p[2]?.trim() ?? "";
+    const debitCode  = p[3]?.trim() ?? "";
+    const creditCode = p[4]?.trim() ?? "";
+    const rawVal     = p[5]?.trim() ?? "";
+    const desc       = p[7]?.trim() ?? p[6]?.trim() ?? "";
+    const dm = rawDate.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!dm || !rawVal || !desc) return;
+    const data  = `${dm[3]}-${dm[2]}-${dm[1]}`;
+    const valor = parseFloat(rawVal.replace(/\./g, "").replace(",", "."));
+    if (isNaN(valor) || valor === 0) return;
+    const isDebit  = creditCode === bankCode;
+    const isCredit = debitCode  === bankCode;
+    if (!isDebit && !isCredit) return;
+    const tipo       = isCredit ? "credito" : "debito";
+    const contraCode = isCredit ? creditCode : debitCode;
+    out.push({ data, descricao: desc, valor, tipo, contraCode, hash: `${data}-${valor}-${desc}`.slice(0, 120) });
+  });
+  return out;
+}
+
 // ── Apply regras ──────────────────────────────────────────────────────────────
 function applyRegras(txs: { descricao: string; tipo: string }[], regras: RegrasConciliacao[]) {
   return txs.map(t => {
@@ -332,6 +371,58 @@ export default function Conciliacao() {
     }
   };
 
+  // ── Import TXT Domínio (|6100| format) ────────────────────────────────────
+  const importarDominio = async (file: File) => {
+    const buffer = await file.arrayBuffer();
+    const hash   = await sha256hex(buffer);
+    if (selectedConta) {
+      const { data: dup } = await supabase.from("importacoes_bancarias")
+        .select("id, created_at").eq("user_id", ownerUserId!).eq("conta_bancaria_id", selectedConta)
+        .eq("arquivo_hash", hash).limit(1);
+      if (dup && dup.length > 0) {
+        toast({ title: "Extrato duplicado", description: `Já importado em ${format(new Date(dup[0].created_at), "dd/MM/yyyy")}.`, variant: "destructive" });
+        return;
+      }
+    }
+    const text   = new TextDecoder("latin1").decode(buffer);
+    const parsed = parseDominioLancamentos(text);
+    if (parsed.length === 0) { toast({ title: "Nenhum lançamento encontrado", description: "Verifique se o arquivo é um extrato do Domínio (formato |6100|).", variant: "destructive" }); return; }
+
+    // Tenta vincular contra-conta ao plano de contas pelo código
+    const planoByCodigo = Object.fromEntries(planoContas.map(p => [p.codigo, p.id]));
+
+    const { data: imp, error: impErr } = await supabase.from("importacoes_bancarias").insert({
+      user_id: ownerUserId!, conta_bancaria_id: selectedConta!, formato: "txt_dominio",
+      arquivo_nome: file.name, status: "processando", total_transacoes: parsed.length, arquivo_hash: hash,
+    }).select().single();
+    if (impErr) { toast({ title: "Erro ao registrar importação", variant: "destructive" }); return; }
+
+    const rows = parsed.map(t => {
+      const planoId = planoByCodigo[t.contraCode] ?? null;
+      const regra   = !planoId ? applyRegras([t], regras)[0] : null;
+      return {
+        user_id: ownerUserId!, conta_bancaria_id: selectedConta!, importacao_id: imp.id,
+        data: t.data, descricao: t.descricao, valor: t.valor, tipo: t.tipo,
+        status: (planoId || regra?.automatica) ? "pendente" : "pendente",
+        hash_dedup: t.hash,
+        plano_contas_id: planoId ?? regra?.plano_contas_id ?? null,
+        categorizado_por: planoId ? "dominio" : regra ? "regra" : null,
+      };
+    });
+
+    const { error: insErr } = await supabase.from("transacoes_bancarias").upsert(rows, { onConflict: "user_id,conta_bancaria_id,hash_dedup", ignoreDuplicates: true });
+    await supabase.from("importacoes_bancarias").update({ status: insErr ? "erro" : "concluido", erro_mensagem: insErr?.message ?? null }).eq("id", imp.id);
+    if (insErr) { toast({ title: "Erro ao importar", description: insErr.message, variant: "destructive" }); }
+    else {
+      const comConta = rows.filter(r => r.plano_contas_id).length;
+      toast({
+        title: `${parsed.length} lançamentos importados do Domínio!`,
+        description: comConta > 0 ? `${comConta} já vinculados à conta contábil pelo código do plano.` : "Nenhuma conta contábil vinculada — selecione a empresa com o plano de contas importado.",
+      });
+      loadAll();
+    }
+  };
+
   const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !selectedConta) return;
@@ -341,7 +432,8 @@ export default function Conciliacao() {
     try {
       if (ext === "pdf") await importarPDF(file);
       else if (["ofx", "ofc", "csv"].includes(ext)) await importarTextual(file, ext);
-      else toast({ title: "Formato não suportado", description: "Use PDF, OFX ou CSV.", variant: "destructive" });
+      else if (ext === "txt") await importarDominio(file);
+      else toast({ title: "Formato não suportado", description: "Use TXT (Domínio), OFX, CSV ou PDF.", variant: "destructive" });
     } finally { setUploading(false); }
   };
 
@@ -387,11 +479,11 @@ export default function Conciliacao() {
         </div>
         {selectedConta && podeIncluir && (
           <>
-            <input ref={fileInputRef} type="file" accept=".ofx,.ofc,.csv,.pdf" className="hidden" onChange={handleFileImport} />
+            <input ref={fileInputRef} type="file" accept=".ofx,.ofc,.csv,.pdf,.txt" className="hidden" onChange={handleFileImport} />
             <Button onClick={() => fileInputRef.current?.click()} disabled={uploading}>
               {uploading
                 ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Importando...</>
-                : <><Upload className="mr-2 h-4 w-4" />Importar OFX / CSV / PDF</>}
+                : <><Upload className="mr-2 h-4 w-4" />Importar Extrato</>}
             </Button>
           </>
         )}
