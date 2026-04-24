@@ -2,14 +2,19 @@
 import { format, differenceInDays } from "date-fns";
 import {
   Upload, CheckCircle, XCircle, Clock, Link,
-  RefreshCw, Tag, FileText, Building2, Trash2, History,
+  RefreshCw, Tag, FileText, Building2, Trash2, History, Check, ChevronDown,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -199,6 +204,13 @@ export default function Conciliacao() {
   const [selectedCpId,   setSelectedCpId]   = useState<string>("");
   const [categorizando,  setCategorizando]  = useState<string | null>(null);
 
+  // Combobox conta contábil
+  const [activeCatTx,  setActiveCatTx]  = useState<string | null>(null);
+  const [catSearch,    setCatSearch]    = useState("");
+  const [catDialog,    setCatDialog]    = useState<{ tx: Transacao; planoId: string; planoNome: string; planoCodigo: string | null } | null>(null);
+  const [regraOpcao,   setRegraOpcao]   = useState<"nenhuma" | "completo" | "parcial">("completo");
+  const [regraTexto,   setRegraTexto]   = useState("");
+
   // ── Load ──────────────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
     if (!user) return;
@@ -264,25 +276,40 @@ export default function Conciliacao() {
   const importacoesFiltradas = importacoes.filter(i => !selectedConta || i.conta_bancaria_id === selectedConta);
 
   // ── Categorizar ───────────────────────────────────────────────────────────
-  const salvarRegra = async (descricao: string, tipo: string, planoContasId: string) => {
+  const salvarRegra = async (descricao: string, tipo: string, planoContasId: string, customPattern?: string) => {
     if (!ownerUserId) return;
+    const padrao = (customPattern ?? descricao).slice(0, 60).trim();
+    if (!padrao) return;
     await supabase.from("regras_conciliacao").upsert({
-      user_id: ownerUserId, padrao: descricao.slice(0, 60).trim(), tipo,
+      user_id: ownerUserId, padrao, tipo,
       plano_contas_id: planoContasId, uso_count: 1,
     }, { onConflict: "user_id,padrao,tipo" });
     supabase.from("regras_conciliacao").select("id, padrao, plano_contas_id, tipo")
       .then(({ data }) => { if (data) setRegras(data as RegrasConciliacao[]); });
   };
 
-  const handleCategorizar = async (t: Transacao, planoContasId: string) => {
-    setCategorizando(t.id);
+  const abrirCatDialog = (tx: Transacao, p: PlanoContas) => {
+    setActiveCatTx(null);
+    setRegraOpcao("completo");
+    setRegraTexto(tx.descricao.slice(0, 60));
+    setCatDialog({ tx, planoId: p.id, planoNome: p.nome, planoCodigo: p.codigo });
+  };
+
+  const handleCategorizarConfirm = async () => {
+    if (!catDialog) return;
+    const { tx, planoId } = catDialog;
+    setCategorizando(tx.id);
     const { error } = await supabase.from("transacoes_bancarias")
-      .update({ plano_contas_id: planoContasId, categorizado_por: "manual" }).eq("id", t.id);
+      .update({ plano_contas_id: planoId, categorizado_por: "manual" }).eq("id", tx.id);
     if (!error) {
-      setTransacoes(prev => prev.map(tx => tx.id === t.id ? { ...tx, plano_contas_id: planoContasId, categorizado_por: "manual" } : tx));
-      await salvarRegra(t.descricao, t.tipo, planoContasId);
+      setTransacoes(prev => prev.map(t => t.id === tx.id ? { ...t, plano_contas_id: planoId, categorizado_por: "manual" } : t));
+      if (regraOpcao !== "nenhuma") {
+        const pattern = regraOpcao === "parcial" ? regraTexto : tx.descricao;
+        await salvarRegra(tx.descricao, tx.tipo, planoId, pattern);
+      }
     }
     setCategorizando(null);
+    setCatDialog(null);
   };
 
   // ── Import OFX/CSV ────────────────────────────────────────────────────────
@@ -695,30 +722,62 @@ export default function Conciliacao() {
                     {t.tipo === "credito" ? "+" : "−"} {fmtMoeda(Number(t.valor))}
                   </TableCell>
                   <TableCell>
-                    <Select
-                      value={t.plano_contas_id ?? "none"}
-                      onValueChange={v => v !== "none" && handleCategorizar(t, v)}
-                      disabled={categorizando === t.id}
+                    <Popover
+                      open={activeCatTx === t.id}
+                      onOpenChange={open => {
+                        setActiveCatTx(open ? t.id : null);
+                        if (open) setCatSearch("");
+                      }}
                     >
-                      <SelectTrigger className="h-7 text-xs w-full">
-                        <SelectValue placeholder="Sem categoria">
-                          {t.plano_contas_id && planoById[t.plano_contas_id]
-                            ? <span className="flex items-center gap-1">
-                                {t.categorizado_por === "regra" && <Tag className="h-3 w-3 text-blue-500 shrink-0" />}
-                                {planoById[t.plano_contas_id].nome}
-                              </span>
-                            : <span className="text-muted-foreground">Sem categoria</span>}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Sem categoria</SelectItem>
-                        {planoContas.map(p => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.codigo ? `${p.codigo} — ` : ""}{p.nome}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      <PopoverTrigger asChild>
+                        <button
+                          disabled={categorizando === t.id}
+                          className="w-full h-7 text-xs text-left px-2 rounded border flex items-center justify-between gap-1 hover:bg-accent transition-colors disabled:opacity-50"
+                        >
+                          <span className="truncate flex items-center gap-1 min-w-0">
+                            {t.categorizado_por === "regra" && <Tag className="h-3 w-3 text-blue-500 shrink-0" />}
+                            {t.plano_contas_id && planoById[t.plano_contas_id]
+                              ? <><span className="font-mono text-muted-foreground shrink-0">{planoById[t.plano_contas_id].codigo}</span><span className="truncate ml-1">{planoById[t.plano_contas_id].nome}</span></>
+                              : <span className="text-muted-foreground/60">Sem categoria</span>}
+                          </span>
+                          <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="p-0 w-80" align="start">
+                        <Command>
+                          <CommandInput
+                            placeholder="Código ou nome da conta..."
+                            value={catSearch}
+                            onValueChange={setCatSearch}
+                            className="h-8 text-xs"
+                          />
+                          <CommandList className="max-h-52">
+                            <CommandEmpty className="text-xs py-3 text-center text-muted-foreground">
+                              Nenhuma conta encontrada.
+                            </CommandEmpty>
+                            <CommandGroup>
+                              {planoContas
+                                .filter(p => {
+                                  const q = catSearch.toLowerCase();
+                                  return !q || (p.codigo ?? "").toLowerCase().includes(q) || p.nome.toLowerCase().includes(q);
+                                })
+                                .map(p => (
+                                  <CommandItem
+                                    key={p.id}
+                                    value={`${p.codigo ?? ""} ${p.nome}`}
+                                    onSelect={() => abrirCatDialog(t, p)}
+                                    className="text-xs flex items-center gap-2"
+                                  >
+                                    <span className="font-mono text-muted-foreground w-16 shrink-0 truncate">{p.codigo ?? "—"}</span>
+                                    <span className="truncate flex-1">{p.nome}</span>
+                                    {t.plano_contas_id === p.id && <Check className="h-3 w-3 text-green-600 shrink-0" />}
+                                  </CommandItem>
+                                ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                   </TableCell>
                   <TableCell>
                     {activeTab === "pendentes" && (
@@ -741,6 +800,69 @@ export default function Conciliacao() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Dialog: categorizar transação */}
+      <Dialog open={!!catDialog} onOpenChange={o => { if (!o) setCatDialog(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Categorizar Transação</DialogTitle></DialogHeader>
+          {catDialog && (
+            <div className="space-y-4">
+              <div className="p-3 rounded-lg bg-muted/50 text-sm space-y-1">
+                <div className="text-xs text-muted-foreground">Transação</div>
+                <div className="font-medium truncate">{catDialog.tx.descricao}</div>
+                <div className="text-xs text-muted-foreground">
+                  {format(new Date(catDialog.tx.data + "T12:00:00"), "dd/MM/yyyy")} — {fmtMoeda(catDialog.tx.valor)}
+                </div>
+              </div>
+              <div className="p-3 rounded-lg border text-sm space-y-1">
+                <div className="text-xs text-muted-foreground">Conta contábil selecionada</div>
+                <div className="font-medium flex items-center gap-2">
+                  {catDialog.planoCodigo && (
+                    <span className="font-mono text-muted-foreground">{catDialog.planoCodigo}</span>
+                  )}
+                  {catDialog.planoNome}
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <div className="text-sm font-medium mb-0.5">Criar regra automática?</div>
+                  <div className="text-xs text-muted-foreground">Transações futuras com esse padrão serão categorizadas automaticamente.</div>
+                </div>
+                <RadioGroup value={regraOpcao} onValueChange={(v: "nenhuma" | "completo" | "parcial") => setRegraOpcao(v)} className="gap-2">
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="nenhuma" id="r-nenhuma" />
+                    <Label htmlFor="r-nenhuma" className="text-sm font-normal cursor-pointer">Não criar regra</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="completo" id="r-completo" />
+                    <Label htmlFor="r-completo" className="text-sm font-normal cursor-pointer">Histórico completo</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="parcial" id="r-parcial" />
+                    <Label htmlFor="r-parcial" className="text-sm font-normal cursor-pointer">Parte do histórico</Label>
+                  </div>
+                </RadioGroup>
+                {regraOpcao === "parcial" && (
+                  <Input
+                    className="text-xs h-8"
+                    placeholder="Digite a parte do histórico para usar como padrão..."
+                    value={regraTexto}
+                    onChange={e => setRegraTexto(e.target.value)}
+                  />
+                )}
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button variant="outline" className="flex-1" onClick={() => setCatDialog(null)}>Cancelar</Button>
+                <Button className="flex-1" onClick={handleCategorizarConfirm} disabled={categorizando === catDialog.tx.id}>
+                  {categorizando === catDialog.tx.id
+                    ? <><RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" />Salvando...</>
+                    : "Salvar"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog: conciliar com conta a pagar */}
       <Dialog open={!!matchDialogId} onOpenChange={o => { if (!o) setMatchDialogId(null); }}>
