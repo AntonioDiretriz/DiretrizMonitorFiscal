@@ -253,14 +253,19 @@ export default function Conciliacao() {
 
   const contasDaEmpresa = selectedEmpresa ? contas.filter(c => c.empresa_id === selectedEmpresa) : contas;
 
-  // meses disponíveis para a conta selecionada
+  // ids das contas da empresa selecionada
+  const contaIdsEmpresa = new Set(contasDaEmpresa.map(c => c.id));
+
+  // meses disponíveis para a conta/empresa selecionada
   const mesesDisponiveis = [...new Set(
-    (selectedConta ? transacoes.filter(t => t.conta_bancaria_id === selectedConta) : transacoes)
+    transacoes
+      .filter(t => selectedConta ? t.conta_bancaria_id === selectedConta : (selectedEmpresa ? contaIdsEmpresa.has(t.conta_bancaria_id) : false))
       .map(t => t.data.slice(0, 7))
   )].sort().reverse();
 
-  // ── Filtragem principal ───────────────────────────────────────────────────
-  const txBase = transacoes.filter(t =>
+  // ── Filtragem principal — requer empresa selecionada ─────────────────────
+  const txBase = !selectedEmpresa ? [] : transacoes.filter(t =>
+    contaIdsEmpresa.has(t.conta_bancaria_id) &&
     (!selectedConta || t.conta_bancaria_id === selectedConta) &&
     (!selectedMes   || t.data.startsWith(selectedMes))
   );
@@ -697,6 +702,15 @@ export default function Conciliacao() {
             <TableBody>
               {loading ? (
                 <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+              ) : !selectedEmpresa ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-14 text-muted-foreground">
+                    <div className="flex flex-col items-center gap-2">
+                      <Building2 className="h-8 w-8 opacity-30" />
+                      <p className="text-sm">Selecione uma empresa para visualizar os lançamentos.</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
               ) : txAtivos.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
