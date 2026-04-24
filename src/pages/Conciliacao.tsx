@@ -234,14 +234,15 @@ export default function Conciliacao() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  // plano_contas por empresa
+  // plano_contas por empresa + auto-select conta única
   useEffect(() => {
-    setSelectedConta(null);
-    if (!selectedEmpresa) { setPlanoContas([]); return; }
+    if (!selectedEmpresa) { setSelectedConta(null); setPlanoContas([]); return; }
     supabase.from("plano_contas").select("id, nome, tipo, codigo")
       .eq("empresa_id", selectedEmpresa).order("codigo").order("nome")
       .then(({ data }) => setPlanoContas((data ?? []) as PlanoContas[]));
-  }, [selectedEmpresa]);
+    const contasEmp = contas.filter(c => c.empresa_id === selectedEmpresa);
+    setSelectedConta(contasEmp.length === 1 ? contasEmp[0].id : null);
+  }, [selectedEmpresa, contas]);
 
   // mês padrão: mês mais recente das transações da conta selecionada
   useEffect(() => {
@@ -251,23 +252,28 @@ export default function Conciliacao() {
     setSelectedMes(meses[0] ?? "");
   }, [selectedConta, transacoes]);
 
-  const contasDaEmpresa = selectedEmpresa ? contas.filter(c => c.empresa_id === selectedEmpresa) : contas;
+  const contasDaEmpresa = selectedEmpresa ? contas.filter(c => c.empresa_id === selectedEmpresa) : [];
 
-  // ids das contas da empresa selecionada
-  const contaIdsEmpresa = new Set(contasDaEmpresa.map(c => c.id));
+  // última importação por empresa (para exibir no dropdown)
+  const lastImportByEmpresa: Record<string, string> = {};
+  importacoes.forEach(imp => {
+    const conta = contas.find(c => c.id === imp.conta_bancaria_id);
+    if (!conta?.empresa_id) return;
+    const curr = lastImportByEmpresa[conta.empresa_id];
+    if (!curr || imp.created_at > curr) lastImportByEmpresa[conta.empresa_id] = imp.created_at;
+  });
 
-  // meses disponíveis para a conta/empresa selecionada
+  // meses disponíveis para a conta selecionada
   const mesesDisponiveis = [...new Set(
     transacoes
-      .filter(t => selectedConta ? t.conta_bancaria_id === selectedConta : (selectedEmpresa ? contaIdsEmpresa.has(t.conta_bancaria_id) : false))
+      .filter(t => selectedConta ? t.conta_bancaria_id === selectedConta : false)
       .map(t => t.data.slice(0, 7))
   )].sort().reverse();
 
-  // ── Filtragem principal — requer empresa selecionada ─────────────────────
-  const txBase = !selectedEmpresa ? [] : transacoes.filter(t =>
-    contaIdsEmpresa.has(t.conta_bancaria_id) &&
-    (!selectedConta || t.conta_bancaria_id === selectedConta) &&
-    (!selectedMes   || t.data.startsWith(selectedMes))
+  // ── Filtragem principal — requer conta selecionada ───────────────────────
+  const txBase = !selectedConta ? [] : transacoes.filter(t =>
+    t.conta_bancaria_id === selectedConta &&
+    (!selectedMes || t.data.startsWith(selectedMes))
   );
   const txPendentes   = txBase.filter(t => t.status === "pendente");
   const txConciliados = txBase.filter(t => t.status === "conciliado");
@@ -522,51 +528,72 @@ export default function Conciliacao() {
       </div>
 
       {/* Filtros em cascata */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <Select value={selectedEmpresa ?? "todas"} onValueChange={v => setSelectedEmpresa(v === "todas" ? null : v)}>
-          <SelectTrigger className="w-60">
-            <Building2 className="mr-2 h-4 w-4 text-muted-foreground shrink-0" />
-            <SelectValue placeholder="Selecione a empresa" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todas">Todas as empresas</SelectItem>
-            {empresas.map(e => <SelectItem key={e.id} value={e.id}>{e.razao_social}</SelectItem>)}
-          </SelectContent>
-        </Select>
+      <div className="flex flex-wrap gap-2 items-center">
 
-        <Select
-          value={selectedConta ?? "todas"}
-          onValueChange={v => setSelectedConta(v === "todas" ? null : v)}
-          disabled={contasDaEmpresa.length === 0}
-        >
-          <SelectTrigger className="w-56">
-            <SelectValue placeholder={contasDaEmpresa.length === 0 ? "Nenhuma conta" : "Selecione a conta"} />
+        {/* Passo 1 — Empresa */}
+        <Select value={selectedEmpresa ?? ""} onValueChange={v => setSelectedEmpresa(v || null)}>
+          <SelectTrigger className="w-64">
+            <Building2 className="mr-2 h-4 w-4 text-muted-foreground shrink-0" />
+            <SelectValue placeholder="1. Selecione a empresa" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="todas">Todas as contas</SelectItem>
-            {contasDaEmpresa.map(c => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.banco}{c.conta ? ` — ${c.conta}` : ""}{c.descricao ? ` (${c.descricao})` : ""}
+            {empresas.map(e => (
+              <SelectItem key={e.id} value={e.id}>
+                <div className="flex flex-col">
+                  <span>{e.razao_social}</span>
+                  {lastImportByEmpresa[e.id] && (
+                    <span className="text-xs text-muted-foreground">
+                      últ. import: {format(new Date(lastImportByEmpresa[e.id]), "dd/MM/yyyy")}
+                    </span>
+                  )}
+                </div>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
 
-        <Select
-          value={selectedMes || "todos"}
-          onValueChange={v => setSelectedMes(v === "todos" ? "" : v)}
-          disabled={mesesDisponiveis.length === 0}
-        >
-          <SelectTrigger className="w-40">
-            <SelectValue placeholder="Mês" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos os meses</SelectItem>
-            {mesesDisponiveis.map(m => (
-              <SelectItem key={m} value={m}>{fmtMes(m)}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Passo 2 — Conta (só aparece após empresa selecionada) */}
+        {selectedEmpresa && (
+          <>
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground -rotate-90 shrink-0" />
+            <Select
+              value={selectedConta ?? ""}
+              onValueChange={v => setSelectedConta(v || null)}
+            >
+              <SelectTrigger className="w-56">
+                <SelectValue placeholder={contasDaEmpresa.length === 0 ? "Nenhuma conta cadastrada" : "2. Selecione a conta"} />
+              </SelectTrigger>
+              <SelectContent>
+                {contasDaEmpresa.map(c => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.banco}{c.conta ? ` — ${c.conta}` : ""}{c.descricao ? ` (${c.descricao})` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        )}
+
+        {/* Passo 3 — Mês (só aparece após conta selecionada) */}
+        {selectedConta && (
+          <>
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground -rotate-90 shrink-0" />
+            <Select
+              value={selectedMes || "todos"}
+              onValueChange={v => setSelectedMes(v === "todos" ? "" : v)}
+            >
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="Mês" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os meses</SelectItem>
+                {mesesDisponiveis.map(m => (
+                  <SelectItem key={m} value={m}>{fmtMes(m)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        )}
 
         {importacoesFiltradas.length > 0 && (
           <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground ml-auto" onClick={() => setShowHistory(h => !h)}>
@@ -707,7 +734,16 @@ export default function Conciliacao() {
                   <TableCell colSpan={6} className="text-center py-14 text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <Building2 className="h-8 w-8 opacity-30" />
-                      <p className="text-sm">Selecione uma empresa para visualizar os lançamentos.</p>
+                      <p className="text-sm">Selecione uma empresa para começar.</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : !selectedConta ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-14 text-muted-foreground">
+                    <div className="flex flex-col items-center gap-2">
+                      <FileText className="h-8 w-8 opacity-30" />
+                      <p className="text-sm">Selecione a conta bancária para visualizar os lançamentos.</p>
                     </div>
                   </TableCell>
                 </TableRow>
