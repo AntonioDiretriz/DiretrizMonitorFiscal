@@ -208,7 +208,7 @@ export default function Conciliacao() {
   const [activeCatTx,  setActiveCatTx]  = useState<string | null>(null);
   const [catSearch,    setCatSearch]    = useState("");
   const [catDialog,    setCatDialog]    = useState<{ tx: Transacao; planoId: string; planoNome: string; planoCodigo: string | null } | null>(null);
-  const [regraOpcao,   setRegraOpcao]   = useState<"nenhuma" | "completo" | "parcial">("completo");
+  const [regraOpcao,   setRegraOpcao]   = useState<"nenhuma" | "extrato" | "escritorio">("extrato");
   const [regraTexto,   setRegraTexto]   = useState("");
 
   // ── Load ──────────────────────────────────────────────────────────────────
@@ -301,7 +301,7 @@ export default function Conciliacao() {
 
   const abrirCatDialog = (tx: Transacao, p: PlanoContas) => {
     setActiveCatTx(null);
-    setRegraOpcao("completo");
+    setRegraOpcao("extrato");
     setRegraTexto(tx.descricao.slice(0, 60));
     setCatDialog({ tx, planoId: p.id, planoNome: p.nome, planoCodigo: p.codigo });
   };
@@ -314,9 +314,8 @@ export default function Conciliacao() {
       .update({ plano_contas_id: planoId, categorizado_por: "manual", status: "conciliado" }).eq("id", tx.id);
     if (!error) {
       setTransacoes(prev => prev.map(t => t.id === tx.id ? { ...t, plano_contas_id: planoId, categorizado_por: "manual", status: "conciliado" } : t));
-      if (regraOpcao !== "nenhuma") {
-        const pattern = regraOpcao === "parcial" ? regraTexto : tx.descricao;
-        await salvarRegra(tx.descricao, tx.tipo, planoId, pattern);
+      if (regraOpcao !== "nenhuma" && regraTexto.trim()) {
+        await salvarRegra(tx.descricao, tx.tipo, planoId, regraTexto.trim());
       }
     }
     setCategorizando(null);
@@ -988,41 +987,56 @@ export default function Conciliacao() {
               </div>
 
               {/* Linha 2 — Regra automática */}
-              <div className="rounded-lg border p-4 space-y-3">
+              <div className="rounded-lg border p-4 space-y-4">
                 <div>
                   <div className="text-sm font-semibold">Criar regra automática?</div>
                   <div className="text-xs text-muted-foreground mt-0.5">
-                    Transações futuras com esse padrão serão categorizadas automaticamente.
+                    Transações futuras que contenham o padrão serão categorizadas automaticamente.
                   </div>
                 </div>
+
+                {/* Opção: não criar */}
                 <RadioGroup
                   value={regraOpcao}
-                  onValueChange={(v: "nenhuma" | "completo" | "parcial") => setRegraOpcao(v)}
+                  onValueChange={(v: "nenhuma" | "extrato" | "escritorio") => {
+                    setRegraOpcao(v);
+                    if (v === "extrato") setRegraTexto(catDialog!.tx.descricao.slice(0, 60));
+                    if (v === "escritorio") setRegraTexto("");
+                  }}
                   className="grid grid-cols-3 gap-2"
                 >
                   {([
-                    { value: "nenhuma",  label: "Não criar regra" },
-                    { value: "completo", label: "Histórico completo" },
-                    { value: "parcial",  label: "Parte do histórico" },
+                    { value: "nenhuma",    label: "Não criar regra",        desc: "" },
+                    { value: "extrato",    label: "Histórico do extrato",   desc: "Usa a descrição do banco" },
+                    { value: "escritorio", label: "Padrão do escritório",   desc: "Defina seu próprio padrão" },
                   ] as const).map(opt => (
                     <label
                       key={opt.value}
                       htmlFor={`r-${opt.value}`}
-                      className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer text-sm transition-colors ${
+                      className={`flex flex-col gap-1 p-3 rounded-lg border cursor-pointer text-sm transition-colors ${
                         regraOpcao === opt.value ? "border-primary bg-primary/5" : "hover:bg-accent"
                       }`}
                     >
-                      <RadioGroupItem value={opt.value} id={`r-${opt.value}`} />
-                      {opt.label}
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value={opt.value} id={`r-${opt.value}`} />
+                        <span className="font-medium">{opt.label}</span>
+                      </div>
+                      {opt.desc && <span className="text-xs text-muted-foreground pl-5">{opt.desc}</span>}
                     </label>
                   ))}
                 </RadioGroup>
-                {regraOpcao === "parcial" && (
+
+                {/* Campo de padrão — aparece para extrato e escritorio */}
+                {regraOpcao !== "nenhuma" && (
                   <div className="space-y-1">
-                    <div className="text-xs text-muted-foreground">Edite o trecho do histórico que será usado como padrão:</div>
+                    <div className="text-xs text-muted-foreground">
+                      {regraOpcao === "extrato"
+                        ? "Edite o trecho do histórico do extrato que será usado como padrão:"
+                        : "Digite o padrão do escritório (ex: SIND TRANSP, RECEITA SERVIÇOS):"}
+                    </div>
                     <Input
                       className="h-9"
-                      placeholder="Ex: PIX RECEBIDO, PAGAMENTO EFETUADO..."
+                      placeholder={regraOpcao === "extrato" ? "Trecho do histórico..." : "Padrão personalizado do escritório..."}
                       value={regraTexto}
                       onChange={e => setRegraTexto(e.target.value)}
                     />
