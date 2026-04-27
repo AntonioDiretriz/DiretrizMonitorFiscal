@@ -400,14 +400,14 @@ export default function Empresas() {
   const pcFileRef = useRef<HTMLInputElement>(null);
 
   // ── Contas Bancárias da Empresa ───────────────────────────────────────────
-  const EMPTY_CB = { banco: "", agencia: "", conta: "", tipo: "corrente", descricao: "", saldo_inicial: "" };
-  const [cbsEmpresa,    setCbsEmpresa]    = useState<{ id: string; banco: string; agencia: string | null; conta: string | null; tipo: string; descricao: string | null; saldo_inicial: number }[]>([]);
+  const EMPTY_CB = { banco: "", agencia: "", conta: "", tipo: "corrente", descricao: "", saldo_inicial: "", codigo_dominio: "" };
+  const [cbsEmpresa,    setCbsEmpresa]    = useState<{ id: string; banco: string; agencia: string | null; conta: string | null; tipo: string; descricao: string | null; saldo_inicial: number; codigo_dominio: string | null }[]>([]);
   const [cbForm,        setCbForm]        = useState(EMPTY_CB);
   const [cbEditingId,   setCbEditingId]   = useState<string | null>(null);
   const [cbSaving,      setCbSaving]      = useState(false);
 
   const loadCbsEmpresa = async (empresaId: string) => {
-    const { data } = await supabase.from("contas_bancarias").select("id, banco, agencia, conta, tipo, descricao, saldo_inicial").eq("empresa_id", empresaId).order("banco");
+    const { data } = await supabase.from("contas_bancarias").select("id, banco, agencia, conta, tipo, descricao, saldo_inicial, codigo_dominio").eq("empresa_id", empresaId).order("banco");
     setCbsEmpresa(data ?? []);
   };
 
@@ -420,6 +420,7 @@ export default function Empresas() {
       conta: cbForm.conta || null, tipo: cbForm.tipo,
       descricao: cbForm.descricao || null,
       saldo_inicial: parseFloat(cbForm.saldo_inicial as string) || 0,
+      codigo_dominio: cbForm.codigo_dominio.trim() || null,
     };
     const { error } = cbEditingId
       ? await supabase.from("contas_bancarias").update(payload).eq("id", cbEditingId)
@@ -1239,14 +1240,14 @@ export default function Empresas() {
                                 <div>
                                   <p className="font-medium text-sm">{cb.banco}</p>
                                   <p className="text-xs text-muted-foreground">
-                                    {[cb.tipo, cb.agencia && `Ag: ${cb.agencia}`, cb.conta && `Cc: ${cb.conta}`, cb.descricao].filter(Boolean).join(" · ")}
+                                    {[cb.tipo, cb.agencia && `Ag: ${cb.agencia}`, cb.conta && `Cc: ${cb.conta}`, cb.descricao, cb.codigo_dominio && `Domínio: ${cb.codigo_dominio}`].filter(Boolean).join(" · ")}
                                   </p>
                                 </div>
                                 <div className="flex gap-1 shrink-0">
                                   {PODE_EDITAR && (
                                     <Button variant="ghost" size="icon" type="button" onClick={() => {
                                       setCbEditingId(cb.id);
-                                      setCbForm({ banco: cb.banco, agencia: cb.agencia ?? "", conta: cb.conta ?? "", tipo: cb.tipo, descricao: cb.descricao ?? "", saldo_inicial: String(cb.saldo_inicial) });
+                                      setCbForm({ banco: cb.banco, agencia: cb.agencia ?? "", conta: cb.conta ?? "", tipo: cb.tipo, descricao: cb.descricao ?? "", saldo_inicial: String(cb.saldo_inicial), codigo_dominio: cb.codigo_dominio ?? "" });
                                     }}>
                                       <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                                     </Button>
@@ -1300,6 +1301,10 @@ export default function Empresas() {
                               <div className="col-span-2 space-y-1">
                                 <Label className="text-xs">Apelido</Label>
                                 <Input placeholder="Ex: Conta Principal" value={cbForm.descricao} onChange={e => setCbForm(p => ({ ...p, descricao: e.target.value }))} />
+                              </div>
+                              <div className="col-span-2 space-y-1">
+                                <Label className="text-xs">Código no Domínio</Label>
+                                <Input placeholder="Ex: 1.1.1.01.0001" value={cbForm.codigo_dominio} onChange={e => setCbForm(p => ({ ...p, codigo_dominio: e.target.value }))} />
                               </div>
                             </div>
                             <div className="flex gap-2">

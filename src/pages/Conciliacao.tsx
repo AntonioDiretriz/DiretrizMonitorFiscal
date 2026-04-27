@@ -3,7 +3,7 @@ import { format, differenceInDays } from "date-fns";
 import {
   Upload, CheckCircle, XCircle, Clock, Link,
   RefreshCw, Tag, FileText, Building2, Trash2, History, Check, ChevronDown,
-  RotateCcw, Pencil,
+  RotateCcw, Pencil, AlertTriangle,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ interface ContaBancaria {
   tipo: string;
   descricao: string | null;
   saldo_inicial: number;
+  codigo_dominio: string | null;
 }
 
 interface Transacao {
@@ -221,7 +222,7 @@ export default function Conciliacao() {
     if (!user) return;
     setLoading(true);
     const [cbRes, txRes, cpRes, empRes, rRes, impRes] = await Promise.all([
-      supabase.from("contas_bancarias").select("id, empresa_id, banco, agencia, conta, tipo, descricao, saldo_inicial").order("banco"),
+      supabase.from("contas_bancarias").select("id, empresa_id, banco, agencia, conta, tipo, descricao, saldo_inicial, codigo_dominio").order("banco"),
       supabase.from("transacoes_bancarias").select("*").order("data", { ascending: false }).limit(2000),
       supabase.from("contas_pagar").select("id, fornecedor, valor, data_vencimento, status").in("status", ["pendente", "aprovado"]).order("data_vencimento"),
       supabase.from("empresas").select("id, razao_social, cnpj").order("razao_social"),
@@ -597,8 +598,9 @@ export default function Conciliacao() {
   };
 
   const gerarTxtDominio = () => {
-    const bankCode = exportBankCode.trim();
-    if (!bankCode) { toast({ title: "Informe o código da conta bancária no Domínio", variant: "destructive" }); return; }
+    const conta   = contas.find(c => c.id === selectedConta);
+    const bankCode = (conta?.codigo_dominio ?? exportBankCode).trim();
+    if (!bankCode) { toast({ title: "Cadastre o Código no Domínio na conta bancária (Empresas → Contas Bancárias)", variant: "destructive" }); return; }
     const txConciliadas = txConciliados.filter(t => t.plano_contas_id && planoById[t.plano_contas_id]?.codigo);
     if (txConciliadas.length === 0) { toast({ title: "Nenhum lançamento conciliado com conta contábil para exportar", variant: "destructive" }); return; }
     const lines = txConciliadas.map(t => {
@@ -611,7 +613,6 @@ export default function Conciliacao() {
       return `|6100|${data}|${debit}|${credit}|${valor}||${desc}||||`;
     });
     const content  = lines.join("\r\n");
-    const conta    = contas.find(c => c.id === selectedConta);
     const empresa  = empresas.find(e => e.id === selectedEmpresa);
     const periodo  = selectedMes ? selectedMes.replace("-", "") : format(new Date(), "yyyyMM");
     const nomeCnpj = (empresa?.cnpj ?? "").replace(/\D/g, "");
@@ -1218,22 +1219,42 @@ export default function Conciliacao() {
               <div className="font-medium">{txConciliados.filter(t => t.plano_contas_id && planoById[t.plano_contas_id]?.codigo).length} conciliados com conta contábil</div>
               {selectedMes && <div className="text-xs text-muted-foreground">Período: {fmtMes(selectedMes)}</div>}
             </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Código da conta bancária no Domínio</Label>
-              <div className="text-xs text-muted-foreground">Ex: 8 — é o código que aparece no débito/crédito nos lançamentos do extrato importado</div>
-              <Input
-                placeholder="Ex: 8"
-                value={exportBankCode}
-                onChange={e => setExportBankCode(e.target.value)}
-                className="h-9"
-              />
-            </div>
+            {(() => {
+              const contaSel = contas.find(c => c.id === selectedConta);
+              const codDominio = contaSel?.codigo_dominio?.trim();
+              if (codDominio) {
+                return (
+                  <div className="flex items-center gap-2 p-3 rounded-lg border bg-green-50 text-sm">
+                    <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
+                    <span>Conta no Domínio: <strong className="font-mono">{codDominio}</strong></span>
+                  </div>
+                );
+              }
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-start gap-2 p-3 rounded-lg border bg-amber-50 text-sm text-amber-800">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>Código no Domínio não cadastrado nesta conta. Informe abaixo ou cadastre em <strong>Empresas → Contas Bancárias</strong>.</span>
+                  </div>
+                  <Input
+                    placeholder="Ex: 1.1.1.01.0001"
+                    value={exportBankCode}
+                    onChange={e => setExportBankCode(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+              );
+            })()}
             <div className="text-xs text-muted-foreground p-2 rounded border bg-muted/30 font-mono">
               Formato: |6100|DD/MM/AAAA|DÉB|CRÉ|VALOR||HISTÓRICO||||
             </div>
             <div className="flex gap-2 pt-1">
               <Button variant="outline" className="flex-1" onClick={() => setShowExport(false)}>Cancelar</Button>
-              <Button className="flex-1" onClick={gerarTxtDominio} disabled={!exportBankCode.trim()}>
+              <Button
+                className="flex-1"
+                onClick={gerarTxtDominio}
+                disabled={!contas.find(c => c.id === selectedConta)?.codigo_dominio?.trim() && !exportBankCode.trim()}
+              >
                 <FileText className="mr-2 h-4 w-4" />Gerar TXT
               </Button>
             </div>
