@@ -480,6 +480,11 @@ export default function Conciliacao() {
     setTransacoes(prev => prev.map(t => t.id === id ? { ...t, status: "ignorado" } : t));
   };
 
+  const handleConciliarDireto = async (id: string) => {
+    await supabase.from("transacoes_bancarias").update({ status: "conciliado" }).eq("id", id);
+    setTransacoes(prev => prev.map(t => t.id === id ? { ...t, status: "conciliado" } : t));
+  };
+
   const handleDeleteImportacao = async (imp: Importacao) => {
     await (supabase as any).from("transacoes_bancarias").delete().eq("importacao_id", imp.id);
     await (supabase as any).from("importacoes_bancarias").delete().eq("id", imp.id);
@@ -926,8 +931,15 @@ export default function Conciliacao() {
                   <TableCell>
                     {activeTab === "pendentes" && (
                       <div className="flex gap-1 justify-end">
+                        <Button
+                          variant="ghost" size="icon"
+                          title="Marcar como conciliado"
+                          onClick={() => handleConciliarDireto(t.id)}
+                        >
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                        </Button>
                         {t.tipo === "debito" && (
-                          <Button variant="ghost" size="icon" title="Conciliar com conta a pagar"
+                          <Button variant="ghost" size="icon" title="Vincular a conta a pagar"
                             onClick={() => { setMatchDialogId(t.id); setSelectedCpId(""); }}>
                             <Link className="h-4 w-4 text-blue-500" />
                           </Button>
