@@ -288,16 +288,36 @@ export default function Conciliacao() {
   const importacoesFiltradas = importacoes.filter(i => !selectedConta || i.conta_bancaria_id === selectedConta);
 
   // ── Categorizar ───────────────────────────────────────────────────────────
-  const salvarRegra = async (descricao: string, tipo: string, planoContasId: string, customPattern?: string) => {
-    if (!ownerUserId) return;
-    const padrao = (customPattern ?? descricao).slice(0, 60).trim();
-    if (!padrao) return;
+  const salvarRegra = async (tipo: string, planoContasId: string, padrao: string): Promise<string> => {
+    if (!ownerUserId) return "";
+    const p = padrao.slice(0, 60).trim();
+    if (!p) return "";
     await supabase.from("regras_conciliacao").upsert({
-      user_id: ownerUserId, padrao, tipo,
-      plano_contas_id: planoContasId, uso_count: 1,
+      user_id: ownerUserId, padrao: p, tipo,
+      plano_contas_id: planoContasId, uso_count: 1, automatica: true,
     }, { onConflict: "user_id,padrao,tipo" });
-    supabase.from("regras_conciliacao").select("id, padrao, plano_contas_id, tipo")
+    supabase.from("regras_conciliacao").select("id, padrao, plano_contas_id, tipo, automatica")
       .then(({ data }) => { if (data) setRegras(data as RegrasConciliacao[]); });
+    return p;
+  };
+
+  // Aplica uma regra retroativamente a todos os pendentes da conta atual
+  const aplicarRegraRetroativa = async (padrao: string, tipo: string, planoContasId: string) => {
+    const matches = transacoes.filter(t =>
+      t.conta_bancaria_id === selectedConta &&
+      t.status === "pendente" &&
+      (tipo === t.tipo || tipo === "ambos") &&
+      t.descricao.toLowerCase().includes(padrao.toLowerCase())
+    );
+    if (matches.length === 0) return 0;
+    const ids = matches.map(t => t.id);
+    await supabase.from("transacoes_bancarias")
+      .update({ plano_contas_id: planoContasId, status: "conciliado", categorizado_por: "regra" })
+      .in("id", ids);
+    setTransacoes(prev => prev.map(t =>
+      ids.includes(t.id) ? { ...t, plano_contas_id: planoContasId, status: "conciliado", categorizado_por: "regra" } : t
+    ));
+    return matches.length;
   };
 
   const abrirCatDialog = (tx: Transacao, p: PlanoContas) => {
@@ -314,9 +334,19 @@ export default function Conciliacao() {
     const { error } = await supabase.from("transacoes_bancarias")
       .update({ plano_contas_id: planoId, categorizado_por: "manual", status: "conciliado" }).eq("id", tx.id);
     if (!error) {
-      setTransacoes(prev => prev.map(t => t.id === tx.id ? { ...t, plano_contas_id: planoId, categorizado_por: "manual", status: "conciliado" } : t));
+      setTransacoes(prev => prev.map(t => t.id === tx.id
+        ? { ...t, plano_contas_id: planoId, categorizado_por: "manual", status: "conciliado" } : t));
       if (regraOpcao !== "nenhuma" && regraTexto.trim()) {
-        await salvarRegra(tx.descricao, tx.tipo, planoId, regraTexto.trim());
+        const padrao = await salvarRegra(tx.tipo, planoId, regraTexto.trim());
+        if (padrao) {
+          const qtd = await aplicarRegraRetroativa(padrao, tx.tipo, planoId);
+          if (qtd > 0) {
+            toast({
+              title: `Regra aplicada automaticamente!`,
+              description: `${qtd} lançamento${qtd > 1 ? "s" : ""} pendente${qtd > 1 ? "s" : ""} com padrão "${padrao}" foram conciliados.`,
+            });
+          }
+        }
       }
     }
     setCategorizando(null);
@@ -348,7 +378,7 @@ export default function Conciliacao() {
     const rows = parsed.map((t, i) => ({
       user_id: ownerUserId!, conta_bancaria_id: selectedConta!, importacao_id: imp.id,
       data: t.data, descricao: t.descricao, valor: t.valor, tipo: t.tipo,
-      status: planoIds[i]?.automatica ? "conciliado" : "pendente",
+      status: planoIds[i] ? "conciliado" : "pendente",
       hash_dedup: t.hash,
       plano_contas_id: planoIds[i]?.plano_contas_id ?? null,
       categorizado_por: planoIds[i] ? "regra" : null,
@@ -390,7 +420,7 @@ export default function Conciliacao() {
     const rows = txList.map((t, i) => ({
       user_id: ownerUserId!, conta_bancaria_id: selectedConta!, importacao_id: imp.id,
       data: t.data, descricao: t.descricao, valor: t.valor, tipo: t.tipo,
-      status: planoIds[i]?.automatica ? "conciliado" : "pendente",
+      status: planoIds[i] ? "conciliado" : "pendente",
       hash_dedup: `pdf-${hash}-${i}`,
       plano_contas_id: planoIds[i]?.plano_contas_id ?? null,
       categorizado_por: planoIds[i] ? "regra" : null,
