@@ -311,26 +311,40 @@ export default function Conciliacao() {
     try {
       const { data, error } = await supabase.functions.invoke("pluggy-token", { body: {} });
       if (error || !data?.connectToken) throw new Error(error?.message ?? "Erro ao obter token Pluggy");
-      // Carregar SDK dinamicamente
-      await new Promise<void>((resolve, reject) => {
-        if ((window as any).PluggyConnect) { resolve(); return; }
-        const s = document.createElement("script");
-        s.src = "https://cdn.pluggy.ai/pluggy-connect/v2.2.0/pluggy-connect.min.js";
-        s.onload = () => resolve();
-        s.onerror = () => reject(new Error("Falha ao carregar Pluggy SDK"));
-        document.head.appendChild(s);
-      });
-      new (window as any).PluggyConnect({
-        connectToken: data.connectToken,
-        onSuccess: async ({ item }: any) => {
-          toast({ title: "Banco conectado! Sincronizando..." });
-          await handlePluggySync(item.id);
-        },
-        onError: (err: any) => toast({ title: "Erro na conexão", description: err?.message ?? String(err), variant: "destructive" }),
-      }).open();
+
+      // Abre popup com a URL do Pluggy Connect (sem depender de CDN)
+      const url    = `https://connect.pluggy.ai?connectToken=${data.connectToken}`;
+      const popup  = window.open(url, "Pluggy Connect", "width=480,height=700,left=400,top=100");
+      if (!popup) throw new Error("Popup bloqueado pelo navegador. Permita popups para este site.");
+
+      // Escuta mensagem de sucesso do popup
+      const handler = async (event: MessageEvent) => {
+        if (!event.origin.includes("pluggy.ai")) return;
+        const msg = event.data;
+        if (msg?.type === "pluggy:success" || msg?.event === "SUCCESS") {
+          const itemId = msg?.item?.id ?? msg?.data?.item?.id;
+          window.removeEventListener("message", handler);
+          popup.close();
+          if (itemId) {
+            toast({ title: "Banco conectado! Sincronizando..." });
+            await handlePluggySync(itemId);
+          }
+        }
+        if (msg?.type === "pluggy:error" || msg?.event === "ERROR") {
+          window.removeEventListener("message", handler);
+          popup.close();
+          toast({ title: "Erro na conexão bancária", variant: "destructive" });
+        }
+      };
+      window.addEventListener("message", handler);
+
+      // Limpa listener se popup for fechado manualmente
+      const interval = setInterval(() => {
+        if (popup.closed) { clearInterval(interval); window.removeEventListener("message", handler); setPluggyLoading(false); }
+      }, 500);
+
     } catch (e: any) {
       toast({ title: "Erro ao abrir Pluggy", description: e.message, variant: "destructive" });
-    } finally {
       setPluggyLoading(false);
     }
   };
