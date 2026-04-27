@@ -3,6 +3,7 @@ import { format, differenceInDays } from "date-fns";
 import {
   Upload, CheckCircle, XCircle, Clock, Link,
   RefreshCw, Tag, FileText, Building2, Trash2, History, Check, ChevronDown,
+  RotateCcw, Pencil,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -484,6 +485,11 @@ export default function Conciliacao() {
     setTransacoes(prev => prev.map(t => t.id === id ? { ...t, status: "conciliado" } : t));
   };
 
+  const handleDesconciliar = async (id: string) => {
+    await supabase.from("transacoes_bancarias").update({ status: "pendente" }).eq("id", id);
+    setTransacoes(prev => prev.map(t => t.id === id ? { ...t, status: "pendente" } : t));
+  };
+
   const handleDeleteImportacao = async (imp: Importacao) => {
     await (supabase as any).from("transacoes_bancarias").delete().eq("importacao_id", imp.id);
     await (supabase as any).from("importacoes_bancarias").delete().eq("id", imp.id);
@@ -928,13 +934,10 @@ export default function Conciliacao() {
                     </Popover>
                   </TableCell>
                   <TableCell>
-                    {activeTab === "pendentes" && (
-                      <div className="flex gap-1 justify-end">
-                        <Button
-                          variant="ghost" size="icon"
-                          title="Marcar como conciliado"
-                          onClick={() => handleConciliarDireto(t.id)}
-                        >
+                    <div className="flex gap-1 justify-end">
+                      {activeTab === "pendentes" && (<>
+                        <Button variant="ghost" size="icon" title="Marcar como conciliado"
+                          onClick={() => handleConciliarDireto(t.id)}>
                           <CheckCircle className="h-4 w-4 text-green-500" />
                         </Button>
                         {t.tipo === "debito" && (
@@ -943,11 +946,31 @@ export default function Conciliacao() {
                             <Link className="h-4 w-4 text-blue-500" />
                           </Button>
                         )}
-                        <Button variant="ghost" size="icon" title="Ignorar" onClick={() => handleIgnorar(t.id)}>
+                        <Button variant="ghost" size="icon" title="Ignorar"
+                          onClick={() => handleIgnorar(t.id)}>
                           <XCircle className="h-4 w-4 text-muted-foreground" />
                         </Button>
-                      </div>
-                    )}
+                      </>)}
+                      {activeTab === "conciliados" && (<>
+                        <Button variant="ghost" size="icon" title="Editar categorização"
+                          onClick={() => {
+                            const p = planoContas.find(p => p.id === t.plano_contas_id);
+                            if (p) abrirCatDialog(t, p);
+                            else {
+                              // abre sem conta pré-selecionada — reutiliza o dialog de categorização
+                              setRegraOpcao("extrato");
+                              setRegraTexto(t.descricao.slice(0, 60));
+                              setCatDialog({ tx: t, planoId: t.plano_contas_id ?? "", planoNome: p?.nome ?? "—", planoCodigo: p?.codigo ?? null });
+                            }
+                          }}>
+                          <Pencil className="h-4 w-4 text-blue-500" />
+                        </Button>
+                        <Button variant="ghost" size="icon" title="Desconciliar (voltar para pendente)"
+                          onClick={() => handleDesconciliar(t.id)}>
+                          <RotateCcw className="h-4 w-4 text-amber-500" />
+                        </Button>
+                      </>)}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
