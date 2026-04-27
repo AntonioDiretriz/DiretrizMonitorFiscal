@@ -214,8 +214,14 @@ export default function Conciliacao() {
   const [regraTexto,   setRegraTexto]   = useState("");
 
   // Export Domínio
-  const [showExport,    setShowExport]    = useState(false);
+  const [showExport,     setShowExport]     = useState(false);
   const [exportBankCode, setExportBankCode] = useState("");
+
+  // Sync Inter
+  const [showSync,   setShowSync]   = useState(false);
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [syncInicio,  setSyncInicio]  = useState("");
+  const [syncFim,     setSyncFim]     = useState("");
 
   // ── Load ──────────────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
@@ -637,6 +643,32 @@ export default function Conciliacao() {
     setShowExport(false);
   };
 
+  const handleSync = async () => {
+    if (!selectedConta) return;
+    setSyncLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await supabase.functions.invoke("sync-inter", {
+        body: {
+          conta_bancaria_id: selectedConta,
+          user_id: ownerUserId,
+          data_inicio: syncInicio || undefined,
+          data_fim:    syncFim    || undefined,
+        },
+      });
+      if (resp.error) throw new Error(resp.error.message);
+      const result = resp.data as { success: boolean; total: number; error?: string };
+      if (result.error) throw new Error(result.error);
+      toast({ title: `Sincronização concluída! ${result.total} transações importadas.` });
+      setShowSync(false);
+      loadAll();
+    } catch (e: any) {
+      toast({ title: "Erro na sincronização", description: e.message, variant: "destructive" });
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
   const fmtMoeda = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
   const fmtMes = (ym: string) => {
     const [y, m] = ym.split("-");
@@ -694,6 +726,9 @@ export default function Conciliacao() {
                 <FileText className="mr-2 h-4 w-4" />Exportar Domínio
               </Button>
             )}
+            <Button variant="outline" onClick={() => { setSyncInicio(""); setSyncFim(""); setShowSync(true); }}>
+              <RefreshCw className="mr-2 h-4 w-4" />Sincronizar Inter
+            </Button>
             <input ref={fileInputRef} type="file" accept=".ofx,.ofc,.csv,.pdf,.txt" className="hidden" onChange={handleFileImport} />
             <Button onClick={() => fileInputRef.current?.click()} disabled={uploading}>
               {uploading
@@ -1217,6 +1252,37 @@ export default function Conciliacao() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Sincronizar Inter */}
+      <Dialog open={showSync} onOpenChange={setShowSync}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Sincronizar com Banco Inter</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-1">
+            <p className="text-sm text-muted-foreground">
+              Busca o extrato diretamente na API do Inter usando as credenciais cadastradas em <strong>Empresas → Bancos → Integração Automática</strong>.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Data início</Label>
+                <Input type="date" value={syncInicio} onChange={e => setSyncInicio(e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Data fim</Label>
+                <Input type="date" value={syncFim} onChange={e => setSyncFim(e.target.value)} className="h-8 text-sm" />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">Se não preencher, importa o mês atual.</p>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setShowSync(false)}>Cancelar</Button>
+              <Button className="flex-1" onClick={handleSync} disabled={syncLoading}>
+                {syncLoading
+                  ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Sincronizando...</>
+                  : <><RefreshCw className="mr-2 h-4 w-4" />Sincronizar</>}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

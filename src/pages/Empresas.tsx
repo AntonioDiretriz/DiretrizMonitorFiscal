@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Building2, Trash2, Loader2, Pencil, MapPin, UserPlus, Cake, Users2, Banknote, Upload, Monitor, Landmark } from "lucide-react";
+import { Plus, Search, Building2, Trash2, Loader2, Pencil, MapPin, UserPlus, Cake, Users2, Banknote, Upload, Monitor, Landmark, RefreshCw } from "lucide-react";
 import { ExportButton } from "@/components/ExportButton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -436,6 +436,48 @@ export default function Empresas() {
     await supabase.from("contas_bancarias").delete().eq("id", id);
     setCbsEmpresa(prev => prev.filter(c => c.id !== id));
   };
+
+  // ── Integração Bancária (Inter / Open Finance) ────────────────────────────
+  const EMPTY_IB = { client_id: "", client_secret: "", certificado_pem: "", chave_pem: "" };
+  const [ibContaId,  setIbContaId]  = useState<string | null>(null);
+  const [ibForm,     setIbForm]     = useState(EMPTY_IB);
+  const [ibSaving,   setIbSaving]   = useState(false);
+  const [ibExisting, setIbExisting] = useState<{ ultima_sincronizacao: string | null } | null>(null);
+  const certFileRef = useRef<HTMLInputElement>(null);
+  const keyFileRef  = useRef<HTMLInputElement>(null);
+
+  const loadIb = async (contaId: string) => {
+    const { data } = await supabase.from("integracoes_bancarias" as any).select("*").eq("conta_bancaria_id", contaId).maybeSingle();
+    if (data) {
+      setIbForm({ client_id: data.client_id, client_secret: data.client_secret, certificado_pem: data.certificado_pem, chave_pem: data.chave_pem });
+      setIbExisting({ ultima_sincronizacao: data.ultima_sincronizacao });
+    } else {
+      setIbForm(EMPTY_IB);
+      setIbExisting(null);
+    }
+    setIbContaId(contaId);
+  };
+
+  const handleIbSave = async () => {
+    if (!ibContaId || !ibForm.client_id.trim() || !ibForm.client_secret.trim() || !ibForm.certificado_pem.trim() || !ibForm.chave_pem.trim()) {
+      toast({ title: "Preencha todos os campos da integração", variant: "destructive" }); return;
+    }
+    setIbSaving(true);
+    const payload = {
+      user_id: ownerUserId!, conta_bancaria_id: ibContaId, banco: "inter",
+      client_id: ibForm.client_id.trim(), client_secret: ibForm.client_secret.trim(),
+      certificado_pem: ibForm.certificado_pem.trim(), chave_pem: ibForm.chave_pem.trim(),
+      ativo: true,
+    };
+    const { error } = await (supabase as any).from("integracoes_bancarias").upsert(payload, { onConflict: "conta_bancaria_id" });
+    setIbSaving(false);
+    if (error) { toast({ title: "Erro ao salvar integração", description: error.message, variant: "destructive" }); return; }
+    toast({ title: "Integração configurada com sucesso!" });
+    await loadIb(ibContaId);
+  };
+
+  const readFileAsText = (file: File): Promise<string> =>
+    new Promise((res, rej) => { const r = new FileReader(); r.onload = e => res(e.target?.result as string); r.onerror = rej; r.readAsText(file); });
 
   const PAGE_SIZE = 20;
 
@@ -1320,6 +1362,84 @@ export default function Empresas() {
                             </div>
                           </div>
                         )}
+                      {/* ── Integração Automática ── */}
+                      {cbsEmpresa.length > 0 && (
+                        <div className="border rounded-lg p-4 space-y-3 bg-blue-50/30">
+                          <h5 className="font-semibold text-sm flex items-center gap-2">
+                            <RefreshCw className="h-4 w-4 text-blue-600" />
+                            Integração Automática (Open Finance / API Inter)
+                          </h5>
+                          {/* Selecionar qual conta configurar */}
+                          <div className="space-y-1">
+                            <Label className="text-xs">Conta bancária</Label>
+                            <Select value={ibContaId ?? ""} onValueChange={v => loadIb(v)}>
+                              <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione a conta..." /></SelectTrigger>
+                              <SelectContent>
+                                {cbsEmpresa.map(cb => (
+                                  <SelectItem key={cb.id} value={cb.id}>{cb.banco}{cb.conta ? ` — ${cb.conta}` : ""}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {ibContaId && (
+                            <>
+                              {ibExisting?.ultima_sincronizacao && (
+                                <div className="text-xs text-muted-foreground">
+                                  Última sincronização: {new Date(ibExisting.ultima_sincronizacao).toLocaleString("pt-BR")}
+                                </div>
+                              )}
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Client ID *</Label>
+                                  <Input placeholder="client_id do Inter" value={ibForm.client_id} onChange={e => setIbForm(p => ({ ...p, client_id: e.target.value }))} />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Client Secret *</Label>
+                                  <Input type="password" placeholder="client_secret" value={ibForm.client_secret} onChange={e => setIbForm(p => ({ ...p, client_secret: e.target.value }))} />
+                                </div>
+                                <div className="col-span-2 space-y-1">
+                                  <Label className="text-xs">Certificado (.pem / .crt) *</Label>
+                                  <div className="flex gap-2">
+                                    <Input
+                                      className="h-8 text-xs font-mono flex-1"
+                                      placeholder="Conteúdo do certificado ou clique em Carregar..."
+                                      value={ibForm.certificado_pem ? "✓ Certificado carregado" : ""}
+                                      readOnly
+                                    />
+                                    <Button type="button" size="sm" variant="outline" onClick={() => certFileRef.current?.click()}>
+                                      <Upload className="h-3.5 w-3.5 mr-1" />Carregar
+                                    </Button>
+                                    <input ref={certFileRef} type="file" accept=".pem,.crt,.cer" className="hidden"
+                                      onChange={async e => { const f = e.target.files?.[0]; if (f) setIbForm(p => ({ ...p, certificado_pem: "" })) || readFileAsText(f).then(t => setIbForm(p => ({ ...p, certificado_pem: t }))); }} />
+                                  </div>
+                                </div>
+                                <div className="col-span-2 space-y-1">
+                                  <Label className="text-xs">Chave Privada (.key / .pem) *</Label>
+                                  <div className="flex gap-2">
+                                    <Input
+                                      className="h-8 text-xs font-mono flex-1"
+                                      placeholder="Conteúdo da chave privada ou clique em Carregar..."
+                                      value={ibForm.chave_pem ? "✓ Chave carregada" : ""}
+                                      readOnly
+                                    />
+                                    <Button type="button" size="sm" variant="outline" onClick={() => keyFileRef.current?.click()}>
+                                      <Upload className="h-3.5 w-3.5 mr-1" />Carregar
+                                    </Button>
+                                    <input ref={keyFileRef} type="file" accept=".key,.pem" className="hidden"
+                                      onChange={async e => { const f = e.target.files?.[0]; if (f) readFileAsText(f).then(t => setIbForm(p => ({ ...p, chave_pem: t }))); }} />
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="text-xs text-muted-foreground bg-blue-50 p-2 rounded border border-blue-200">
+                                Gere o certificado em <strong>developers.bancointer.com.br</strong> → Minha Aplicação → Certificado. Baixe o <code>.crt</code> e a chave <code>.key</code>.
+                              </div>
+                              <Button type="button" size="sm" disabled={ibSaving} onClick={handleIbSave}>
+                                {ibSaving ? <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />Salvando...</> : "Salvar Integração"}
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      )}
                       </>
                     )}
                   </TabsContent>
