@@ -72,7 +72,7 @@ interface RegrasConciliacao {
   automatica: boolean;
 }
 
-interface Empresa { id: string; razao_social: string; }
+interface Empresa { id: string; razao_social: string; cnpj: string; }
 
 interface Importacao {
   id: string;
@@ -219,7 +219,7 @@ export default function Conciliacao() {
       supabase.from("contas_bancarias").select("id, empresa_id, banco, agencia, conta, tipo, descricao, saldo_inicial").order("banco"),
       supabase.from("transacoes_bancarias").select("*").order("data", { ascending: false }).limit(2000),
       supabase.from("contas_pagar").select("id, fornecedor, valor, data_vencimento, status").in("status", ["pendente", "aprovado"]).order("data_vencimento"),
-      supabase.from("empresas").select("id, razao_social").order("razao_social"),
+      supabase.from("empresas").select("id, razao_social, cnpj").order("razao_social"),
       supabase.from("regras_conciliacao").select("id, padrao, plano_contas_id, tipo, automatica"),
       (supabase as any).from("importacoes_bancarias").select("id, arquivo_nome, formato, status, total_transacoes, created_at, conta_bancaria_id").order("created_at", { ascending: false }).limit(100),
     ]);
@@ -506,6 +506,24 @@ export default function Conciliacao() {
     const meses = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
     return `${meses[parseInt(m) - 1]}/${y}`;
   };
+  const fmtCNPJ = (v: string) => v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+  const fmtPeriodo = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return `${format(d, "dd/MM/yyyy")} / ${d.getMonth() + 1}${d.getFullYear()}`;
+  };
+
+  // Stats por empresa para a tela de lista
+  const empresaStats = empresas.map(e => {
+    const contaIds = new Set(contas.filter(c => c.empresa_id === e.id).map(c => c.id));
+    const txEmp    = transacoes.filter(t => contaIds.has(t.conta_bancaria_id));
+    const total      = txEmp.length;
+    const conciliados = txEmp.filter(t => t.status === "conciliado").length;
+    const pendentes   = txEmp.filter(t => t.status === "pendente").length;
+    const pct        = total > 0 ? Math.round((conciliados / total) * 100) : null;
+    return { ...e, total, conciliados, pendentes, pct,
+      numContas: contas.filter(c => c.empresa_id === e.id).length,
+      lastImport: lastImportByEmpresa[e.id] ?? null };
+  });
 
   return (
     <div className="space-y-5">
@@ -513,7 +531,17 @@ export default function Conciliacao() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Conciliação Bancária</h1>
-          <p className="text-sm text-muted-foreground">Selecione empresa, conta e mês para conciliar</p>
+          {selectedEmpresa ? (
+            <button
+              onClick={() => { setSelectedEmpresa(null); setSelectedConta(null); setSelectedMes(""); }}
+              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mt-0.5"
+            >
+              <ChevronDown className="h-3.5 w-3.5 rotate-90" />
+              {empresas.find(e => e.id === selectedEmpresa)?.razao_social ?? "Empresa"}
+            </button>
+          ) : (
+            <p className="text-sm text-muted-foreground">Selecione uma empresa para conciliar os lançamentos</p>
+          )}
         </div>
         {selectedConta && podeIncluir && (
           <>
@@ -527,7 +555,73 @@ export default function Conciliacao() {
         )}
       </div>
 
-      {/* Filtros em cascata */}
+      {/* ── LISTA DE EMPRESAS ───────────────────────────────────────────────── */}
+      {!selectedEmpresa && (
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Razão Social</TableHead>
+                  <TableHead>CNPJ</TableHead>
+                  <TableHead className="text-center">Contas</TableHead>
+                  <TableHead className="min-w-[220px]">Lançamentos Conciliados</TableHead>
+                  <TableHead>Exportação / Período</TableHead>
+                  <TableHead className="w-28"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">Carregando...</TableCell></TableRow>
+                ) : empresaStats.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">Nenhuma empresa cadastrada.</TableCell></TableRow>
+                ) : empresaStats.map(e => (
+                  <TableRow key={e.id} className="cursor-pointer hover:bg-accent/40" onClick={() => setSelectedEmpresa(e.id)}>
+                    <TableCell className="font-medium max-w-[220px] truncate" title={e.razao_social}>{e.razao_social}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground font-mono whitespace-nowrap">{fmtCNPJ(e.cnpj)}</TableCell>
+                    <TableCell className="text-center text-sm">{e.numContas}</TableCell>
+                    <TableCell>
+                      {e.pct !== null ? (
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-5 rounded bg-muted overflow-hidden">
+                            <div
+                              className="h-full rounded transition-all flex items-center justify-center"
+                              style={{
+                                width: `${e.pct}%`,
+                                backgroundColor: e.pct === 100 ? '#1d4ed8' : e.pct >= 80 ? '#2563eb' : e.pct >= 50 ? '#f59e0b' : '#ef4444',
+                              }}
+                            >
+                              {e.pct >= 20 && <span className="text-[10px] font-bold text-white">{e.pct}%</span>}
+                            </div>
+                          </div>
+                          {e.pct < 20 && <span className="text-xs font-semibold" style={{ color: e.pct >= 50 ? '#f59e0b' : '#ef4444' }}>{e.pct}%</span>}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Sem lançamentos</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                      {e.lastImport ? fmtPeriodo(e.lastImport) : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="outline" size="sm"
+                        onClick={ev => { ev.stopPropagation(); setSelectedEmpresa(e.id); }}
+                      >
+                        Conciliar
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── DETALHE DA EMPRESA — filtros em cascata ─────────────────────────── */}
+      {selectedEmpresa && (
+      <>{/* Filtros em cascata */}
       <div className="flex flex-wrap gap-2 items-center">
 
         {/* Passo 1 — Empresa */}
@@ -850,6 +944,8 @@ export default function Conciliacao() {
           </Table>
         </CardContent>
       </Card>
+      </> /* fim bloco selectedEmpresa */
+      )}
 
       {/* Dialog: categorizar transação */}
       <Dialog open={!!catDialog} onOpenChange={o => { if (!o) setCatDialog(null); }}>
