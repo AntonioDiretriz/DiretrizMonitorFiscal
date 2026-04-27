@@ -312,36 +312,21 @@ export default function Conciliacao() {
       const { data, error } = await supabase.functions.invoke("pluggy-token", { body: {} });
       if (error || !data?.connectToken) throw new Error(error?.message ?? "Erro ao obter token Pluggy");
 
-      // Abre popup com a URL do Pluggy Connect (sem depender de CDN)
-      const url    = `https://connect.pluggy.ai?connectToken=${data.connectToken}`;
-      const popup  = window.open(url, "Pluggy Connect", "width=480,height=700,left=400,top=100");
-      if (!popup) throw new Error("Popup bloqueado pelo navegador. Permita popups para este site.");
+      const { default: PluggyConnect } = await import("pluggy-connect-sdk");
 
-      // Escuta mensagem de sucesso do popup
-      const handler = async (event: MessageEvent) => {
-        if (!event.origin.includes("pluggy.ai")) return;
-        const msg = event.data;
-        if (msg?.type === "pluggy:success" || msg?.event === "SUCCESS") {
-          const itemId = msg?.item?.id ?? msg?.data?.item?.id;
-          window.removeEventListener("message", handler);
-          popup.close();
-          if (itemId) {
-            toast({ title: "Banco conectado! Sincronizando..." });
-            await handlePluggySync(itemId);
-          }
-        }
-        if (msg?.type === "pluggy:error" || msg?.event === "ERROR") {
-          window.removeEventListener("message", handler);
-          popup.close();
-          toast({ title: "Erro na conexão bancária", variant: "destructive" });
-        }
-      };
-      window.addEventListener("message", handler);
-
-      // Limpa listener se popup for fechado manualmente
-      const interval = setInterval(() => {
-        if (popup.closed) { clearInterval(interval); window.removeEventListener("message", handler); setPluggyLoading(false); }
-      }, 500);
+      new PluggyConnect({
+        connectToken: data.connectToken,
+        onSuccess: async ({ item }: any) => {
+          toast({ title: "Banco conectado! Sincronizando..." });
+          setPluggyLoading(false);
+          await handlePluggySync(item.id);
+        },
+        onError: (err: any) => {
+          toast({ title: "Erro na conexão bancária", description: err?.message ?? String(err), variant: "destructive" });
+          setPluggyLoading(false);
+        },
+        onClose: () => setPluggyLoading(false),
+      }).init();
 
     } catch (e: any) {
       toast({ title: "Erro ao abrir Pluggy", description: e.message, variant: "destructive" });
