@@ -311,9 +311,9 @@ export default function Conciliacao() {
     const { tx, planoId } = catDialog;
     setCategorizando(tx.id);
     const { error } = await supabase.from("transacoes_bancarias")
-      .update({ plano_contas_id: planoId, categorizado_por: "manual" }).eq("id", tx.id);
+      .update({ plano_contas_id: planoId, categorizado_por: "manual", status: "conciliado" }).eq("id", tx.id);
     if (!error) {
-      setTransacoes(prev => prev.map(t => t.id === tx.id ? { ...t, plano_contas_id: planoId, categorizado_por: "manual" } : t));
+      setTransacoes(prev => prev.map(t => t.id === tx.id ? { ...t, plano_contas_id: planoId, categorizado_por: "manual", status: "conciliado" } : t));
       if (regraOpcao !== "nenhuma") {
         const pattern = regraOpcao === "parcial" ? regraTexto : tx.descricao;
         await salvarRegra(tx.descricao, tx.tipo, planoId, pattern);
