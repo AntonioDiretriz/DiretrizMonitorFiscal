@@ -353,6 +353,34 @@ export default function Conciliacao() {
     setCatDialog(null);
   };
 
+  const [aplicandoRegras, setAplicandoRegras] = useState(false);
+  const handleAplicarTodasRegras = async () => {
+    if (!selectedConta || regras.length === 0) return;
+    setAplicandoRegras(true);
+    const pendentes = transacoes.filter(t => t.conta_bancaria_id === selectedConta && t.status === "pendente");
+    const updates: { id: string; planoId: string }[] = [];
+    pendentes.forEach(t => {
+      const desc  = t.descricao.toLowerCase();
+      const regra = regras.find(r => (r.tipo === t.tipo || r.tipo === "ambos") && desc.includes(r.padrao.toLowerCase()));
+      if (regra) updates.push({ id: t.id, planoId: regra.plano_contas_id });
+    });
+    if (updates.length > 0) {
+      await Promise.all(updates.map(u =>
+        supabase.from("transacoes_bancarias")
+          .update({ plano_contas_id: u.planoId, status: "conciliado", categorizado_por: "regra" })
+          .eq("id", u.id)
+      ));
+      setTransacoes(prev => prev.map(t => {
+        const u = updates.find(x => x.id === t.id);
+        return u ? { ...t, plano_contas_id: u.planoId, status: "conciliado", categorizado_por: "regra" } : t;
+      }));
+      toast({ title: `${updates.length} lançamento${updates.length > 1 ? "s" : ""} conciliado${updates.length > 1 ? "s" : ""} automaticamente!`, description: "Regras aplicadas a todos os pendentes da conta." });
+    } else {
+      toast({ title: "Nenhum lançamento pendente bate com as regras cadastradas." });
+    }
+    setAplicandoRegras(false);
+  };
+
   // ── Import OFX/CSV ────────────────────────────────────────────────────────
   const importarTextual = async (file: File, ext: string) => {
     const buffer = await file.arrayBuffer();
@@ -584,14 +612,21 @@ export default function Conciliacao() {
           )}
         </div>
         {selectedConta && podeIncluir && (
-          <>
+          <div className="flex gap-2">
+            {regras.length > 0 && (
+              <Button variant="outline" onClick={handleAplicarTodasRegras} disabled={aplicandoRegras}>
+                {aplicandoRegras
+                  ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Aplicando...</>
+                  : <><Tag className="mr-2 h-4 w-4" />Aplicar Regras</>}
+              </Button>
+            )}
             <input ref={fileInputRef} type="file" accept=".ofx,.ofc,.csv,.pdf,.txt" className="hidden" onChange={handleFileImport} />
             <Button onClick={() => fileInputRef.current?.click()} disabled={uploading}>
               {uploading
                 ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Importando...</>
                 : <><Upload className="mr-2 h-4 w-4" />Importar Extrato</>}
             </Button>
-          </>
+          </div>
         )}
       </div>
 
