@@ -212,6 +212,10 @@ export default function Conciliacao() {
   const [regraOpcao,   setRegraOpcao]   = useState<"nenhuma" | "extrato" | "escritorio">("extrato");
   const [regraTexto,   setRegraTexto]   = useState("");
 
+  // Export Domínio
+  const [showExport,    setShowExport]    = useState(false);
+  const [exportBankCode, setExportBankCode] = useState("");
+
   // ── Load ──────────────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
     if (!user) return;
@@ -592,6 +596,35 @@ export default function Conciliacao() {
     setMatchDialogId(null); setSelectedCpId(""); loadAll();
   };
 
+  const gerarTxtDominio = () => {
+    const bankCode = exportBankCode.trim();
+    if (!bankCode) { toast({ title: "Informe o código da conta bancária no Domínio", variant: "destructive" }); return; }
+    const txConciliadas = txConciliados.filter(t => t.plano_contas_id && planoById[t.plano_contas_id]?.codigo);
+    if (txConciliadas.length === 0) { toast({ title: "Nenhum lançamento conciliado com conta contábil para exportar", variant: "destructive" }); return; }
+    const lines = txConciliadas.map(t => {
+      const codigo = planoById[t.plano_contas_id!]?.codigo ?? "";
+      const data   = format(new Date(t.data + "T12:00:00"), "dd/MM/yyyy");
+      const valor  = Number(t.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+      const debit  = t.tipo === "credito" ? bankCode : codigo;
+      const credit = t.tipo === "credito" ? codigo   : bankCode;
+      const desc   = t.descricao.replace(/\|/g, " ");
+      return `|6100|${data}|${debit}|${credit}|${valor}||${desc}||||`;
+    });
+    const content  = lines.join("\r\n");
+    const conta    = contas.find(c => c.id === selectedConta);
+    const empresa  = empresas.find(e => e.id === selectedEmpresa);
+    const periodo  = selectedMes ? selectedMes.replace("-", "") : format(new Date(), "yyyyMM");
+    const nomeCnpj = (empresa?.cnpj ?? "").replace(/\D/g, "");
+    const filename = `lancamento_${nomeCnpj}_${periodo}.txt`;
+    const blob = new Blob([content], { type: "text/plain;charset=latin1" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: `${txConciliadas.length} lançamentos exportados → ${filename}` });
+    setShowExport(false);
+  };
+
   const fmtMoeda = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
   const fmtMes = (ym: string) => {
     const [y, m] = ym.split("-");
@@ -636,12 +669,17 @@ export default function Conciliacao() {
           )}
         </div>
         {selectedConta && podeIncluir && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {regras.length > 0 && (
               <Button variant="outline" onClick={handleAplicarTodasRegras} disabled={aplicandoRegras}>
                 {aplicandoRegras
                   ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Aplicando...</>
                   : <><Tag className="mr-2 h-4 w-4" />Aplicar Regras</>}
+              </Button>
+            )}
+            {txConciliados.length > 0 && (
+              <Button variant="outline" onClick={() => setShowExport(true)}>
+                <FileText className="mr-2 h-4 w-4" />Exportar Domínio
               </Button>
             )}
             <input ref={fileInputRef} type="file" accept=".ofx,.ofc,.csv,.pdf,.txt" className="hidden" onChange={handleFileImport} />
@@ -1167,6 +1205,39 @@ export default function Conciliacao() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: exportar TXT Domínio */}
+      <Dialog open={showExport} onOpenChange={setShowExport}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Exportar Lançamentos — Domínio</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-1">
+            <div className="p-3 rounded-lg bg-muted/50 text-sm space-y-1">
+              <div className="text-xs text-muted-foreground">Lançamentos a exportar</div>
+              <div className="font-medium">{txConciliados.filter(t => t.plano_contas_id && planoById[t.plano_contas_id]?.codigo).length} conciliados com conta contábil</div>
+              {selectedMes && <div className="text-xs text-muted-foreground">Período: {fmtMes(selectedMes)}</div>}
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Código da conta bancária no Domínio</Label>
+              <div className="text-xs text-muted-foreground">Ex: 8 — é o código que aparece no débito/crédito nos lançamentos do extrato importado</div>
+              <Input
+                placeholder="Ex: 8"
+                value={exportBankCode}
+                onChange={e => setExportBankCode(e.target.value)}
+                className="h-9"
+              />
+            </div>
+            <div className="text-xs text-muted-foreground p-2 rounded border bg-muted/30 font-mono">
+              Formato: |6100|DD/MM/AAAA|DÉB|CRÉ|VALOR||HISTÓRICO||||
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="flex-1" onClick={() => setShowExport(false)}>Cancelar</Button>
+              <Button className="flex-1" onClick={gerarTxtDominio} disabled={!exportBankCode.trim()}>
+                <FileText className="mr-2 h-4 w-4" />Gerar TXT
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
