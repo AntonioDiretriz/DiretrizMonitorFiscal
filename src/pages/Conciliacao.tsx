@@ -598,25 +598,36 @@ export default function Conciliacao() {
   };
 
   const gerarTxtDominio = () => {
-    const conta   = contas.find(c => c.id === selectedConta);
+    const conta    = contas.find(c => c.id === selectedConta);
     const bankCode = (conta?.codigo_dominio ?? exportBankCode).trim();
     if (!bankCode) { toast({ title: "Cadastre o Código no Domínio na conta bancária (Empresas → Contas Bancárias)", variant: "destructive" }); return; }
     const txConciliadas = txConciliados.filter(t => t.plano_contas_id && planoById[t.plano_contas_id]?.codigo);
     if (txConciliadas.length === 0) { toast({ title: "Nenhum lançamento conciliado com conta contábil para exportar", variant: "destructive" }); return; }
-    const lines = txConciliadas.map(t => {
+
+    const empresa  = empresas.find(e => e.id === selectedEmpresa);
+    const cnpj     = (empresa?.cnpj ?? "").replace(/\D/g, "");
+
+    // valor sem ponto de milhar: 4400,00 (não 4.400,00)
+    const fmtValor = (v: number) => v.toFixed(2).replace(".", ",");
+
+    const rows: string[] = [];
+    // header obrigatório
+    rows.push(`|0000|${cnpj}|`);
+    // uma linha 6000 + 6100 por lançamento
+    txConciliadas.forEach(t => {
       const codigo = planoById[t.plano_contas_id!]?.codigo ?? "";
       const data   = format(new Date(t.data + "T12:00:00"), "dd/MM/yyyy");
-      const valor  = Number(t.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+      const valor  = fmtValor(Number(t.valor));
       const debit  = t.tipo === "credito" ? bankCode : codigo;
       const credit = t.tipo === "credito" ? codigo   : bankCode;
-      const desc   = t.descricao.replace(/\|/g, " ");
-      return `|6100|${data}|${debit}|${credit}|${valor}||${desc}||||`;
+      const desc   = t.descricao.replace(/\|/g, " ").replace(/"/g, "");
+      rows.push(`|6000|X||||`);
+      rows.push(`|6100|${data}|${debit}|${credit}|${valor}||${desc}||||`);
     });
-    const content  = lines.join("\r\n");
-    const empresa  = empresas.find(e => e.id === selectedEmpresa);
+
+    const content  = rows.join("\r\n");
     const periodo  = selectedMes ? selectedMes.replace("-", "") : format(new Date(), "yyyyMM");
-    const nomeCnpj = (empresa?.cnpj ?? "").replace(/\D/g, "");
-    const filename = `lancamento_${nomeCnpj}_${periodo}.txt`;
+    const filename = `lancamento_${cnpj}_${periodo}.txt`;
     const blob = new Blob([content], { type: "text/plain;charset=latin1" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
