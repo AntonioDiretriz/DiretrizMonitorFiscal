@@ -253,6 +253,30 @@ export default function Conciliacao() {
     setSelectedMes(meses[0] ?? "");
   }, [selectedConta, transacoes]);
 
+  // Auto-aplicar todas as regras aos pendentes sempre que conta/regras/transacoes mudam
+  useEffect(() => {
+    if (!selectedConta || regras.length === 0 || loading) return;
+    const pendentes = transacoes.filter(t => t.conta_bancaria_id === selectedConta && t.status === "pendente");
+    if (pendentes.length === 0) return;
+    const updates: { id: string; planoId: string }[] = [];
+    pendentes.forEach(t => {
+      const desc  = t.descricao.toLowerCase();
+      const regra = regras.find(r => (r.tipo === t.tipo || r.tipo === "ambos") && desc.includes(r.padrao.toLowerCase()));
+      if (regra) updates.push({ id: t.id, planoId: regra.plano_contas_id });
+    });
+    if (updates.length === 0) return;
+    Promise.all(updates.map(u =>
+      supabase.from("transacoes_bancarias")
+        .update({ plano_contas_id: u.planoId, status: "conciliado", categorizado_por: "regra" })
+        .eq("id", u.id)
+    )).then(() => {
+      setTransacoes(prev => prev.map(t => {
+        const u = updates.find(x => x.id === t.id);
+        return u ? { ...t, plano_contas_id: u.planoId, status: "conciliado", categorizado_por: "regra" } : t;
+      }));
+    });
+  }, [selectedConta, regras, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const contasDaEmpresa = selectedEmpresa ? contas.filter(c => c.empresa_id === selectedEmpresa) : [];
 
   // última importação por empresa (para exibir no dropdown)
