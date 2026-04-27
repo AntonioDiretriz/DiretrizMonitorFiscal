@@ -217,11 +217,18 @@ export default function Conciliacao() {
   const [showExport,     setShowExport]     = useState(false);
   const [exportBankCode, setExportBankCode] = useState("");
 
-  // Sync Inter
-  const [showSync,   setShowSync]   = useState(false);
+  // Sync Inter (API direta)
+  const [showSync,    setShowSync]    = useState(false);
   const [syncLoading, setSyncLoading] = useState(false);
   const [syncInicio,  setSyncInicio]  = useState("");
   const [syncFim,     setSyncFim]     = useState("");
+
+  // Pluggy Open Finance
+  const [pluggyConn,    setPluggyConn]    = useState<{ item_id: string; banco_nome: string | null; ultima_sincronizacao: string | null } | null>(null);
+  const [pluggyLoading, setPluggyLoading] = useState(false);
+  const [showPluggySync, setShowPluggySync] = useState(false);
+  const [pluggyInicio,  setPluggyInicio]  = useState("");
+  const [pluggyFim,     setPluggyFim]     = useState("");
 
   // ── Load ──────────────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
@@ -287,6 +294,69 @@ export default function Conciliacao() {
       }));
     });
   }, [selectedConta, regras, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Carregar conexão Pluggy da conta selecionada
+  useEffect(() => {
+    if (!selectedConta) { setPluggyConn(null); return; }
+    (supabase as any).from("pluggy_connections")
+      .select("item_id, banco_nome, ultima_sincronizacao")
+      .eq("conta_bancaria_id", selectedConta)
+      .eq("status", "connected")
+      .maybeSingle()
+      .then(({ data }: any) => setPluggyConn(data ?? null));
+  }, [selectedConta]);
+
+  const openPluggyWidget = async () => {
+    setPluggyLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("pluggy-token", { body: {} });
+      if (error || !data?.connectToken) throw new Error(error?.message ?? "Erro ao obter token Pluggy");
+      // Carregar SDK dinamicamente
+      await new Promise<void>((resolve, reject) => {
+        if ((window as any).PluggyConnect) { resolve(); return; }
+        const s = document.createElement("script");
+        s.src = "https://cdn.pluggy.ai/pluggy-connect/v2.2.0/pluggy-connect.min.js";
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error("Falha ao carregar Pluggy SDK"));
+        document.head.appendChild(s);
+      });
+      new (window as any).PluggyConnect({
+        connectToken: data.connectToken,
+        onSuccess: async ({ item }: any) => {
+          toast({ title: "Banco conectado! Sincronizando..." });
+          await handlePluggySync(item.id);
+        },
+        onError: (err: any) => toast({ title: "Erro na conexão", description: err?.message ?? String(err), variant: "destructive" }),
+      }).open();
+    } catch (e: any) {
+      toast({ title: "Erro ao abrir Pluggy", description: e.message, variant: "destructive" });
+    } finally {
+      setPluggyLoading(false);
+    }
+  };
+
+  const handlePluggySync = async (itemId?: string) => {
+    const id = itemId ?? pluggyConn?.item_id;
+    if (!id || !selectedConta) return;
+    setSyncLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("sync-pluggy", {
+        body: { item_id: id, conta_bancaria_id: selectedConta, user_id: ownerUserId, data_inicio: pluggyInicio || undefined, data_fim: pluggyFim || undefined },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      toast({ title: `Sincronizado! ${data.total} transações importadas de ${data.banco ?? "banco"}.` });
+      setShowPluggySync(false);
+      loadAll();
+      // Recarregar conexão
+      const { data: conn } = await (supabase as any).from("pluggy_connections").select("item_id, banco_nome, ultima_sincronizacao").eq("conta_bancaria_id", selectedConta).eq("status", "connected").maybeSingle();
+      setPluggyConn(conn ?? null);
+    } catch (e: any) {
+      toast({ title: "Erro na sincronização", description: e.message, variant: "destructive" });
+    } finally {
+      setSyncLoading(false);
+    }
+  };
 
   const contasDaEmpresa = selectedEmpresa ? contas.filter(c => c.empresa_id === selectedEmpresa) : [];
 
@@ -726,9 +796,17 @@ export default function Conciliacao() {
                 <FileText className="mr-2 h-4 w-4" />Exportar Domínio
               </Button>
             )}
-            <Button variant="outline" onClick={() => { setSyncInicio(""); setSyncFim(""); setShowSync(true); }}>
-              <RefreshCw className="mr-2 h-4 w-4" />Sincronizar Inter
-            </Button>
+            {pluggyConn ? (
+              <Button variant="outline" onClick={() => { setPluggyInicio(""); setPluggyFim(""); setShowPluggySync(true); }} disabled={syncLoading}>
+                {syncLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                {pluggyConn.banco_nome ?? "Open Finance"}
+              </Button>
+            ) : (
+              <Button variant="outline" onClick={openPluggyWidget} disabled={pluggyLoading}>
+                {pluggyLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Link className="mr-2 h-4 w-4" />}
+                Conectar banco
+              </Button>
+            )}
             <input ref={fileInputRef} type="file" accept=".ofx,.ofc,.csv,.pdf,.txt" className="hidden" onChange={handleFileImport} />
             <Button onClick={() => fileInputRef.current?.click()} disabled={uploading}>
               {uploading
@@ -1255,7 +1333,40 @@ export default function Conciliacao() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog: Sincronizar Inter */}
+      {/* Dialog: Sincronizar Open Finance (Pluggy) */}
+      <Dialog open={showPluggySync} onOpenChange={setShowPluggySync}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Sincronizar — {pluggyConn?.banco_nome ?? "Open Finance"}</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-1">
+            {pluggyConn?.ultima_sincronizacao && (
+              <p className="text-xs text-muted-foreground">
+                Última sync: {new Date(pluggyConn.ultima_sincronizacao).toLocaleString("pt-BR")}
+              </p>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Data início</Label>
+                <Input type="date" value={pluggyInicio} onChange={e => setPluggyInicio(e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Data fim</Label>
+                <Input type="date" value={pluggyFim} onChange={e => setPluggyFim(e.target.value)} className="h-8 text-sm" />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">Se não preencher, importa o mês atual.</p>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setShowPluggySync(false)}>Cancelar</Button>
+              <Button className="flex-1" onClick={() => handlePluggySync()} disabled={syncLoading}>
+                {syncLoading
+                  ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Sincronizando...</>
+                  : <><RefreshCw className="mr-2 h-4 w-4" />Sincronizar</>}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Sincronizar Inter (API direta) */}
       <Dialog open={showSync} onOpenChange={setShowSync}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Sincronizar com Banco Inter</DialogTitle></DialogHeader>
