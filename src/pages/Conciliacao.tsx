@@ -949,60 +949,82 @@ export default function Conciliacao() {
 
       {/* Dialog: categorizar transação */}
       <Dialog open={!!catDialog} onOpenChange={o => { if (!o) setCatDialog(null); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-xl">
           <DialogHeader><DialogTitle>Categorizar Transação</DialogTitle></DialogHeader>
           {catDialog && (
-            <div className="space-y-4">
-              <div className="p-3 rounded-lg bg-muted/50 text-sm space-y-1">
-                <div className="text-xs text-muted-foreground">Transação</div>
-                <div className="font-medium truncate">{catDialog.tx.descricao}</div>
-                <div className="text-xs text-muted-foreground">
-                  {format(new Date(catDialog.tx.data + "T12:00:00"), "dd/MM/yyyy")} — {fmtMoeda(catDialog.tx.valor)}
+            <div className="space-y-5 pt-1">
+
+              {/* Linha 1 — Transação + Conta lado a lado */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 rounded-lg bg-muted/50 space-y-2">
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Transação</div>
+                  <div className="font-medium text-sm leading-snug">{catDialog.tx.descricao}</div>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span>{format(new Date(catDialog.tx.data + "T12:00:00"), "dd/MM/yyyy")}</span>
+                    <span className="font-semibold" style={{ color: catDialog.tx.tipo === "credito" ? GREEN : RED }}>
+                      {catDialog.tx.tipo === "credito" ? "+" : "−"} {fmtMoeda(catDialog.tx.valor)}
+                    </span>
+                  </div>
                 </div>
-              </div>
-              <div className="p-3 rounded-lg border text-sm space-y-1">
-                <div className="text-xs text-muted-foreground">Conta contábil selecionada</div>
-                <div className="font-medium flex items-center gap-2">
+                <div className="p-4 rounded-lg border space-y-2">
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Conta Contábil</div>
                   {catDialog.planoCodigo && (
-                    <span className="font-mono text-muted-foreground">{catDialog.planoCodigo}</span>
+                    <div className="text-xs font-mono text-muted-foreground">{catDialog.planoCodigo}</div>
                   )}
-                  {catDialog.planoNome}
+                  <div className="font-medium text-sm leading-snug">{catDialog.planoNome}</div>
                 </div>
               </div>
-              <div className="space-y-3">
+
+              {/* Linha 2 — Regra automática */}
+              <div className="rounded-lg border p-4 space-y-3">
                 <div>
-                  <div className="text-sm font-medium mb-0.5">Criar regra automática?</div>
-                  <div className="text-xs text-muted-foreground">Transações futuras com esse padrão serão categorizadas automaticamente.</div>
+                  <div className="text-sm font-semibold">Criar regra automática?</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    Transações futuras com esse padrão serão categorizadas automaticamente.
+                  </div>
                 </div>
-                <RadioGroup value={regraOpcao} onValueChange={(v: "nenhuma" | "completo" | "parcial") => setRegraOpcao(v)} className="gap-2">
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="nenhuma" id="r-nenhuma" />
-                    <Label htmlFor="r-nenhuma" className="text-sm font-normal cursor-pointer">Não criar regra</Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="completo" id="r-completo" />
-                    <Label htmlFor="r-completo" className="text-sm font-normal cursor-pointer">Histórico completo</Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="parcial" id="r-parcial" />
-                    <Label htmlFor="r-parcial" className="text-sm font-normal cursor-pointer">Parte do histórico</Label>
-                  </div>
+                <RadioGroup
+                  value={regraOpcao}
+                  onValueChange={(v: "nenhuma" | "completo" | "parcial") => setRegraOpcao(v)}
+                  className="grid grid-cols-3 gap-2"
+                >
+                  {([
+                    { value: "nenhuma",  label: "Não criar regra" },
+                    { value: "completo", label: "Histórico completo" },
+                    { value: "parcial",  label: "Parte do histórico" },
+                  ] as const).map(opt => (
+                    <label
+                      key={opt.value}
+                      htmlFor={`r-${opt.value}`}
+                      className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer text-sm transition-colors ${
+                        regraOpcao === opt.value ? "border-primary bg-primary/5" : "hover:bg-accent"
+                      }`}
+                    >
+                      <RadioGroupItem value={opt.value} id={`r-${opt.value}`} />
+                      {opt.label}
+                    </label>
+                  ))}
                 </RadioGroup>
                 {regraOpcao === "parcial" && (
-                  <Input
-                    className="text-xs h-8"
-                    placeholder="Digite a parte do histórico para usar como padrão..."
-                    value={regraTexto}
-                    onChange={e => setRegraTexto(e.target.value)}
-                  />
+                  <div className="space-y-1">
+                    <div className="text-xs text-muted-foreground">Edite o trecho do histórico que será usado como padrão:</div>
+                    <Input
+                      className="h-9"
+                      placeholder="Ex: PIX RECEBIDO, PAGAMENTO EFETUADO..."
+                      value={regraTexto}
+                      onChange={e => setRegraTexto(e.target.value)}
+                    />
+                  </div>
                 )}
               </div>
-              <div className="flex gap-2 pt-1">
+
+              {/* Botões */}
+              <div className="flex gap-3 pt-1">
                 <Button variant="outline" className="flex-1" onClick={() => setCatDialog(null)}>Cancelar</Button>
                 <Button className="flex-1" onClick={handleCategorizarConfirm} disabled={categorizando === catDialog.tx.id}>
                   {categorizando === catDialog.tx.id
-                    ? <><RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" />Salvando...</>
-                    : "Salvar"}
+                    ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Salvando...</>
+                    : "Salvar Categorização"}
                 </Button>
               </div>
             </div>
