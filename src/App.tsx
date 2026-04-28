@@ -30,6 +30,7 @@ import AutomacaoRotinas from "./pages/AutomacaoRotinas";
 import DiagnosticoFiscal from "./pages/DiagnosticoFiscal";
 import ConfiguracaoObrigacoes from "./pages/ConfiguracaoObrigacoes";
 import NotFound from "./pages/NotFound";
+import AuthBanco from "./pages/AuthBanco";
 
 const queryClient = new QueryClient();
 
@@ -43,6 +44,7 @@ const App = () => (
         <AuthProvider>
           <Routes>
             <Route path="/auth" element={<Auth />} />
+            <Route path="/auth/banco" element={<AuthBanco />} />
             <Route
               element={
                 <ProtectedRoute>

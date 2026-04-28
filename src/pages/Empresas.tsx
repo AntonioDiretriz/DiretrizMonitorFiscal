@@ -7,11 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Building2, Trash2, Loader2, Pencil, MapPin, UserPlus, Cake, Users2, Banknote, Upload, Monitor, Landmark, RefreshCw } from "lucide-react";
+import { Plus, Search, Building2, Trash2, Loader2, Pencil, MapPin, UserPlus, Cake, Users2, Banknote, Upload, Monitor, Landmark, RefreshCw, Wifi, Copy, CheckCheck, ExternalLink } from "lucide-react";
 import { ExportButton } from "@/components/ExportButton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -409,6 +409,15 @@ export default function Empresas() {
   const loadCbsEmpresa = async (empresaId: string) => {
     const { data } = await supabase.from("contas_bancarias").select("id, banco, agencia, conta, tipo, descricao, saldo_inicial, codigo_dominio").eq("empresa_id", empresaId).order("banco");
     setCbsEmpresa(data ?? []);
+    const ids = (data ?? []).map(c => c.id);
+    if (ids.length) {
+      const { data: conns } = await (supabase as any).from("pluggy_connections").select("conta_bancaria_id, item_id, status").in("conta_bancaria_id", ids);
+      const map: Record<string, { item_id: string; status: string }> = {};
+      for (const c of conns ?? []) map[c.conta_bancaria_id] = { item_id: c.item_id, status: c.status };
+      setPluggyConns(map);
+    } else {
+      setPluggyConns({});
+    }
   };
 
   const handleCbSubmit = async () => {
@@ -476,8 +485,67 @@ export default function Empresas() {
     await loadIb(ibContaId);
   };
 
+  const handleGerarLink = async () => {
+    if (!gerarLinkContaId || !ownerUserId) return;
+    setGerarLinkLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("pluggy-token", { body: {} });
+      if (error || (data as any)?.error) throw new Error((data as any)?.error ?? error?.message ?? "Erro ao gerar token");
+      const token = (data as any).connectToken as string;
+      const url = `${window.location.origin}/auth/banco?token=${encodeURIComponent(token)}&conta=${gerarLinkContaId}&user=${ownerUserId}`;
+      setGerarLinkUrl(url);
+    } catch (e: any) {
+      toast({ title: "Erro ao gerar link", description: e.message, variant: "destructive" });
+    } finally {
+      setGerarLinkLoading(false);
+    }
+  };
+
+  const handlePluggyDireto = async () => {
+    if (!gerarLinkContaId || !ownerUserId) return;
+    setPluggyDirectLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("pluggy-token", { body: {} });
+      if (error || (data as any)?.error) throw new Error((data as any)?.error ?? error?.message ?? "Erro ao gerar token");
+      const { PluggyConnect } = await import("pluggy-connect-sdk");
+      const widget = new PluggyConnect({
+        connectToken: (data as any).connectToken,
+        includeSandbox: true,
+        onSuccess: async ({ item }) => {
+          const { data: sd, error: se } = await supabase.functions.invoke("sync-pluggy", {
+            body: { item_id: item.id, conta_bancaria_id: gerarLinkContaId, user_id: ownerUserId },
+          });
+          if (se || (sd as any)?.error) {
+            toast({ title: "Erro ao sincronizar", description: (sd as any)?.error ?? se?.message, variant: "destructive" });
+            return;
+          }
+          toast({ title: "Banco conectado!", description: `${(sd as any).banco ?? ""} · ${(sd as any).total ?? 0} transações importadas` });
+          setGerarLinkOpen(false);
+          if (editingId) await loadCbsEmpresa(editingId);
+        },
+        onError: ({ message }) => {
+          toast({ title: "Erro na conexão", description: message, variant: "destructive" });
+        },
+      });
+      await widget.init();
+    } catch (e: any) {
+      toast({ title: "Erro ao inicializar widget", description: e.message, variant: "destructive" });
+    } finally {
+      setPluggyDirectLoading(false);
+    }
+  };
+
   const readFileAsText = (file: File): Promise<string> =>
     new Promise((res, rej) => { const r = new FileReader(); r.onload = e => res(e.target?.result as string); r.onerror = rej; r.readAsText(file); });
+
+  // ── Pluggy Open Finance — status de conexão por conta ────────────────────
+  const [pluggyConns,       setPluggyConns]       = useState<Record<string, { item_id: string; status: string } | null>>({});
+  const [gerarLinkOpen,     setGerarLinkOpen]     = useState(false);
+  const [gerarLinkContaId,  setGerarLinkContaId]  = useState<string | null>(null);
+  const [gerarLinkLoading,  setGerarLinkLoading]  = useState(false);
+  const [gerarLinkUrl,      setGerarLinkUrl]      = useState<string | null>(null);
+  const [gerarLinkCopied,   setGerarLinkCopied]   = useState(false);
+  const [pluggyDirectLoading, setPluggyDirectLoading] = useState(false);
 
   const PAGE_SIZE = 20;
 
@@ -1285,7 +1353,19 @@ export default function Empresas() {
                                     {[cb.tipo, cb.agencia && `Ag: ${cb.agencia}`, cb.conta && `Cc: ${cb.conta}`, cb.descricao, cb.codigo_dominio && `Domínio: ${cb.codigo_dominio}`].filter(Boolean).join(" · ")}
                                   </p>
                                 </div>
-                                <div className="flex gap-1 shrink-0">
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    title="Configurar integração bancária via Open Finance"
+                                    onClick={() => { setGerarLinkContaId(cb.id); setGerarLinkUrl(null); setGerarLinkCopied(false); setGerarLinkOpen(true); }}
+                                    className={`text-xs px-2 py-0.5 rounded-full font-medium border transition-colors ${
+                                      pluggyConns[cb.id]?.status === "connected"
+                                        ? "bg-green-100 text-green-700 border-green-200 hover:bg-green-200"
+                                        : "bg-orange-100 text-orange-600 border-orange-200 hover:bg-orange-200"
+                                    }`}
+                                  >
+                                    {pluggyConns[cb.id]?.status === "connected" ? "● Conectado" : "● Integração"}
+                                  </button>
                                   {PODE_EDITAR && (
                                     <Button variant="ghost" size="icon" type="button" onClick={() => {
                                       setCbEditingId(cb.id);
@@ -1650,6 +1730,92 @@ export default function Empresas() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* ── Integração Bancária — Gerar Link / Conectar Diretamente ── */}
+      <Dialog open={gerarLinkOpen} onOpenChange={open => { if (!open) { setGerarLinkOpen(false); setGerarLinkUrl(null); setGerarLinkCopied(false); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wifi className="h-4 w-4" />
+              Integração Bancária (Open Finance)
+            </DialogTitle>
+            <DialogDescription>
+              {gerarLinkContaId && cbsEmpresa.find(c => c.id === gerarLinkContaId)
+                ? (() => { const cb = cbsEmpresa.find(c => c.id === gerarLinkContaId)!; return `${cb.banco}${cb.conta ? ` — ${cb.conta}` : ""}`; })()
+                : "Conectar conta bancária via Pluggy"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-1">
+            {pluggyConns[gerarLinkContaId ?? ""]?.status === "connected" && (
+              <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
+                ● Esta conta já está conectada. Você pode enviar um novo link para reconexão.
+              </p>
+            )}
+
+            {/* Opção 1 — Solicitar ao cliente */}
+            <div className="border rounded-lg p-4 space-y-3">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <ExternalLink className="h-4 w-4 text-primary" />
+                Solicitar ao Cliente
+              </h4>
+              <p className="text-xs text-muted-foreground">
+                Gere um link e envie ao cliente por WhatsApp ou e-mail. Ele abrirá no celular ou computador e autorizará o acesso à conta.
+              </p>
+              {!gerarLinkUrl ? (
+                <Button size="sm" disabled={gerarLinkLoading} onClick={handleGerarLink}>
+                  {gerarLinkLoading ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Gerando...</> : "Gerar Link"}
+                </Button>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      value={gerarLinkUrl}
+                      readOnly
+                      className="h-8 text-xs font-mono flex-1 border rounded px-2 bg-muted/30 outline-none select-all"
+                      onClick={e => (e.target as HTMLInputElement).select()}
+                    />
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="h-8 w-8 shrink-0"
+                      onClick={() => {
+                        navigator.clipboard.writeText(gerarLinkUrl);
+                        setGerarLinkCopied(true);
+                        setTimeout(() => setGerarLinkCopied(false), 2000);
+                      }}
+                    >
+                      {gerarLinkCopied ? <CheckCheck className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-amber-600">
+                    ⚠ Link válido por aprox. 30 minutos. Se expirar, gere um novo.
+                  </p>
+                  <Button size="sm" variant="outline" onClick={handleGerarLink} disabled={gerarLinkLoading}>
+                    {gerarLinkLoading ? <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />Gerando...</> : "Gerar Novo Link"}
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Opção 2 — Conectar diretamente */}
+            <div className="border rounded-lg p-4 space-y-3">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Wifi className="h-4 w-4 text-primary" />
+                Conectar Diretamente
+              </h4>
+              <p className="text-xs text-muted-foreground">
+                Conecte agora mesmo, neste dispositivo. Útil quando o contador está presente com o cliente.
+              </p>
+              <Button size="sm" variant="outline" disabled={pluggyDirectLoading} onClick={handlePluggyDireto}>
+                {pluggyDirectLoading
+                  ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Conectando...</>
+                  : "Conectar Agora"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Plano de Contas TXT import preview dialog */}
       <Dialog open={pcDialogOpen} onOpenChange={open => { if (!open) { setPcDialogOpen(false); setPcPreview([]); } }}>
