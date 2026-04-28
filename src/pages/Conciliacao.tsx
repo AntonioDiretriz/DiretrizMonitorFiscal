@@ -894,8 +894,8 @@ export default function Conciliacao() {
                 {belvoConn.banco_nome ?? "Belvo"}
               </Button>
             ) : (
-              <Button variant="outline" onClick={() => { setBelvoManualLink(""); setBelvoInicio(""); setBelvoFim(""); setShowBelvoSync(true); openBelvoWidget(); }} disabled={belvoLoading}>
-                {belvoLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Link className="mr-2 h-4 w-4" />}
+              <Button variant="outline" onClick={() => { setBelvoManualLink(""); setBelvoInicio(""); setBelvoFim(""); setShowBelvoSync(true); }} disabled={belvoLoading}>
+                <Link className="mr-2 h-4 w-4" />
                 Conectar via Belvo
               </Button>
             )}
@@ -1461,8 +1461,16 @@ export default function Conciliacao() {
       {/* Dialog: Sincronizar Open Finance (Belvo) */}
       <Dialog open={showBelvoSync} onOpenChange={setShowBelvoSync}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Sincronizar — {belvoConn?.banco_nome ?? "Belvo"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Belvo — {belvoConn ? (belvoConn.banco_nome ?? "Banco conectado") : "Conectar banco"}</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-1">
+            {!belvoConn && (
+              <div className="p-3 rounded-lg border bg-amber-50 text-xs text-amber-800 space-y-1">
+                <p className="font-semibold">Como conectar via Belvo:</p>
+                <p>1. Acesse <strong>sandbox.belvo.com</strong> → Links → Create Link</p>
+                <p>2. Copie o <strong>Link ID</strong> gerado e cole abaixo</p>
+                <p>3. Clique em Sincronizar para importar as transações</p>
+              </div>
+            )}
             {belvoConn?.ultima_sincronizacao && (
               <p className="text-xs text-muted-foreground">
                 Última sync: {new Date(belvoConn.ultima_sincronizacao).toLocaleString("pt-BR")}
@@ -1470,7 +1478,7 @@ export default function Conciliacao() {
             )}
             {!belvoConn && (
               <div className="space-y-1">
-                <Label className="text-xs">Link ID <span className="text-muted-foreground">(Painel Belvo → Links)</span></Label>
+                <Label className="text-xs">Link ID</Label>
                 <Input
                   placeholder="ex: b91835da-3f2e-4c1a-..."
                   value={belvoManualLink}
