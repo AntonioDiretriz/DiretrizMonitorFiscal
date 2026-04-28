@@ -378,7 +378,7 @@ export default function Conciliacao() {
     setBelvoLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("belvo-token", { body: {} });
-      if (error || !data?.accessToken) throw new Error(error?.message ?? "Erro ao obter token Belvo");
+      if (error || !data?.accessToken) throw new Error(data?.error ?? error?.message ?? "Erro ao obter token Belvo");
       const script = document.createElement("script");
       script.src = "https://cdn.belvo.io/belvo-connect.min.js";
       script.onload = () => {

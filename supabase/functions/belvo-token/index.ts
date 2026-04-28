@@ -28,7 +28,9 @@ Deno.serve(async (req) => {
         "Authorization": `Basic ${credentials}`,
       },
       body: JSON.stringify({
-        scopes: "read_institutions,read_accounts,read_transactions,write_links",
+        id:       BELVO_SECRET_ID,
+        password: BELVO_SECRET_PASSWORD,
+        scopes:   "read_institutions,write_links",
       }),
     });
 
