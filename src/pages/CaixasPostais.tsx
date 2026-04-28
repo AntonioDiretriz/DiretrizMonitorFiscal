@@ -124,7 +124,7 @@ export default function CaixasPostais() {
     if (!user) return;
     const { data } = await (supabase as any)
       .from("email_notificacoes")
-      .select("*")
+      .select("*, email_aberturas(id, aberto_em, ip_abertura, dispositivo)")
       .eq("tipo", "caixa_postal")
       .order("enviado_em", { ascending: false })
       .limit(50);
@@ -1050,10 +1050,17 @@ export default function CaixasPostais() {
                                     <Mail className="h-3 w-3 mt-0.5 shrink-0" />
                                     <span>Enviado em {format(new Date(n.enviado_em), "dd/MM/yyyy 'às' HH:mm")}</span>
                                   </div>
-                                  {n.aberto_em && (
-                                    <div className="flex gap-2 text-blue-600">
-                                      <MailOpen className="h-3 w-3 mt-0.5 shrink-0" />
-                                      <span>Aberto em {format(new Date(n.aberto_em), "dd/MM/yyyy 'às' HH:mm")}</span>
+                                  {(n.email_aberturas?.length > 0) && (
+                                    <div className="mt-1 space-y-1 border-l-2 border-blue-200 pl-2">
+                                      <span className="text-xs font-medium text-blue-700">Histórico de aberturas ({n.email_aberturas.length}x)</span>
+                                      {[...n.email_aberturas].sort((a: any, b: any) => new Date(b.aberto_em).getTime() - new Date(a.aberto_em).getTime()).map((ab: any) => (
+                                        <div key={ab.id} className="flex gap-2 text-blue-600">
+                                          <MailOpen className="h-3 w-3 mt-0.5 shrink-0" />
+                                          <span>{format(new Date(ab.aberto_em), "dd/MM/yyyy 'às' HH:mm")}
+                                            {ab.ip_abertura && <> · 📍 {ab.ip_abertura} · {ab.dispositivo || "Desconhecido"}</>}
+                                          </span>
+                                        </div>
+                                      ))}
                                     </div>
                                   )}
                                   {n.clicou_em && (

@@ -4,7 +4,7 @@ import { ptBR } from "date-fns/locale";
 import {
   Plus, Search, ClipboardList, Clock, AlertTriangle,
   CheckCircle, LayoutGrid, List, ChevronRight, Building2, User,
-  CalendarDays, Trash2, Sparkles,
+  CalendarDays, Trash2, Sparkles, Upload, FileText,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -816,6 +816,74 @@ export default function Rotinas() {
   const [gerarOpen, setGerarOpen] = useState(false);
   const [gerarRPCOpen, setGerarRPCOpen] = useState(false);
 
+  // Processar comprovante
+  const [compOpen, setCompOpen]       = useState(false);
+  const [compFile, setCompFile]       = useState<File | null>(null);
+  const [compLoading, setCompLoading] = useState(false);
+  const [compResult, setCompResult]   = useState<any>(null);
+  const [compMatch, setCompMatch]     = useState<Rotina | null>(null);
+
+  function findRotinaMatch(extracted: any): Rotina | null {
+    let candidates = rotinas.filter(r =>
+      !["concluida", "nao_aplicavel"].includes(r.status) &&
+      r.tipo.toLowerCase() === (extracted.tipo ?? "").toLowerCase()
+    );
+    if (extracted.competencia && candidates.length > 1) {
+      const exact = candidates.filter(r => r.competencia?.slice(0, 7) === extracted.competencia.slice(0, 7));
+      if (exact.length > 0) candidates = exact;
+    }
+    if (extracted.empresa && candidates.length > 1) {
+      const nome = extracted.empresa.toLowerCase().trim();
+      const byName = candidates.filter(r => {
+        const razao = (r.empresas?.razao_social ?? "").toLowerCase();
+        return razao.includes(nome.slice(0, 8)) || nome.includes(razao.slice(0, 8));
+      });
+      if (byName.length > 0) candidates = byName;
+    }
+    return candidates[0] ?? null;
+  }
+
+  async function handleProcessarComprovante() {
+    if (!compFile) return;
+    setCompLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", compFile);
+      fd.append("user_id", ownerUserId ?? "");
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/processar-comprovante`,
+        { method: "POST", headers: { Authorization: `Bearer ${session?.access_token}` }, body: fd }
+      );
+      const result = await res.json();
+      if (!res.ok || result.error) {
+        toast({ title: "Erro ao processar", description: result.error, variant: "destructive" });
+        return;
+      }
+      setCompResult(result);
+      setCompMatch(findRotinaMatch(result));
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    } finally {
+      setCompLoading(false);
+    }
+  }
+
+  async function handleConfirmarBaixaRotina() {
+    if (!compMatch || !compResult) return;
+    const dataPag = compResult.data_pagamento || format(new Date(), "yyyy-MM-dd");
+    const { error } = await (supabase as any).from("rotinas")
+      .update({
+        status: "concluida", etapa: "concluido",
+        valor: compResult.valor ?? compMatch.valor,
+        observacao: compResult.numero_autenticacao ? `Protocolo: ${compResult.numero_autenticacao}` : compMatch.observacao,
+      })
+      .eq("id", compMatch.id);
+    if (error) { toast({ title: "Erro ao dar baixa", variant: "destructive" }); return; }
+    toast({ title: "Baixa automática realizada!", description: `${compMatch.titulo} concluída via comprovante.` });
+    setCompOpen(false); setCompFile(null); setCompResult(null); setCompMatch(null);
+  }
+
   useEffect(() => {
     if (!user) return;
     supabase.from("empresas")
@@ -951,6 +1019,10 @@ export default function Rotinas() {
               { header: "Status",      value: r => STATUS_CONFIG[r.status]?.label ?? r.status },
             ]}
           />
+          <Button onClick={() => { setCompOpen(true); setCompResult(null); setCompFile(null); setCompMatch(null); }} variant="outline">
+            <Upload className="h-4 w-4 mr-2" />
+            Processar Comprovante
+          </Button>
           <Button onClick={() => setGerarRPCOpen(true)} variant="outline">
             <Sparkles className="h-4 w-4 mr-2" />
             Gerar Automático
@@ -1178,6 +1250,95 @@ export default function Rotinas() {
         onOpenChange={setGerarRPCOpen}
         empresas={empresas}
       />
+
+      {/* Processar Comprovante com IA */}
+      <Dialog open={compOpen} onOpenChange={v => { if (!v) { setCompOpen(false); setCompResult(null); setCompFile(null); setCompMatch(null); } }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-violet-500" /> Processar Comprovante com IA
+            </DialogTitle>
+          </DialogHeader>
+
+          {!compResult ? (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Envie o comprovante de pagamento (PDF ou imagem). A IA irá extrair os dados e dar baixa automática na tarefa correspondente.
+              </p>
+              <div
+                className="border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors"
+                onClick={() => document.getElementById("upload-comp-rotina")?.click()}
+              >
+                <Upload className="h-10 w-10 mx-auto mb-2 text-muted-foreground" />
+                {compFile ? (
+                  <p className="text-sm font-medium">{compFile.name}</p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Clique para selecionar PDF ou imagem</p>
+                )}
+                <input
+                  id="upload-comp-rotina"
+                  type="file"
+                  accept=".pdf,image/*"
+                  className="hidden"
+                  onChange={e => setCompFile(e.target.files?.[0] ?? null)}
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setCompOpen(false)}>Cancelar</Button>
+                <Button className="flex-1" disabled={!compFile || compLoading} onClick={handleProcessarComprovante}>
+                  {compLoading ? "Processando..." : <><Sparkles className="mr-2 h-4 w-4" /> Analisar com IA</>}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="rounded-lg border bg-violet-50/40 p-4 space-y-2">
+                <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide mb-2">Dados extraídos</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                  <span className="text-muted-foreground">Tipo</span>
+                  <span className="font-medium uppercase">{compResult.tipo ?? "—"}</span>
+                  <span className="text-muted-foreground">Empresa</span>
+                  <span className="font-medium">{compResult.empresa ?? "—"}</span>
+                  <span className="text-muted-foreground">Competência</span>
+                  <span className="font-medium">{compResult.competencia ? format(parseISO(compResult.competencia), "MM/yyyy") : "—"}</span>
+                  <span className="text-muted-foreground">Valor pago</span>
+                  <span className="font-medium">{compResult.valor != null ? Number(compResult.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}</span>
+                  <span className="text-muted-foreground">Data pagamento</span>
+                  <span className="font-medium">{compResult.data_pagamento ? format(parseISO(compResult.data_pagamento), "dd/MM/yyyy") : "—"}</span>
+                  {compResult.numero_autenticacao && <>
+                    <span className="text-muted-foreground">Protocolo</span>
+                    <span className="font-medium">{compResult.numero_autenticacao}</span>
+                  </>}
+                </div>
+              </div>
+
+              {compMatch ? (
+                <div className="rounded-lg border border-green-200 bg-green-50/40 p-3">
+                  <p className="text-xs font-semibold text-green-700 mb-1">Tarefa encontrada</p>
+                  <p className="text-sm font-medium">{compMatch.titulo}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {compMatch.empresas?.razao_social} · Vence {format(parseISO(compMatch.data_vencimento), "dd/MM/yyyy")}
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-amber-200 bg-amber-50/40 p-3">
+                  <p className="text-xs font-semibold text-amber-700 mb-1">Nenhuma tarefa pendente encontrada</p>
+                  <p className="text-xs text-muted-foreground">Verifique se a tarefa está cadastrada e pendente.</p>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => { setCompResult(null); setCompFile(null); setCompMatch(null); }}>
+                  Tentar outro arquivo
+                </Button>
+                <Button className="flex-1" disabled={!compMatch} onClick={handleConfirmarBaixaRotina}>
+                  <CheckCircle className="mr-2 h-4 w-4" /> Confirmar Baixa
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -204,6 +204,7 @@ export default function Obrigacoes() {
   const [drawerObrigacao, setDrawerObrigacao] = useState<Obrigacao | null>(null);
   const [historico, setHistorico] = useState<any[]>([]);
 
+
   // Filtros lista
   const [filtroEmpresa, setFiltroEmpresa] = useState("todas");
   const [filtroStatus, setFiltroStatus]   = useState("todos");
