@@ -1,6 +1,5 @@
 ﻿import { useState, useEffect, useRef, useCallback } from "react";
 import { format, differenceInDays } from "date-fns";
-import { PluggyConnect } from "pluggy-connect-sdk";
 import {
   Upload, CheckCircle, XCircle, Clock, Link,
   RefreshCw, Tag, FileText, Building2, Trash2, History, Check, ChevronDown,
@@ -331,6 +330,7 @@ export default function Conciliacao() {
       const { data, error } = await supabase.functions.invoke("pluggy-token", { body: {} });
       if (error || !data?.connectToken) throw new Error(error?.message ?? "Erro ao obter token Pluggy");
 
+      const { PluggyConnect } = await import("pluggy-connect-sdk");
       new PluggyConnect({
         connectToken: data.connectToken,
         onSuccess: async ({ item }: any) => {
