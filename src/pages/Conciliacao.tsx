@@ -379,26 +379,35 @@ export default function Conciliacao() {
     try {
       const { data, error } = await supabase.functions.invoke("belvo-token", { body: {} });
       if (error || !data?.accessToken) throw new Error(data?.error ?? error?.message ?? "Erro ao obter token Belvo");
-      const script = document.createElement("script");
-      script.src = "https://cdn.belvo.io/belvo-connect.min.js";
-      script.onload = () => {
+
+      const launchWidget = () => {
         (window as any).belvoSDK.createWidget(data.accessToken, {
           locale: "pt",
-          callback: async (link: string, institution: string) => {
+          callback: async (link: string, _institution: string) => {
             toast({ title: "Banco conectado! Sincronizando..." });
             await handleBelvoSync(link);
           },
           onExit: (exitData: any) => {
-            if (exitData?.error) toast({ title: "Erro na conexão", description: exitData.error, variant: "destructive" });
+            if (exitData?.error) toast({ title: "Erro na conexão Belvo", description: String(exitData.error), variant: "destructive" });
             setBelvoLoading(false);
           },
         }).build();
       };
-      script.onerror = () => {
-        toast({ title: "Falha ao carregar Belvo SDK", variant: "destructive" });
-        setBelvoLoading(false);
-      };
-      document.head.appendChild(script);
+
+      const BELVO_CDN = "https://cdn.belvo.io/belvo-widget-1-stable.js";
+      const alreadyLoaded = !!(window as any).belvoSDK;
+      if (alreadyLoaded) {
+        launchWidget();
+      } else {
+        const script = document.createElement("script");
+        script.src = BELVO_CDN;
+        script.onload = launchWidget;
+        script.onerror = () => {
+          toast({ title: "Falha ao carregar Belvo SDK", variant: "destructive" });
+          setBelvoLoading(false);
+        };
+        document.head.appendChild(script);
+      }
     } catch (e: any) {
       toast({ title: "Erro ao abrir Belvo", description: e.message, variant: "destructive" });
       setBelvoLoading(false);
