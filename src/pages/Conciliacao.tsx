@@ -380,41 +380,42 @@ export default function Conciliacao() {
       const { data, error } = await supabase.functions.invoke("belvo-token", { body: {} });
       if (error || !data?.accessToken) throw new Error(data?.error ?? error?.message ?? "Erro ao obter token Belvo");
 
-      const widgetUrl = `https://sandbox.belvo.com/en/connect/?access_token=${data.accessToken}&locale=pt`;
-      const popup = window.open(widgetUrl, "belvo-connect", "width=500,height=700,left=400,top=100");
-      if (!popup) {
-        toast({ title: "Popup bloqueado", description: "Permita popups para este site nas configurações do navegador.", variant: "destructive" });
-        setBelvoLoading(false);
+      const BELVO_CDN = "https://cdn.belvo.io/belvo-widget-1-stable.js";
+
+      const launch = () => {
+        (window as any).belvoSDK.createWidget(data.accessToken, {
+          locale: "pt",
+          callback: async (link: string, _institution: string) => {
+            toast({ title: "Banco conectado! Sincronizando..." });
+            await handleBelvoSync(link);
+          },
+          onExit: (exitData: any) => {
+            if (exitData?.error) toast({ title: "Erro Belvo", description: String(exitData.error), variant: "destructive" });
+            setBelvoLoading(false);
+          },
+        }).build();
+      };
+
+      if ((window as any).belvoSDK) {
+        launch();
         return;
       }
 
-      const onMessage = async (evt: MessageEvent) => {
-        if (!String(evt.origin).includes("belvo.com")) return;
-        const { type, payload } = (evt.data ?? {}) as { type?: string; payload?: any };
-        if (type === "belvo:success" || type === "success") {
-          window.removeEventListener("message", onMessage);
-          popup.close();
-          const linkId = payload?.linkId ?? payload?.link_id ?? payload?.id;
-          if (linkId) {
-            toast({ title: "Banco conectado! Sincronizando..." });
-            await handleBelvoSync(linkId);
-          }
-          setBelvoLoading(false);
-        } else if (type === "belvo:exit" || type === "exit" || type === "belvo:close") {
-          window.removeEventListener("message", onMessage);
-          setBelvoLoading(false);
-        }
+      // aguarda o evento belvoReady antes de chamar launch
+      const onReady = () => {
+        document.removeEventListener("belvoReady", onReady);
+        launch();
       };
-      window.addEventListener("message", onMessage);
+      document.addEventListener("belvoReady", onReady);
 
-      // fallback: se o popup fechar sem evento
-      const pollClose = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(pollClose);
-          window.removeEventListener("message", onMessage);
-          setBelvoLoading(false);
-        }
-      }, 800);
+      const script = document.createElement("script");
+      script.src = BELVO_CDN;
+      script.onerror = () => {
+        document.removeEventListener("belvoReady", onReady);
+        toast({ title: "Falha ao carregar Belvo SDK", variant: "destructive" });
+        setBelvoLoading(false);
+      };
+      document.head.appendChild(script);
 
     } catch (e: any) {
       toast({ title: "Erro ao abrir Belvo", description: e.message, variant: "destructive" });
