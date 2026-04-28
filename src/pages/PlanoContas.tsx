@@ -157,7 +157,7 @@ function parseTxt(txt: string) {
       if (!nome) continue;
 
       const classificacao = toDotted(dominioCode, grau);
-      result.push({ classificacao, codigo: dominioCode, natureza: natureza.toUpperCase(), nome, grau, tipo: detectTipo(classificacao, nome) });
+      result.push({ classificacao, codigo: tokens[1], natureza: natureza.toUpperCase(), nome, grau, tipo: detectTipo(classificacao, nome) });
       continue;
     }
 

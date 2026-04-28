@@ -135,7 +135,7 @@ function parseTxtPC(txt: string): { codigo: string; classificacao: string; natur
       const nome = tokens.slice(2, mascaraIdx - 2).join(" ").trim();
       if (!nome) continue;
       const classificacao = toDottedPC(dominioCode, grau);
-      result.push({ codigo: dominioCode, classificacao, natureza: natureza.toUpperCase(), grau, nome, tipo: detectTipoPC(classificacao.split(".")[0] === "1" ? "ativo" : nome) });
+      result.push({ codigo: tokens[1], classificacao, natureza: natureza.toUpperCase(), grau, nome, tipo: detectTipoPC(classificacao.split(".")[0] === "1" ? "ativo" : nome) });
       continue;
     }
 
