@@ -225,11 +225,18 @@ export default function Conciliacao() {
   const [syncFim,     setSyncFim]     = useState("");
 
   // Pluggy Open Finance
-  const [pluggyConn,    setPluggyConn]    = useState<{ item_id: string; banco_nome: string | null; ultima_sincronizacao: string | null } | null>(null);
-  const [pluggyLoading, setPluggyLoading] = useState(false);
+  const [pluggyConn,     setPluggyConn]     = useState<{ item_id: string; banco_nome: string | null; ultima_sincronizacao: string | null } | null>(null);
+  const [pluggyLoading,  setPluggyLoading]  = useState(false);
   const [showPluggySync, setShowPluggySync] = useState(false);
-  const [pluggyInicio,  setPluggyInicio]  = useState("");
-  const [pluggyFim,     setPluggyFim]     = useState("");
+  const [pluggyInicio,   setPluggyInicio]   = useState("");
+  const [pluggyFim,      setPluggyFim]      = useState("");
+
+  // Belvo Open Finance
+  const [belvoConn,     setBelvoConn]     = useState<{ link_id: string; banco_nome: string | null; ultima_sincronizacao: string | null } | null>(null);
+  const [belvoLoading,  setBelvoLoading]  = useState(false);
+  const [showBelvoSync, setShowBelvoSync] = useState(false);
+  const [belvoInicio,   setBelvoInicio]   = useState("");
+  const [belvoFim,      setBelvoFim]      = useState("");
 
   // ── Load ──────────────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
@@ -307,6 +314,17 @@ export default function Conciliacao() {
       .then(({ data }: any) => setPluggyConn(data ?? null));
   }, [selectedConta]);
 
+  // Carregar conexão Belvo da conta selecionada
+  useEffect(() => {
+    if (!selectedConta) { setBelvoConn(null); return; }
+    (supabase as any).from("belvo_connections")
+      .select("link_id, banco_nome, ultima_sincronizacao")
+      .eq("conta_bancaria_id", selectedConta)
+      .eq("status", "connected")
+      .maybeSingle()
+      .then(({ data }: any) => setBelvoConn(data ?? null));
+  }, [selectedConta]);
+
   const openPluggyWidget = async () => {
     setPluggyLoading(true);
     try {
@@ -353,6 +371,59 @@ export default function Conciliacao() {
       toast({ title: "Erro na sincronização", description: e.message, variant: "destructive" });
     } finally {
       setSyncLoading(false);
+    }
+  };
+
+  const openBelvoWidget = async () => {
+    setBelvoLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("belvo-token", { body: {} });
+      if (error || !data?.accessToken) throw new Error(error?.message ?? "Erro ao obter token Belvo");
+      const script = document.createElement("script");
+      script.src = "https://cdn.belvo.io/belvo-connect.min.js";
+      script.onload = () => {
+        (window as any).belvoSDK.createWidget(data.accessToken, {
+          locale: "pt",
+          callback: async (link: string, institution: string) => {
+            toast({ title: "Banco conectado! Sincronizando..." });
+            await handleBelvoSync(link);
+          },
+          onExit: (exitData: any) => {
+            if (exitData?.error) toast({ title: "Erro na conexão", description: exitData.error, variant: "destructive" });
+            setBelvoLoading(false);
+          },
+        }).build();
+      };
+      script.onerror = () => {
+        toast({ title: "Falha ao carregar Belvo SDK", variant: "destructive" });
+        setBelvoLoading(false);
+      };
+      document.head.appendChild(script);
+    } catch (e: any) {
+      toast({ title: "Erro ao abrir Belvo", description: e.message, variant: "destructive" });
+      setBelvoLoading(false);
+    }
+  };
+
+  const handleBelvoSync = async (linkId?: string) => {
+    const id = linkId ?? belvoConn?.link_id;
+    if (!id || !selectedConta) return;
+    setBelvoLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("sync-belvo", {
+        body: { link_id: id, conta_bancaria_id: selectedConta, user_id: ownerUserId, data_inicio: belvoInicio || undefined, data_fim: belvoFim || undefined },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      toast({ title: `Sincronizado! ${data.total} transações importadas de ${data.banco ?? "banco"}.` });
+      setShowBelvoSync(false);
+      loadAll();
+      const { data: conn } = await (supabase as any).from("belvo_connections").select("link_id, banco_nome, ultima_sincronizacao").eq("conta_bancaria_id", selectedConta).eq("status", "connected").maybeSingle();
+      setBelvoConn(conn ?? null);
+    } catch (e: any) {
+      toast({ title: "Erro na sincronização Belvo", description: e.message, variant: "destructive" });
+    } finally {
+      setBelvoLoading(false);
     }
   };
 
@@ -803,6 +874,17 @@ export default function Conciliacao() {
               <Button variant="outline" onClick={openPluggyWidget} disabled={pluggyLoading}>
                 {pluggyLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Link className="mr-2 h-4 w-4" />}
                 Conectar banco
+              </Button>
+            )}
+            {belvoConn ? (
+              <Button variant="outline" onClick={() => { setBelvoInicio(""); setBelvoFim(""); setShowBelvoSync(true); }} disabled={belvoLoading}>
+                {belvoLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                {belvoConn.banco_nome ?? "Belvo"}
+              </Button>
+            ) : (
+              <Button variant="outline" onClick={openBelvoWidget} disabled={belvoLoading}>
+                {belvoLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Link className="mr-2 h-4 w-4" />}
+                Conectar via Belvo
               </Button>
             )}
             <input ref={fileInputRef} type="file" accept=".ofx,.ofc,.csv,.pdf,.txt" className="hidden" onChange={handleFileImport} />
@@ -1356,6 +1438,39 @@ export default function Conciliacao() {
               <Button variant="outline" className="flex-1" onClick={() => setShowPluggySync(false)}>Cancelar</Button>
               <Button className="flex-1" onClick={() => handlePluggySync()} disabled={syncLoading}>
                 {syncLoading
+                  ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Sincronizando...</>
+                  : <><RefreshCw className="mr-2 h-4 w-4" />Sincronizar</>}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Sincronizar Open Finance (Belvo) */}
+      <Dialog open={showBelvoSync} onOpenChange={setShowBelvoSync}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Sincronizar — {belvoConn?.banco_nome ?? "Belvo"}</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-1">
+            {belvoConn?.ultima_sincronizacao && (
+              <p className="text-xs text-muted-foreground">
+                Última sync: {new Date(belvoConn.ultima_sincronizacao).toLocaleString("pt-BR")}
+              </p>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Data início</Label>
+                <Input type="date" value={belvoInicio} onChange={e => setBelvoInicio(e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Data fim</Label>
+                <Input type="date" value={belvoFim} onChange={e => setBelvoFim(e.target.value)} className="h-8 text-sm" />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">Se não preencher, importa o mês atual.</p>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setShowBelvoSync(false)}>Cancelar</Button>
+              <Button className="flex-1" onClick={() => handleBelvoSync()} disabled={belvoLoading}>
+                {belvoLoading
                   ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Sincronizando...</>
                   : <><RefreshCw className="mr-2 h-4 w-4" />Sincronizar</>}
               </Button>
