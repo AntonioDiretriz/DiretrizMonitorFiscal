@@ -898,18 +898,35 @@ export default function Empresas() {
       };
       reader.readAsArrayBuffer(file);
     } else if (ext === "xls") {
-      // SheetJS recomenda readAsBinaryString para BIFF8 (.xls legado)
       reader.onload = ev => {
-        const bstr = ev.target?.result as string;
-        const isHTML = bstr.trimStart().startsWith("<") || /^<html/i.test(bstr.slice(0, 100));
+        const arr = new Uint8Array(ev.target?.result as ArrayBuffer);
+        // Tenta BIFF8 binário primeiro
         let wb: XLSX.WorkBook | null = null;
-        try { wb = XLSX.read(bstr, { type: isHTML ? "string" : "binary" }); } catch { wb = null; }
+        try { wb = XLSX.read(arr, { type: "array" }); } catch { wb = null; }
+        // Domínio às vezes exporta HTML com extensão .xls — tenta DOMParser
+        if (!wb || !getWs(wb)) {
+          try {
+            const text = new TextDecoder("latin1").decode(arr);
+            const doc  = new DOMParser().parseFromString(text, "text/html");
+            const table = doc.querySelector("table");
+            if (table) {
+              const rows: any[][] = [];
+              for (const tr of table.querySelectorAll("tr")) {
+                const row: any[] = [];
+                for (const td of tr.querySelectorAll("td, th")) row.push(td.textContent?.trim() ?? "");
+                rows.push(row);
+              }
+              processRows(rows);
+              return;
+            }
+          } catch { /* ignora */ }
+        }
         if (!wb) { toast({ title: "Erro ao ler .xls", variant: "destructive" }); return; }
         const ws = getWs(wb);
-        if (!ws) { toast({ title: "Planilha vazia", description: `Abas: [${wb.SheetNames.join(", ")}] | Keys: [${Object.keys(wb.Sheets).join(", ")}]`, variant: "destructive", duration: 20000 }); return; }
+        if (!ws) { toast({ title: "Planilha vazia", description: `Abas: [${wb.SheetNames.join(", ")}]`, variant: "destructive" }); return; }
         processRows(XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: "" }));
       };
-      reader.readAsBinaryString(file);
+      reader.readAsArrayBuffer(file);
     } else {
       reader.onload = ev => finish(parseTxtPC(ev.target?.result as string));
       reader.readAsText(file, "latin1");
