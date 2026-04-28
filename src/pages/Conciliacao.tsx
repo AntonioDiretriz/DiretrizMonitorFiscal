@@ -380,42 +380,35 @@ export default function Conciliacao() {
       const { data, error } = await supabase.functions.invoke("belvo-token", { body: {} });
       if (error || !data?.accessToken) throw new Error(data?.error ?? error?.message ?? "Erro ao obter token Belvo");
 
-      const BELVO_CDN = "https://cdn.belvo.io/belvo-widget-1-stable.js";
-
-      const launch = () => {
-        (window as any).belvoSDK.createWidget(data.accessToken, {
-          locale: "pt",
-          callback: async (link: string, _institution: string) => {
-            toast({ title: "Banco conectado! Sincronizando..." });
-            await handleBelvoSync(link);
-          },
-          onExit: (exitData: any) => {
-            if (exitData?.error) toast({ title: "Erro Belvo", description: String(exitData.error), variant: "destructive" });
-            setBelvoLoading(false);
-          },
-        }).build();
-      };
-
-      if ((window as any).belvoSDK) {
-        launch();
+      const widgetUrl = `https://sandbox.belvo.com/en/connect/?access_token=${encodeURIComponent(data.accessToken)}&locale=pt`;
+      const popup = window.open(widgetUrl, "belvo-connect", "width=500,height=700,left=400,top=100");
+      if (!popup) {
+        toast({ title: "Popup bloqueado", description: "Permita popups para diretriz-monitor-fiscal.vercel.app nas configurações do navegador.", variant: "destructive" });
+        setBelvoLoading(false);
         return;
       }
 
-      // aguarda o evento belvoReady antes de chamar launch
-      const onReady = () => {
-        document.removeEventListener("belvoReady", onReady);
-        launch();
+      const onMessage = async (evt: MessageEvent) => {
+        if (!String(evt.origin).includes("belvo")) return;
+        const msg = (evt.data ?? {}) as { type?: string; payload?: any };
+        if (msg.type === "belvo:success" || msg.type === "success") {
+          window.removeEventListener("message", onMessage);
+          popup.close();
+          const linkId = msg.payload?.linkId ?? msg.payload?.link_id ?? msg.payload?.id;
+          if (linkId) {
+            toast({ title: "Banco conectado! Sincronizando..." });
+            await handleBelvoSync(linkId);
+          }
+          setBelvoLoading(false);
+        } else if (["belvo:exit","exit","belvo:close","close"].includes(msg.type ?? "")) {
+          window.removeEventListener("message", onMessage);
+          setBelvoLoading(false);
+        }
       };
-      document.addEventListener("belvoReady", onReady);
-
-      const script = document.createElement("script");
-      script.src = BELVO_CDN;
-      script.onerror = () => {
-        document.removeEventListener("belvoReady", onReady);
-        toast({ title: "Falha ao carregar Belvo SDK", variant: "destructive" });
-        setBelvoLoading(false);
-      };
-      document.head.appendChild(script);
+      window.addEventListener("message", onMessage);
+      const poll = setInterval(() => {
+        if (popup.closed) { clearInterval(poll); window.removeEventListener("message", onMessage); setBelvoLoading(false); }
+      }, 800);
 
     } catch (e: any) {
       toast({ title: "Erro ao abrir Belvo", description: e.message, variant: "destructive" });
