@@ -12,6 +12,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Search, Building2, Trash2, Loader2, Pencil, MapPin, UserPlus, Cake, Users2, Banknote, Upload, Monitor, Landmark, RefreshCw, Wifi, Copy, CheckCheck, ExternalLink } from "lucide-react";
+import { BankLogo } from "@/components/BankLogo";
 import { ExportButton } from "@/components/ExportButton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -431,14 +432,26 @@ export default function Empresas() {
       saldo_inicial: parseFloat(cbForm.saldo_inicial as string) || 0,
       codigo_dominio: cbForm.codigo_dominio.trim() || null,
     };
-    const { error } = cbEditingId
-      ? await supabase.from("contas_bancarias").update(payload).eq("id", cbEditingId)
-      : await supabase.from("contas_bancarias").insert(payload);
-    setCbSaving(false);
-    if (error) { toast({ title: "Erro ao salvar conta", description: error.message, variant: "destructive" }); return; }
-    toast({ title: cbEditingId ? "Conta atualizada!" : "Conta cadastrada!" });
-    setCbForm(EMPTY_CB); setCbEditingId(null);
-    loadCbsEmpresa(editingId);
+
+    if (cbEditingId) {
+      const { error } = await supabase.from("contas_bancarias").update(payload).eq("id", cbEditingId);
+      setCbSaving(false);
+      if (error) { toast({ title: "Erro ao salvar conta", description: error.message, variant: "destructive" }); return; }
+      toast({ title: "Conta atualizada!" });
+      setCbForm(EMPTY_CB); setCbEditingId(null);
+      loadCbsEmpresa(editingId);
+    } else {
+      const { data: nova, error } = await supabase.from("contas_bancarias").insert(payload).select("id").single();
+      setCbSaving(false);
+      if (error || !nova) { toast({ title: "Erro ao salvar conta", description: error?.message, variant: "destructive" }); return; }
+      setCbForm(EMPTY_CB);
+      await loadCbsEmpresa(editingId);
+      // Abre o dialog de integração bancária automaticamente para o contador gerar o link ao cliente
+      setGerarLinkContaId(nova.id);
+      setGerarLinkUrl(null);
+      setGerarLinkCopied(false);
+      setGerarLinkOpen(true);
+    }
   };
 
   const handleCbDelete = async (id: string) => {
@@ -1364,11 +1377,14 @@ export default function Empresas() {
                           <div className="space-y-2">
                             {cbsEmpresa.map(cb => (
                               <div key={cb.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/10">
-                                <div>
-                                  <p className="font-medium text-sm">{cb.banco}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {[cb.tipo, cb.agencia && `Ag: ${cb.agencia}`, cb.conta && `Cc: ${cb.conta}`, cb.descricao, cb.codigo_dominio && `Domínio: ${cb.codigo_dominio}`].filter(Boolean).join(" · ")}
-                                  </p>
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <BankLogo banco={cb.banco} size={28} />
+                                  <div className="min-w-0">
+                                    <p className="font-medium text-sm">{cb.banco}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {[cb.tipo, cb.agencia && `Ag: ${cb.agencia}`, cb.conta && `Cc: ${cb.conta}`, cb.descricao, cb.codigo_dominio && `Domínio: ${cb.codigo_dominio}`].filter(Boolean).join(" · ")}
+                                    </p>
+                                  </div>
                                 </div>
                                 <div className="flex items-center gap-1 shrink-0">
                                   <button
@@ -1690,8 +1706,8 @@ export default function Empresas() {
                       ) : (
                         <div className="space-y-0.5">
                           {(contasMap[emp.id] ?? []).slice(0, 2).map((cb, i) => (
-                            <div key={i} className="flex items-center gap-1 text-xs">
-                              <Landmark className="h-3 w-3 text-muted-foreground shrink-0" />
+                            <div key={i} className="flex items-center gap-1.5 text-xs">
+                              <BankLogo banco={cb.banco} size={14} />
                               <span className="truncate max-w-[120px]">{cb.banco}{cb.conta ? ` — ${cb.conta}` : ""}</span>
                             </div>
                           ))}
@@ -1757,16 +1773,22 @@ export default function Empresas() {
               Integração Bancária (Open Finance)
             </DialogTitle>
             <DialogDescription>
-              {gerarLinkContaId && cbsEmpresa.find(c => c.id === gerarLinkContaId)
-                ? (() => { const cb = cbsEmpresa.find(c => c.id === gerarLinkContaId)!; return `${cb.banco}${cb.conta ? ` — ${cb.conta}` : ""}`; })()
-                : "Conectar conta bancária via Pluggy"}
+              {(() => {
+                const cb = cbsEmpresa.find(c => c.id === gerarLinkContaId);
+                if (cb) return `${cb.banco}${cb.conta ? ` — ${cb.conta}` : ""}`;
+                return "Conectar conta bancária via Pluggy";
+              })()}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 pt-1">
-            {pluggyConns[gerarLinkContaId ?? ""]?.status === "connected" && (
+            {pluggyConns[gerarLinkContaId ?? ""]?.status === "connected" ? (
               <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
                 ● Esta conta já está conectada. Você pode enviar um novo link para reconexão.
+              </p>
+            ) : (
+              <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2">
+                Conta cadastrada! Agora envie o link ao cliente para ele autorizar o acesso ao banco pelo celular ou computador.
               </p>
             )}
 

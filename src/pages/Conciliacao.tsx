@@ -1,10 +1,11 @@
 ﻿import { useState, useEffect, useRef, useCallback } from "react";
-import { format, differenceInDays } from "date-fns";
+import { format, differenceInDays, endOfMonth } from "date-fns";
 import {
   Upload, CheckCircle, XCircle, Clock, Link,
   RefreshCw, Tag, FileText, Building2, Trash2, History, Check, ChevronDown,
-  RotateCcw, Pencil, AlertTriangle,
+  RotateCcw, Pencil, AlertTriangle, Download,
 } from "lucide-react";
+import { BankLogo } from "@/components/BankLogo";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -436,6 +437,49 @@ export default function Conciliacao() {
       toast({ title: "Erro na sincronização Belvo", description: e.message, variant: "destructive" });
     } finally {
       setBelvoLoading(false);
+    }
+  };
+
+  const handlePuxarMovimentacao = async (mesForcado?: string) => {
+    if (!selectedConta) return;
+    const mes = mesForcado ?? selectedMes ?? format(new Date(), "yyyy-MM");
+    const inicio = `${mes}-01`;
+    const fim = format(endOfMonth(new Date(`${inicio}T12:00:00`)), "yyyy-MM-dd");
+
+    if (pluggyConn) {
+      setSyncLoading(true);
+      try {
+        const { data, error } = await supabase.functions.invoke("sync-pluggy", {
+          body: { item_id: pluggyConn.item_id, conta_bancaria_id: selectedConta, user_id: ownerUserId, data_inicio: inicio, data_fim: fim },
+        });
+        if (error) throw new Error(error.message);
+        if (data?.error) throw new Error(data.error);
+        toast({ title: `${data.total ?? 0} transações importadas!`, description: `${fmtMes(selectedMes)} — ${data.banco ?? "banco"}` });
+        loadAll();
+        const { data: conn } = await (supabase as any).from("pluggy_connections").select("item_id, banco_nome, ultima_sincronizacao").eq("conta_bancaria_id", selectedConta).eq("status", "connected").maybeSingle();
+        setPluggyConn(conn ?? null);
+      } catch (e: any) {
+        toast({ title: "Erro na sincronização", description: e.message, variant: "destructive" });
+      } finally {
+        setSyncLoading(false);
+      }
+    } else if (belvoConn) {
+      setBelvoLoading(true);
+      try {
+        const { data, error } = await supabase.functions.invoke("sync-belvo", {
+          body: { link_id: belvoConn.link_id, conta_bancaria_id: selectedConta, user_id: ownerUserId, data_inicio: inicio, data_fim: fim },
+        });
+        if (error) throw new Error(error.message);
+        if (data?.error) throw new Error(data.error);
+        toast({ title: `${data.total ?? 0} transações importadas!`, description: `${fmtMes(selectedMes)} — ${data.banco ?? "banco"}` });
+        loadAll();
+        const { data: conn } = await (supabase as any).from("belvo_connections").select("link_id, banco_nome, ultima_sincronizacao").eq("conta_bancaria_id", selectedConta).eq("status", "connected").maybeSingle();
+        setBelvoConn(conn ?? null);
+      } catch (e: any) {
+        toast({ title: "Erro na sincronização Belvo", description: e.message, variant: "destructive" });
+      } finally {
+        setBelvoLoading(false);
+      }
     }
   };
 
@@ -879,7 +923,9 @@ export default function Conciliacao() {
             )}
             {pluggyConn ? (
               <Button variant="outline" onClick={() => { setPluggyInicio(""); setPluggyFim(""); setShowPluggySync(true); }} disabled={syncLoading}>
-                {syncLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                {syncLoading
+                  ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  : <BankLogo banco={pluggyConn.banco_nome ?? ""} size={18} className="mr-2" />}
                 {pluggyConn.banco_nome ?? "Open Finance"}
               </Button>
             ) : (
@@ -890,7 +936,9 @@ export default function Conciliacao() {
             )}
             {belvoConn ? (
               <Button variant="outline" onClick={() => { setBelvoInicio(""); setBelvoFim(""); setShowBelvoSync(true); }} disabled={belvoLoading}>
-                {belvoLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                {belvoLoading
+                  ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  : <BankLogo banco={belvoConn.banco_nome ?? ""} size={18} className="mr-2" />}
                 {belvoConn.banco_nome ?? "Belvo"}
               </Button>
             ) : (
@@ -1014,7 +1062,10 @@ export default function Conciliacao() {
               <SelectContent>
                 {contasDaEmpresa.map(c => (
                   <SelectItem key={c.id} value={c.id}>
-                    {c.banco}{c.conta ? ` — ${c.conta}` : ""}{c.descricao ? ` (${c.descricao})` : ""}
+                    <div className="flex items-center gap-2">
+                      <BankLogo banco={c.banco} size={18} />
+                      <span>{c.banco}{c.conta ? ` — ${c.conta}` : ""}{c.descricao ? ` (${c.descricao})` : ""}</span>
+                    </div>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1043,6 +1094,25 @@ export default function Conciliacao() {
           </>
         )}
 
+        {/* Botão Puxar movimentação — abre dialog com seleção de período */}
+        {selectedConta && (pluggyConn || belvoConn) && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const mes = selectedMes || format(new Date(), "yyyy-MM");
+              const ini = `${mes}-01`;
+              const fim = format(endOfMonth(new Date(`${ini}T12:00:00`)), "yyyy-MM-dd");
+              if (pluggyConn) { setPluggyInicio(ini); setPluggyFim(fim); setShowPluggySync(true); }
+              else { setBelvoInicio(ini); setBelvoFim(fim); setShowBelvoSync(true); }
+            }}
+            className="gap-1.5 text-xs h-8 border-blue-200 text-blue-700 hover:bg-blue-50"
+          >
+            <Download className="h-3.5 w-3.5" />
+            {selectedMes ? `Puxar ${fmtMes(selectedMes)}` : "Puxar movimentação"}
+          </Button>
+        )}
+
         {importacoesFiltradas.length > 0 && (
           <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground ml-auto" onClick={() => setShowHistory(h => !h)}>
             <History className="h-3.5 w-3.5" />
@@ -1056,6 +1126,43 @@ export default function Conciliacao() {
         <div className="flex items-center gap-3 p-3 rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-800">
           <Building2 className="h-4 w-4 shrink-0" />
           Esta empresa não possui contas bancárias cadastradas. Acesse <strong className="mx-1">Empresas → editar → aba Bancos</strong>.
+        </div>
+      )}
+
+      {/* CTA: conta conectada via Pluggy mas sem transações ainda */}
+      {selectedConta && !loading && transacoes.filter(t => t.conta_bancaria_id === selectedConta).length === 0 && (pluggyConn || belvoConn) && (
+        <div className="rounded-xl border-2 border-blue-200 bg-blue-50 p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+            <Download className="h-5 w-5 text-blue-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-blue-900 text-sm">
+              {(pluggyConn?.banco_nome ?? belvoConn?.banco_nome ?? "Banco")} conectado — sem lançamentos importados
+            </p>
+            <p className="text-xs text-blue-700 mt-0.5">
+              Escolha o mês e clique em "Puxar" para importar os lançamentos diretamente do banco.
+            </p>
+          </div>
+          <div className="flex gap-2 flex-wrap shrink-0">
+            {[-2, -1, 0].map(offset => {
+              const d = new Date();
+              d.setMonth(d.getMonth() + offset);
+              const mes = format(d, "yyyy-MM");
+              return (
+                <Button
+                  key={mes}
+                  size="sm"
+                  variant={offset === 0 ? "default" : "outline"}
+                  className={offset === 0 ? "bg-blue-600 hover:bg-blue-700 text-white" : "border-blue-300 text-blue-700 hover:bg-blue-100"}
+                  disabled={syncLoading || belvoLoading}
+                  onClick={() => handlePuxarMovimentacao(mes)}
+                >
+                  <Download className="h-3.5 w-3.5 mr-1" />
+                  {fmtMes(mes)}
+                </Button>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -1428,30 +1535,92 @@ export default function Conciliacao() {
       {/* Dialog: Sincronizar Open Finance (Pluggy) */}
       <Dialog open={showPluggySync} onOpenChange={setShowPluggySync}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Sincronizar — {pluggyConn?.banco_nome ?? "Open Finance"}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BankLogo banco={pluggyConn?.banco_nome ?? ""} size={20} />
+              {pluggyConn?.banco_nome ?? "Open Finance"}
+            </DialogTitle>
+          </DialogHeader>
           <div className="space-y-4 pt-1">
             {pluggyConn?.ultima_sincronizacao && (
               <p className="text-xs text-muted-foreground">
                 Última sync: {new Date(pluggyConn.ultima_sincronizacao).toLocaleString("pt-BR")}
               </p>
             )}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Data início</Label>
-                <Input type="date" value={pluggyInicio} onChange={e => setPluggyInicio(e.target.value)} className="h-8 text-sm" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Data fim</Label>
-                <Input type="date" value={pluggyFim} onChange={e => setPluggyFim(e.target.value)} className="h-8 text-sm" />
+
+            {/* Atalhos de período */}
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Período rápido</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {(() => {
+                  const hoje = new Date();
+                  const anoAtual = hoje.getFullYear();
+                  const presets = [
+                    {
+                      label: "Mês atual",
+                      ini: format(new Date(anoAtual, hoje.getMonth(), 1), "yyyy-MM-dd"),
+                      fim: format(endOfMonth(hoje), "yyyy-MM-dd"),
+                    },
+                    {
+                      label: "Últimos 3 meses",
+                      ini: format(new Date(anoAtual, hoje.getMonth() - 2, 1), "yyyy-MM-dd"),
+                      fim: format(endOfMonth(hoje), "yyyy-MM-dd"),
+                    },
+                    {
+                      label: "Últimos 6 meses",
+                      ini: format(new Date(anoAtual, hoje.getMonth() - 5, 1), "yyyy-MM-dd"),
+                      fim: format(endOfMonth(hoje), "yyyy-MM-dd"),
+                    },
+                    {
+                      label: `Este ano (${anoAtual})`,
+                      ini: `${anoAtual}-01-01`,
+                      fim: `${anoAtual}-12-31`,
+                    },
+                    {
+                      label: `${anoAtual - 1}`,
+                      ini: `${anoAtual - 1}-01-01`,
+                      fim: `${anoAtual - 1}-12-31`,
+                    },
+                  ];
+                  return presets.map(p => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => { setPluggyInicio(p.ini); setPluggyFim(p.fim); }}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                        pluggyInicio === p.ini && pluggyFim === p.fim
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "hover:bg-accent border-border"
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ));
+                })()}
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">Se não preencher, importa o mês atual.</p>
+
+            {/* Período personalizado */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Período personalizado</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">De</Label>
+                  <Input type="date" value={pluggyInicio} onChange={e => setPluggyInicio(e.target.value)} className="h-8 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Até</Label>
+                  <Input type="date" value={pluggyFim} onChange={e => setPluggyFim(e.target.value)} className="h-8 text-sm" />
+                </div>
+              </div>
+            </div>
+
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1" onClick={() => setShowPluggySync(false)}>Cancelar</Button>
               <Button className="flex-1" onClick={() => handlePluggySync()} disabled={syncLoading}>
                 {syncLoading
                   ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Sincronizando...</>
-                  : <><RefreshCw className="mr-2 h-4 w-4" />Sincronizar</>}
+                  : <><Download className="mr-2 h-4 w-4" />Puxar lançamentos</>}
               </Button>
             </div>
           </div>
@@ -1461,7 +1630,12 @@ export default function Conciliacao() {
       {/* Dialog: Sincronizar Open Finance (Belvo) */}
       <Dialog open={showBelvoSync} onOpenChange={setShowBelvoSync}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Belvo — {belvoConn ? (belvoConn.banco_nome ?? "Banco conectado") : "Conectar banco"}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BankLogo banco={belvoConn?.banco_nome ?? "Belvo"} size={20} />
+              {belvoConn ? (belvoConn.banco_nome ?? "Banco conectado") : "Conectar banco (Belvo)"}
+            </DialogTitle>
+          </DialogHeader>
           <div className="space-y-4 pt-1">
             {!belvoConn && (
               <div className="p-3 rounded-lg border bg-amber-50 text-xs text-amber-800 space-y-1">
@@ -1487,17 +1661,47 @@ export default function Conciliacao() {
                 />
               </div>
             )}
+
+            {/* Atalhos de período (só quando já conectado) */}
+            {belvoConn && (
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Período rápido</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {(() => {
+                    const hoje = new Date();
+                    const anoAtual = hoje.getFullYear();
+                    const presets = [
+                      { label: "Mês atual",        ini: format(new Date(anoAtual, hoje.getMonth(), 1), "yyyy-MM-dd"),    fim: format(endOfMonth(hoje), "yyyy-MM-dd") },
+                      { label: "Últimos 3 meses",  ini: format(new Date(anoAtual, hoje.getMonth() - 2, 1), "yyyy-MM-dd"), fim: format(endOfMonth(hoje), "yyyy-MM-dd") },
+                      { label: "Últimos 6 meses",  ini: format(new Date(anoAtual, hoje.getMonth() - 5, 1), "yyyy-MM-dd"), fim: format(endOfMonth(hoje), "yyyy-MM-dd") },
+                      { label: `Este ano (${anoAtual})`, ini: `${anoAtual}-01-01`, fim: `${anoAtual}-12-31` },
+                      { label: `${anoAtual - 1}`,  ini: `${anoAtual - 1}-01-01`, fim: `${anoAtual - 1}-12-31` },
+                    ];
+                    return presets.map(p => (
+                      <button key={p.label} type="button"
+                        onClick={() => { setBelvoInicio(p.ini); setBelvoFim(p.fim); }}
+                        className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                          belvoInicio === p.ini && belvoFim === p.fim
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "hover:bg-accent border-border"
+                        }`}
+                      >{p.label}</button>
+                    ));
+                  })()}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs">Data início</Label>
+                <Label className="text-xs">De</Label>
                 <Input type="date" value={belvoInicio} onChange={e => setBelvoInicio(e.target.value)} className="h-8 text-sm" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Data fim</Label>
+                <Label className="text-xs">Até</Label>
                 <Input type="date" value={belvoFim} onChange={e => setBelvoFim(e.target.value)} className="h-8 text-sm" />
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">Se não preencher as datas, importa o mês atual.</p>
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1" onClick={() => setShowBelvoSync(false)}>Cancelar</Button>
               <Button
