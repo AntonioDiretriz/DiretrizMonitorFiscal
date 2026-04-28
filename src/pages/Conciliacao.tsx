@@ -231,11 +231,12 @@ export default function Conciliacao() {
   const [pluggyFim,      setPluggyFim]      = useState("");
 
   // Belvo Open Finance
-  const [belvoConn,     setBelvoConn]     = useState<{ link_id: string; banco_nome: string | null; ultima_sincronizacao: string | null } | null>(null);
-  const [belvoLoading,  setBelvoLoading]  = useState(false);
-  const [showBelvoSync, setShowBelvoSync] = useState(false);
-  const [belvoInicio,   setBelvoInicio]   = useState("");
-  const [belvoFim,      setBelvoFim]      = useState("");
+  const [belvoConn,       setBelvoConn]       = useState<{ link_id: string; banco_nome: string | null; ultima_sincronizacao: string | null } | null>(null);
+  const [belvoLoading,    setBelvoLoading]    = useState(false);
+  const [showBelvoSync,   setShowBelvoSync]   = useState(false);
+  const [belvoInicio,     setBelvoInicio]     = useState("");
+  const [belvoFim,        setBelvoFim]        = useState("");
+  const [belvoManualLink, setBelvoManualLink] = useState("");
 
   // ── Load ──────────────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
@@ -893,7 +894,7 @@ export default function Conciliacao() {
                 {belvoConn.banco_nome ?? "Belvo"}
               </Button>
             ) : (
-              <Button variant="outline" onClick={openBelvoWidget} disabled={belvoLoading}>
+              <Button variant="outline" onClick={() => { setBelvoManualLink(""); setBelvoInicio(""); setBelvoFim(""); setShowBelvoSync(true); openBelvoWidget(); }} disabled={belvoLoading}>
                 {belvoLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Link className="mr-2 h-4 w-4" />}
                 Conectar via Belvo
               </Button>
@@ -1467,6 +1468,17 @@ export default function Conciliacao() {
                 Última sync: {new Date(belvoConn.ultima_sincronizacao).toLocaleString("pt-BR")}
               </p>
             )}
+            {!belvoConn && (
+              <div className="space-y-1">
+                <Label className="text-xs">Link ID <span className="text-muted-foreground">(Painel Belvo → Links)</span></Label>
+                <Input
+                  placeholder="ex: b91835da-3f2e-4c1a-..."
+                  value={belvoManualLink}
+                  onChange={e => setBelvoManualLink(e.target.value)}
+                  className="h-8 text-xs font-mono"
+                />
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Data início</Label>
@@ -1477,10 +1489,14 @@ export default function Conciliacao() {
                 <Input type="date" value={belvoFim} onChange={e => setBelvoFim(e.target.value)} className="h-8 text-sm" />
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">Se não preencher, importa o mês atual.</p>
+            <p className="text-xs text-muted-foreground">Se não preencher as datas, importa o mês atual.</p>
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1" onClick={() => setShowBelvoSync(false)}>Cancelar</Button>
-              <Button className="flex-1" onClick={() => handleBelvoSync()} disabled={belvoLoading}>
+              <Button
+                className="flex-1"
+                onClick={() => handleBelvoSync(belvoManualLink || undefined)}
+                disabled={belvoLoading || (!belvoConn && !belvoManualLink.trim())}
+              >
                 {belvoLoading
                   ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Sincronizando...</>
                   : <><RefreshCw className="mr-2 h-4 w-4" />Sincronizar</>}
