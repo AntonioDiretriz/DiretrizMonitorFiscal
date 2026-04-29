@@ -225,7 +225,7 @@ export default function Conciliacao() {
   const [syncFim,     setSyncFim]     = useState("");
 
   // Pluggy Open Finance
-  const [pluggyConn,     setPluggyConn]     = useState<{ item_id: string; banco_nome: string | null; ultima_sincronizacao: string | null } | null>(null);
+  const [pluggyConn,     setPluggyConn]     = useState<{ item_id: string; banco_nome: string | null; ultima_sincronizacao: string | null; status: string | null } | null>(null);
   const [pluggyLoading,  setPluggyLoading]  = useState(false);
   const [showPluggySync, setShowPluggySync] = useState(false);
   const [pluggyInicio,   setPluggyInicio]   = useState("");
@@ -319,7 +319,7 @@ export default function Conciliacao() {
     const load = async () => {
       // Busca exata pela conta selecionada (limit 1 para evitar erro com duplicatas)
       const { data: rows } = await (supabase as any).from("pluggy_connections")
-        .select("item_id, banco_nome, ultima_sincronizacao")
+        .select("item_id, banco_nome, ultima_sincronizacao, status")
         .eq("conta_bancaria_id", selectedConta)
         .order("ultima_sincronizacao", { ascending: false })
         .limit(1);
@@ -329,7 +329,7 @@ export default function Conciliacao() {
       const idsEmpresa = contas.filter(c => c.empresa_id === selectedEmpresa).map(c => c.id);
       if (idsEmpresa.length === 0) { setPluggyConn(null); return; }
       const { data: fb } = await (supabase as any).from("pluggy_connections")
-        .select("item_id, banco_nome, ultima_sincronizacao")
+        .select("item_id, banco_nome, ultima_sincronizacao, status")
         .in("conta_bancaria_id", idsEmpresa)
         .order("ultima_sincronizacao", { ascending: false })
         .limit(1);
@@ -390,7 +390,7 @@ export default function Conciliacao() {
       setShowPluggySync(false);
       loadAll();
       // Recarregar conexão
-      const { data: connRows } = await (supabase as any).from("pluggy_connections").select("item_id, banco_nome, ultima_sincronizacao").eq("conta_bancaria_id", selectedConta).order("ultima_sincronizacao", { ascending: false }).limit(1);
+      const { data: connRows } = await (supabase as any).from("pluggy_connections").select("item_id, banco_nome, ultima_sincronizacao, status").eq("conta_bancaria_id", selectedConta).order("ultima_sincronizacao", { ascending: false }).limit(1);
       setPluggyConn(connRows?.[0] ?? null);
     } catch (e: any) {
       toast({ title: "Erro na sincronização", description: e.message, variant: "destructive" });
@@ -479,9 +479,14 @@ export default function Conciliacao() {
         if (data?.error) throw new Error(data.error);
         toast({ title: `${data.total ?? 0} transações importadas!`, description: `${fmtMes(selectedMes)} — ${data.banco ?? "banco"}` });
         loadAll();
-        const { data: pRows } = await (supabase as any).from("pluggy_connections").select("item_id, banco_nome, ultima_sincronizacao").eq("conta_bancaria_id", selectedConta).order("ultima_sincronizacao", { ascending: false }).limit(1);
+        const { data: pRows } = await (supabase as any).from("pluggy_connections").select("item_id, banco_nome, ultima_sincronizacao, status").eq("conta_bancaria_id", selectedConta).order("ultima_sincronizacao", { ascending: false }).limit(1);
         setPluggyConn(pRows?.[0] ?? null);
       } catch (e: any) {
+        // Marcar conexão como erro para exibir indicador visual
+        if (pluggyConn?.item_id) {
+          await (supabase as any).from("pluggy_connections").update({ status: "error" }).eq("item_id", pluggyConn.item_id);
+          setPluggyConn(prev => prev ? { ...prev, status: "error" } : null);
+        }
         toast({ title: "Erro na sincronização", description: e.message, variant: "destructive" });
       } finally {
         setSyncLoading(false);
@@ -950,19 +955,51 @@ export default function Conciliacao() {
                 <Button
                   variant="outline"
                   disabled={syncLoading || belvoLoading || pluggyLoading}
-                  className={pluggyConn || belvoConn ? "border-green-300 text-green-700 hover:bg-green-50" : ""}
+                  className={
+                    pluggyConn?.status === "error"
+                      ? "border-red-300 text-red-700 hover:bg-red-50"
+                      : (pluggyConn?.status === "connected" || belvoConn)
+                        ? "border-green-300 text-green-700 hover:bg-green-50"
+                        : ""
+                  }
                 >
                   {(syncLoading || belvoLoading || pluggyLoading)
                     ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                    : (pluggyConn || belvoConn)
-                      ? <BankLogo banco={pluggyConn?.banco_nome ?? belvoConn?.banco_nome ?? ""} size={18} className="mr-2" />
-                      : <Link className="mr-2 h-4 w-4" />}
+                    : pluggyConn?.status === "error"
+                      ? <AlertTriangle className="mr-2 h-4 w-4 text-red-500" />
+                      : (pluggyConn || belvoConn)
+                        ? <BankLogo banco={pluggyConn?.banco_nome ?? belvoConn?.banco_nome ?? ""} size={18} className="mr-2" />
+                        : <Link className="mr-2 h-4 w-4" />}
                   Integração
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-68 p-4" align="end" style={{ width: 272 }}>
-                {(pluggyConn || belvoConn) ? (
-                  /* Conectado — mostra seletor de mês */
+                {pluggyConn?.status === "error" ? (
+                  /* Conexão com erro — mostrar alerta e opção de reconectar */
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-2 rounded-md bg-red-50 border border-red-200 p-2.5">
+                      <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-semibold text-red-700">Erro na integração</p>
+                        <p className="text-xs text-red-600 mt-0.5">A última sincronização falhou. Reconecte o banco para restaurar.</p>
+                      </div>
+                    </div>
+                    {pluggyConn?.ultima_sincronizacao && (
+                      <p className="text-xs text-muted-foreground">Última tentativa: {new Date(pluggyConn.ultima_sincronizacao).toLocaleString("pt-BR")}</p>
+                    )}
+                    <Button
+                      className="w-full"
+                      variant="destructive"
+                      onClick={() => { setIntegracaoOpen(false); openPluggyWidget(); }}
+                      disabled={pluggyLoading}
+                    >
+                      {pluggyLoading
+                        ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Reconectando...</>
+                        : <><Link className="mr-2 h-4 w-4" />Reconectar banco</>}
+                    </Button>
+                  </div>
+                ) : (pluggyConn || belvoConn) ? (
+                  /* Conectado e ativo — seletor de mês apenas, sem opção de reconectar */
                   <div className="space-y-3">
                     <div>
                       <p className="font-semibold text-sm flex items-center gap-2">
@@ -1002,7 +1039,7 @@ export default function Conciliacao() {
                     </Button>
                   </div>
                 ) : (
-                  /* Não conectado — conectar uma vez */
+                  /* Não conectado — conectar uma única vez */
                   <div className="space-y-3">
                     <div>
                       <p className="font-semibold text-sm">Conectar ao banco</p>
