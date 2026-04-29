@@ -278,7 +278,10 @@ export default function Conciliacao() {
       .eq("empresa_id", selectedEmpresa).order("codigo").order("nome")
       .then(({ data }) => setPlanoContas((data ?? []) as PlanoContas[]));
     const contasEmp = contas.filter(c => c.empresa_id === selectedEmpresa);
-    setSelectedConta(contasEmp.length === 1 ? contasEmp[0].id : null);
+    setSelectedConta(prev => {
+      if (prev && contasEmp.some(c => c.id === prev)) return prev; // mantém seleção atual se ainda válida
+      return contasEmp.length === 1 ? contasEmp[0].id : null;
+    });
   }, [selectedEmpresa, contas]);
 
   // mês padrão: mês mais recente das transações da conta selecionada
@@ -322,8 +325,7 @@ export default function Conciliacao() {
       .eq("conta_bancaria_id", selectedConta)
       .order("ultima_sincronizacao", { ascending: false })
       .limit(1)
-      .then(({ data: rows, error }: any) => {
-        console.log("[pluggy debug]", { selectedConta, rows, error });
+      .then(({ data: rows }: any) => {
         if (!active) return;
         setPluggyConn(rows?.[0] ?? null);
       });
