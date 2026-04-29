@@ -925,17 +925,25 @@ export default function Conciliacao() {
                 <FileText className="mr-2 h-4 w-4" />Exportar Domínio
               </Button>
             )}
-            {(pluggyConn || belvoConn) ? (
-              <Popover open={integracaoOpen} onOpenChange={setIntegracaoOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" disabled={syncLoading || belvoLoading}>
-                    {(syncLoading || belvoLoading)
-                      ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                      : <BankLogo banco={pluggyConn?.banco_nome ?? belvoConn?.banco_nome ?? ""} size={18} className="mr-2" />}
-                    Integração
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64 p-4" align="end">
+            {/* Botão Integração — sempre visível, muda conteúdo conforme estado da conexão */}
+            <Popover open={integracaoOpen} onOpenChange={setIntegracaoOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  disabled={syncLoading || belvoLoading || pluggyLoading}
+                  className={pluggyConn || belvoConn ? "border-green-300 text-green-700 hover:bg-green-50" : ""}
+                >
+                  {(syncLoading || belvoLoading || pluggyLoading)
+                    ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    : (pluggyConn || belvoConn)
+                      ? <BankLogo banco={pluggyConn?.banco_nome ?? belvoConn?.banco_nome ?? ""} size={18} className="mr-2" />
+                      : <Link className="mr-2 h-4 w-4" />}
+                  Integração
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-68 p-4" align="end" style={{ width: 272 }}>
+                {(pluggyConn || belvoConn) ? (
+                  /* Conectado — mostra seletor de mês */
                   <div className="space-y-3">
                     <div>
                       <p className="font-semibold text-sm flex items-center gap-2">
@@ -970,20 +978,28 @@ export default function Conciliacao() {
                         : "Processar"}
                     </Button>
                   </div>
-                </PopoverContent>
-              </Popover>
-            ) : (
-              <>
-                <Button variant="outline" onClick={openPluggyWidget} disabled={pluggyLoading}>
-                  {pluggyLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Link className="mr-2 h-4 w-4" />}
-                  Conectar banco
-                </Button>
-                <Button variant="outline" onClick={() => { setBelvoManualLink(""); setBelvoInicio(""); setBelvoFim(""); setShowBelvoSync(true); }} disabled={belvoLoading}>
-                  <Link className="mr-2 h-4 w-4" />
-                  Conectar via Belvo
-                </Button>
-              </>
-            )}
+                ) : (
+                  /* Não conectado — conectar uma vez */
+                  <div className="space-y-3">
+                    <div>
+                      <p className="font-semibold text-sm">Conectar ao banco</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Faça a conexão uma única vez. Depois é só selecionar o mês e processar.
+                      </p>
+                    </div>
+                    <Button
+                      className="w-full"
+                      onClick={() => { setIntegracaoOpen(false); openPluggyWidget(); }}
+                      disabled={pluggyLoading}
+                    >
+                      {pluggyLoading
+                        ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Conectando...</>
+                        : <><Link className="mr-2 h-4 w-4" />Conectar agora</>}
+                    </Button>
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
             <input ref={fileInputRef} type="file" accept=".ofx,.ofc,.csv,.pdf,.txt" className="hidden" onChange={handleFileImport} />
             <Button onClick={() => fileInputRef.current?.click()} disabled={uploading}>
               {uploading
