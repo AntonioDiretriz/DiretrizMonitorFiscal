@@ -316,27 +316,18 @@ export default function Conciliacao() {
   // Carregar conexão Pluggy da conta selecionada
   useEffect(() => {
     if (!selectedConta) { setPluggyConn(null); return; }
-    const load = async () => {
-      // Busca exata pela conta selecionada (limit 1 para evitar erro com duplicatas)
-      const { data: rows } = await (supabase as any).from("pluggy_connections")
-        .select("item_id, banco_nome, ultima_sincronizacao, status")
-        .eq("conta_bancaria_id", selectedConta)
-        .order("ultima_sincronizacao", { ascending: false })
-        .limit(1);
-      if (rows?.[0]) { setPluggyConn(rows[0]); return; }
-      // Fallback: qualquer conta conectada da mesma empresa
-      if (!selectedEmpresa) { setPluggyConn(null); return; }
-      const idsEmpresa = contas.filter(c => c.empresa_id === selectedEmpresa).map(c => c.id);
-      if (idsEmpresa.length === 0) { setPluggyConn(null); return; }
-      const { data: fb } = await (supabase as any).from("pluggy_connections")
-        .select("item_id, banco_nome, ultima_sincronizacao, status")
-        .in("conta_bancaria_id", idsEmpresa)
-        .order("ultima_sincronizacao", { ascending: false })
-        .limit(1);
-      setPluggyConn(fb?.[0] ?? null);
-    };
-    load();
-  }, [selectedConta, selectedEmpresa, contas]);
+    let active = true;
+    (supabase as any).from("pluggy_connections")
+      .select("item_id, banco_nome, ultima_sincronizacao, status")
+      .eq("conta_bancaria_id", selectedConta)
+      .order("ultima_sincronizacao", { ascending: false })
+      .limit(1)
+      .then(({ data: rows }: any) => {
+        if (!active) return;
+        setPluggyConn(rows?.[0] ?? null);
+      });
+    return () => { active = false; };
+  }, [selectedConta]);
 
   // Carregar conexão Belvo da conta selecionada
   useEffect(() => {
