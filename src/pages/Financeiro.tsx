@@ -30,7 +30,7 @@ function formatCurrency(v: number) {
 // ── Interfaces ────────────────────────────────────────────────────────────────
 interface Empresa { id: string; razao_social: string; }
 interface ContaBancaria { id: string; empresa_id: string | null; }
-interface PlanoContas { id: string; nome: string; tipo: string; codigo: string | null; }
+interface PlanoContas { id: string; nome: string; tipo: string; codigo: string | null; classificacao: string | null; }
 interface Transacao {
   id: string;
   conta_bancaria_id: string;
@@ -69,7 +69,7 @@ function DreDashboard() {
       const [empRes, contaRes, planoRes, txRes] = await Promise.all([
         supabase.from("empresas").select("id, razao_social").eq("user_id", ownerUserId).order("razao_social"),
         supabase.from("contas_bancarias").select("id, empresa_id").eq("user_id", ownerUserId),
-        supabase.from("plano_contas").select("id, nome, tipo, codigo").eq("user_id", ownerUserId).order("codigo"),
+        supabase.from("plano_contas").select("id, nome, tipo, codigo, classificacao").eq("user_id", ownerUserId).order("codigo"),
         supabase.from("transacoes_bancarias")
           .select("id, conta_bancaria_id, data, valor, tipo, status, plano_contas_id")
           .eq("user_id", ownerUserId)
@@ -114,37 +114,76 @@ function DreDashboard() {
 
   const resultado = totalReceitas - totalDespesas;
 
-  // Agrupamento por conta contábil (plano de contas)
+  // Agrupamento por conta contábil estruturado por tipo
+  const TIPO_LABEL: Record<string, string> = {
+    receita:    "Receitas",
+    custo:      "Custos",
+    despesa:    "Despesas Operacionais",
+    imposto:    "Impostos e Tributos",
+    resultado:  "Resultado",
+    outro:      "Outros",
+  };
+  const TIPO_ORDER = ["receita", "custo", "despesa", "imposto", "resultado", "outro"];
+
   const gruposPorConta = useMemo(() => {
-    const map: Record<string, { plano: PlanoContas; receita: number; despesa: number }> = {};
+    const map: Record<string, { plano: PlanoContas; valor: number; tipo_tx: "credito" | "debito" | "misto" }> = {};
     txFiltradas.forEach(t => {
       if (!t.plano_contas_id) return;
       const p = planoById[t.plano_contas_id];
       if (!p) return;
-      if (!map[p.id]) map[p.id] = { plano: p, receita: 0, despesa: 0 };
-      if (t.tipo === "credito") map[p.id].receita += Number(t.valor);
-      else                      map[p.id].despesa += Number(t.valor);
+      if (!map[p.id]) map[p.id] = { plano: p, valor: 0, tipo_tx: t.tipo as any };
+      map[p.id].valor += Number(t.valor);
     });
-    return Object.values(map).sort((a, b) => (b.receita + b.despesa) - (a.receita + a.despesa));
+    return Object.values(map).sort((a, b) => b.valor - a.valor);
   }, [txFiltradas, planoById]);
 
-  // Dados para gráfico de barras (top 10 por valor)
-  const barData = gruposPorConta.slice(0, 10).map(g => ({
-    nome: g.plano.codigo ? `${g.plano.codigo} - ${g.plano.nome}` : g.plano.nome,
-    nomeShort: g.plano.codigo ?? g.plano.nome.slice(0, 12),
-    receita: g.receita,
-    despesa: g.despesa,
-  }));
+  // Secções DRE agrupadas por tipo de plano de contas
+  const secoesDRE = useMemo(() => {
+    const byTipo: Record<string, { plano: PlanoContas; receita: number; despesa: number }[]> = {};
+    txFiltradas.forEach(t => {
+      if (!t.plano_contas_id) return;
+      const p = planoById[t.plano_contas_id];
+      if (!p) return;
+      const tipo = p.tipo in TIPO_LABEL ? p.tipo : "outro";
+      if (!byTipo[tipo]) byTipo[tipo] = [];
+      let entry = byTipo[tipo].find(e => e.plano.id === p.id);
+      if (!entry) { entry = { plano: p, receita: 0, despesa: 0 }; byTipo[tipo].push(entry); }
+      if (t.tipo === "credito") entry.receita += Number(t.valor);
+      else                      entry.despesa += Number(t.valor);
+    });
+    // Transações sem classificação
+    const semClassRec = txFiltradas.filter(t => !t.plano_contas_id && t.tipo === "credito").reduce((s, t) => s + Number(t.valor), 0);
+    const semClassDes = txFiltradas.filter(t => !t.plano_contas_id && t.tipo === "debito").reduce((s, t) => s + Number(t.valor), 0);
+    return { byTipo, semClassRec, semClassDes };
+  }, [txFiltradas, planoById]);
 
-  // Dados pie: distribuição de despesas por conta
+  // Subtotais por seção
+  const subTotais = useMemo(() => {
+    const st: Record<string, { receita: number; despesa: number }> = {};
+    Object.entries(secoesDRE.byTipo).forEach(([tipo, items]) => {
+      st[tipo] = items.reduce((acc, g) => ({ receita: acc.receita + g.receita, despesa: acc.despesa + g.despesa }), { receita: 0, despesa: 0 });
+    });
+    return st;
+  }, [secoesDRE]);
+
+  // Dados pie: distribuição de despesas por tipo de conta
   const COLORS = [NAVY, RED, AMBER, BLUE, GREEN, "#8b5cf6", "#ec4899", "#14b8a6", "#f97316", "#84cc16"];
-  const pieData = gruposPorConta
-    .filter(g => g.despesa > 0)
-    .slice(0, 8)
-    .map((g, i) => ({
-      name: g.plano.codigo ? `${g.plano.codigo}` : g.plano.nome.slice(0, 15),
-      value: g.despesa,
+  const pieData = TIPO_ORDER
+    .filter(t => subTotais[t]?.despesa > 0)
+    .map((t, i) => ({
+      name: TIPO_LABEL[t] ?? t,
+      value: subTotais[t].despesa,
       color: COLORS[i % COLORS.length],
+    }));
+
+  // Dados barras: receita x despesa por tipo
+  const barData = TIPO_ORDER
+    .filter(t => (subTotais[t]?.receita ?? 0) + (subTotais[t]?.despesa ?? 0) > 0)
+    .map(t => ({
+      nome: TIPO_LABEL[t] ?? t,
+      nomeShort: (TIPO_LABEL[t] ?? t).split(" ")[0],
+      receita: subTotais[t]?.receita ?? 0,
+      despesa: subTotais[t]?.despesa ?? 0,
     }));
 
   const semDados = txFiltradas.length === 0;
@@ -298,17 +337,17 @@ function DreDashboard() {
         </div>
       )}
 
-      {/* Tabela DRE por conta contábil */}
-      {!semDados && gruposPorConta.length > 0 && (
+      {/* Tabela DRE estruturada por tipo de conta */}
+      {!semDados && (
         <Card className="shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">DRE por Conta Contábil</CardTitle>
+            <CardTitle className="text-sm font-semibold">DRE por Estrutura do Plano de Contas</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/30">
-                  <th className="text-left px-4 py-2 font-medium text-muted-foreground">Cód.</th>
+                  <th className="text-left px-4 py-2 font-medium text-muted-foreground w-20">Cód.</th>
                   <th className="text-left px-4 py-2 font-medium text-muted-foreground">Conta</th>
                   <th className="text-right px-4 py-2 font-medium text-muted-foreground">Receita</th>
                   <th className="text-right px-4 py-2 font-medium text-muted-foreground">Despesa</th>
@@ -316,30 +355,68 @@ function DreDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {gruposPorConta.map(g => {
-                  const saldo = g.receita - g.despesa;
+                {TIPO_ORDER.filter(tipo => secoesDRE.byTipo[tipo]?.length > 0).map(tipo => {
+                  const items = secoesDRE.byTipo[tipo];
+                  const sub = subTotais[tipo] ?? { receita: 0, despesa: 0 };
                   return (
-                    <tr key={g.plano.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                      <td className="px-4 py-2 text-muted-foreground font-mono text-xs">{g.plano.codigo ?? "—"}</td>
-                      <td className="px-4 py-2 font-medium">{g.plano.nome}</td>
-                      <td className="px-4 py-2 text-right" style={{ color: g.receita > 0 ? GREEN : undefined }}>
-                        {g.receita > 0 ? formatCurrency(g.receita) : "—"}
-                      </td>
-                      <td className="px-4 py-2 text-right" style={{ color: g.despesa > 0 ? RED : undefined }}>
-                        {g.despesa > 0 ? formatCurrency(g.despesa) : "—"}
-                      </td>
-                      <td className="px-4 py-2 text-right font-semibold" style={{ color: saldo >= 0 ? GREEN : RED }}>
-                        {formatCurrency(saldo)}
-                      </td>
-                    </tr>
+                    <>
+                      {/* Cabeçalho da seção */}
+                      <tr key={`h-${tipo}`} className="bg-muted/50 border-b">
+                        <td colSpan={5} className="px-4 py-2 font-semibold text-xs uppercase tracking-wide text-muted-foreground">
+                          {TIPO_LABEL[tipo] ?? tipo}
+                        </td>
+                      </tr>
+                      {/* Contas da seção */}
+                      {items.sort((a, b) => (a.plano.codigo ?? "").localeCompare(b.plano.codigo ?? "")).map(g => {
+                        const saldo = g.receita - g.despesa;
+                        return (
+                          <tr key={g.plano.id} className="border-b last:border-0 hover:bg-muted/10 transition-colors">
+                            <td className="px-4 py-1.5 text-muted-foreground font-mono text-xs">{g.plano.codigo ?? "—"}</td>
+                            <td className="px-4 py-1.5 pl-6">{g.plano.nome}</td>
+                            <td className="px-4 py-1.5 text-right" style={{ color: g.receita > 0 ? GREEN : undefined }}>
+                              {g.receita > 0 ? formatCurrency(g.receita) : "—"}
+                            </td>
+                            <td className="px-4 py-1.5 text-right" style={{ color: g.despesa > 0 ? RED : undefined }}>
+                              {g.despesa > 0 ? formatCurrency(g.despesa) : "—"}
+                            </td>
+                            <td className="px-4 py-1.5 text-right font-medium" style={{ color: saldo >= 0 ? GREEN : RED }}>
+                              {formatCurrency(saldo)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {/* Subtotal da seção */}
+                      <tr key={`sub-${tipo}`} className="border-b bg-muted/20 font-semibold text-xs">
+                        <td className="px-4 py-1.5 text-muted-foreground" colSpan={2}>Subtotal {TIPO_LABEL[tipo]}</td>
+                        <td className="px-4 py-1.5 text-right" style={{ color: sub.receita > 0 ? GREEN : undefined }}>{sub.receita > 0 ? formatCurrency(sub.receita) : "—"}</td>
+                        <td className="px-4 py-1.5 text-right" style={{ color: sub.despesa > 0 ? RED : undefined }}>{sub.despesa > 0 ? formatCurrency(sub.despesa) : "—"}</td>
+                        <td className="px-4 py-1.5 text-right" style={{ color: (sub.receita - sub.despesa) >= 0 ? GREEN : RED }}>{formatCurrency(sub.receita - sub.despesa)}</td>
+                      </tr>
+                    </>
                   );
                 })}
-                {/* Totais */}
-                <tr className="bg-muted/40 font-semibold">
-                  <td className="px-4 py-2" colSpan={2}>Total</td>
-                  <td className="px-4 py-2 text-right" style={{ color: GREEN }}>{formatCurrency(totalReceitas)}</td>
-                  <td className="px-4 py-2 text-right" style={{ color: RED }}>{formatCurrency(totalDespesas)}</td>
-                  <td className="px-4 py-2 text-right" style={{ color: resultado >= 0 ? GREEN : RED }}>{formatCurrency(resultado)}</td>
+                {/* Sem classificação */}
+                {(secoesDRE.semClassRec > 0 || secoesDRE.semClassDes > 0) && (
+                  <tr className="border-b hover:bg-muted/10 text-muted-foreground italic">
+                    <td className="px-4 py-1.5 text-xs">—</td>
+                    <td className="px-4 py-1.5 pl-6 text-xs">Não classificado</td>
+                    <td className="px-4 py-1.5 text-right text-xs" style={{ color: secoesDRE.semClassRec > 0 ? GREEN : undefined }}>
+                      {secoesDRE.semClassRec > 0 ? formatCurrency(secoesDRE.semClassRec) : "—"}
+                    </td>
+                    <td className="px-4 py-1.5 text-right text-xs" style={{ color: secoesDRE.semClassDes > 0 ? RED : undefined }}>
+                      {secoesDRE.semClassDes > 0 ? formatCurrency(secoesDRE.semClassDes) : "—"}
+                    </td>
+                    <td className="px-4 py-1.5 text-right text-xs" style={{ color: (secoesDRE.semClassRec - secoesDRE.semClassDes) >= 0 ? GREEN : RED }}>
+                      {formatCurrency(secoesDRE.semClassRec - secoesDRE.semClassDes)}
+                    </td>
+                  </tr>
+                )}
+                {/* Resultado final */}
+                <tr className="bg-muted/50 font-bold text-sm border-t-2">
+                  <td className="px-4 py-3" colSpan={2}>Resultado do Período</td>
+                  <td className="px-4 py-3 text-right" style={{ color: GREEN }}>{formatCurrency(totalReceitas)}</td>
+                  <td className="px-4 py-3 text-right" style={{ color: RED }}>{formatCurrency(totalDespesas)}</td>
+                  <td className="px-4 py-3 text-right" style={{ color: resultado >= 0 ? GREEN : RED }}>{formatCurrency(resultado)}</td>
                 </tr>
               </tbody>
             </table>

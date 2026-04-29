@@ -1,7 +1,16 @@
-project_id = "xzqitnkxtekiycydraay"
+project_id = "awdfeqxagqplpotjwant"
 
 [functions.track-email-open]
 verify_jwt = false
 
 [functions.track-email-click]
 verify_jwt = false
+
+[functions.send-expiry-emails]
+verify_jwt = false
+
+[functions.processar-extrato]
+verify_jwt = false
+
+[functions.processar-comprovante]
+verify_jwt = true

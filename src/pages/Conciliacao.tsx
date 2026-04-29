@@ -3,8 +3,9 @@ import { format, differenceInDays, endOfMonth } from "date-fns";
 import {
   Upload, CheckCircle, XCircle, Clock, Link,
   RefreshCw, Tag, FileText, Building2, Trash2, History, Check, ChevronDown,
-  RotateCcw, Pencil, AlertTriangle, Download,
+  RotateCcw, Pencil, AlertTriangle, Download, HelpCircle, Mail, MessageSquare,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { BankLogo } from "@/components/BankLogo";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,7 @@ interface Transacao {
   importacao_id: string | null;
   plano_contas_id: string | null;
   categorizado_por: string | null;
+  aguardando_cliente: boolean;
 }
 
 interface ContaPagar {
@@ -248,13 +250,20 @@ export default function Conciliacao() {
   const [belvoFim,        setBelvoFim]        = useState("");
   const [belvoManualLink, setBelvoManualLink] = useState("");
 
+  // Flag "Aguardando cliente"
+  const [flagTx,       setFlagTx]       = useState<Transacao | null>(null);
+  const [flagMsg,      setFlagMsg]       = useState("");
+  const [flagChannel,  setFlagChannel]   = useState<"email" | "whatsapp">("whatsapp");
+  const [flagSending,  setFlagSending]   = useState(false);
+  const [empresaContact, setEmpresaContact] = useState<{ email: string | null; telefone: string | null } | null>(null);
+
   // ── Load ──────────────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     const [cbRes, txRes, cpRes, empRes, rRes, impRes] = await Promise.all([
       supabase.from("contas_bancarias").select("id, empresa_id, banco, agencia, conta, tipo, descricao, saldo_inicial, codigo_dominio").order("banco"),
-      supabase.from("transacoes_bancarias").select("*").order("data", { ascending: false }).limit(2000),
+      supabase.from("transacoes_bancarias").select("id, conta_bancaria_id, data, descricao, valor, tipo, status, importacao_id, plano_contas_id, categorizado_por, aguardando_cliente").order("data", { ascending: false }).limit(2000),
       supabase.from("contas_pagar").select("id, fornecedor, valor, data_vencimento, status").in("status", ["pendente", "aprovado"]).order("data_vencimento"),
       supabase.from("empresas").select("id, razao_social, cnpj").order("razao_social"),
       supabase.from("regras_conciliacao").select("id, padrao, plano_contas_id, tipo, automatica"),
@@ -315,6 +324,14 @@ export default function Conciliacao() {
       }));
     });
   }, [selectedConta, regras, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Carregar contato da empresa selecionada (para flag)
+  useEffect(() => {
+    if (!selectedEmpresa) { setEmpresaContact(null); return; }
+    supabase.from("empresas").select("email_responsavel, telefone")
+      .eq("id", selectedEmpresa).maybeSingle()
+      .then(({ data }) => setEmpresaContact(data ? { email: (data as any).email_responsavel, telefone: (data as any).telefone } : null));
+  }, [selectedEmpresa]);
 
   // Carregar conexão Pluggy da conta selecionada
   useEffect(() => {
@@ -798,6 +815,44 @@ export default function Conciliacao() {
   const handleDesconciliar = async (id: string) => {
     await supabase.from("transacoes_bancarias").update({ status: "pendente" }).eq("id", id);
     setTransacoes(prev => prev.map(t => t.id === id ? { ...t, status: "pendente" } : t));
+  };
+
+  const abrirFlagDialog = (t: Transacao) => {
+    const empresa = empresas.find(e => contas.find(c => c.id === t.conta_bancaria_id && c.empresa_id === e.id));
+    const valor = Number(t.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    const data  = new Date(t.data + "T12:00:00").toLocaleDateString("pt-BR");
+    const msg = `Olá, identificamos um lançamento em sua conta bancária que não conseguimos classificar:\n\n📅 Data: ${data}\n📝 Descrição: ${t.descricao}\n💰 Valor: ${valor}\n\nPoderia nos informar a que se refere este lançamento?`;
+    setFlagTx(t);
+    setFlagMsg(msg);
+  };
+
+  const handleEnviarFlag = async () => {
+    if (!flagTx) return;
+    setFlagSending(true);
+    try {
+      const empresa = empresas.find(e => contas.find(c => c.id === flagTx.conta_bancaria_id && c.empresa_id === e.id));
+      if (flagChannel === "whatsapp") {
+        const tel = empresaContact?.telefone?.replace(/\D/g, "");
+        if (!tel) { toast({ title: "Telefone não cadastrado", description: "Cadastre o telefone da empresa para enviar via WhatsApp.", variant: "destructive" }); setFlagSending(false); return; }
+        const url = `https://wa.me/55${tel}?text=${encodeURIComponent(flagMsg)}`;
+        window.open(url, "_blank");
+      } else {
+        const email = empresaContact?.email;
+        if (!email) { toast({ title: "E-mail não cadastrado", description: "Cadastre o e-mail da empresa para enviar por e-mail.", variant: "destructive" }); setFlagSending(false); return; }
+        const { error } = await supabase.functions.invoke("enviar-duvida-lancamento", {
+          body: { to_email: email, empresa_nome: empresa?.razao_social, mensagem: flagMsg },
+        });
+        if (error) throw new Error(error.message);
+        toast({ title: "E-mail enviado!", description: `Enviado para ${email}` });
+      }
+      await supabase.from("transacoes_bancarias").update({ aguardando_cliente: true } as any).eq("id", flagTx.id);
+      setTransacoes(prev => prev.map(t => t.id === flagTx.id ? { ...t, aguardando_cliente: true } : t));
+      setFlagTx(null);
+    } catch (e: any) {
+      toast({ title: "Erro ao enviar", description: e.message, variant: "destructive" });
+    } finally {
+      setFlagSending(false);
+    }
   };
 
   const handleDeleteImportacao = async (imp: Importacao) => {
@@ -1485,6 +1540,11 @@ export default function Conciliacao() {
                             <Link className="h-4 w-4 text-blue-500" />
                           </Button>
                         )}
+                        <Button variant="ghost" size="icon"
+                          title={t.aguardando_cliente ? "Aguardando resposta do cliente" : "Perguntar ao cliente"}
+                          onClick={() => abrirFlagDialog(t)}>
+                          <HelpCircle className={`h-4 w-4 ${t.aguardando_cliente ? "text-amber-500" : "text-muted-foreground"}`} />
+                        </Button>
                         <Button variant="ghost" size="icon" title="Ignorar"
                           onClick={() => handleIgnorar(t.id)}>
                           <XCircle className="h-4 w-4 text-muted-foreground" />
@@ -1496,13 +1556,17 @@ export default function Conciliacao() {
                             const p = planoContas.find(p => p.id === t.plano_contas_id);
                             if (p) abrirCatDialog(t, p);
                             else {
-                              // abre sem conta pré-selecionada — reutiliza o dialog de categorização
                               setRegraOpcao("extrato");
                               setRegraTexto(t.descricao.slice(0, 60));
                               setCatDialog({ tx: t, planoId: t.plano_contas_id ?? "", planoNome: p?.nome ?? "—", planoCodigo: p?.codigo ?? null });
                             }
                           }}>
                           <Pencil className="h-4 w-4 text-blue-500" />
+                        </Button>
+                        <Button variant="ghost" size="icon"
+                          title={t.aguardando_cliente ? "Aguardando resposta do cliente" : "Perguntar ao cliente"}
+                          onClick={() => abrirFlagDialog(t)}>
+                          <HelpCircle className={`h-4 w-4 ${t.aguardando_cliente ? "text-amber-500" : "text-muted-foreground"}`} />
                         </Button>
                         <Button variant="ghost" size="icon" title="Desconciliar (voltar para pendente)"
                           onClick={() => handleDesconciliar(t.id)}>
@@ -1519,6 +1583,87 @@ export default function Conciliacao() {
       </Card>
       </> /* fim bloco selectedEmpresa */
       )}
+
+      {/* Dialog: perguntar ao cliente */}
+      <Dialog open={!!flagTx} onOpenChange={o => { if (!o) setFlagTx(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <HelpCircle className="h-5 w-5 text-amber-500" />
+              Perguntar ao cliente
+            </DialogTitle>
+          </DialogHeader>
+          {flagTx && (
+            <div className="space-y-4 pt-1">
+              {/* Resumo da transação */}
+              <div className="rounded-lg bg-muted/50 p-3 text-sm space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Data</span>
+                  <span className="font-medium">{new Date(flagTx.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Descrição</span>
+                  <span className="font-medium truncate max-w-[200px]">{flagTx.descricao}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Valor</span>
+                  <span className={`font-semibold ${flagTx.tipo === "credito" ? "text-green-600" : "text-red-600"}`}>
+                    {flagTx.tipo === "credito" ? "+" : "-"}{Number(flagTx.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                  </span>
+                </div>
+              </div>
+
+              {/* Canal */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Enviar por:</Label>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm" variant={flagChannel === "whatsapp" ? "default" : "outline"}
+                    className={flagChannel === "whatsapp" ? "bg-green-600 hover:bg-green-700" : ""}
+                    onClick={() => setFlagChannel("whatsapp")}
+                  >
+                    <MessageSquare className="h-4 w-4 mr-1.5" />WhatsApp
+                    {empresaContact?.telefone && <span className="ml-1.5 text-xs opacity-75">{empresaContact.telefone}</span>}
+                  </Button>
+                  <Button
+                    size="sm" variant={flagChannel === "email" ? "default" : "outline"}
+                    onClick={() => setFlagChannel("email")}
+                  >
+                    <Mail className="h-4 w-4 mr-1.5" />E-mail
+                    {empresaContact?.email && <span className="ml-1.5 text-xs opacity-75">{empresaContact.email}</span>}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Mensagem */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">Mensagem:</Label>
+                <Textarea
+                  value={flagMsg}
+                  onChange={e => setFlagMsg(e.target.value)}
+                  rows={6}
+                  className="text-sm resize-none"
+                />
+              </div>
+
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setFlagTx(null)}>Cancelar</Button>
+                <Button
+                  onClick={handleEnviarFlag}
+                  disabled={flagSending || !flagMsg.trim()}
+                  className={flagChannel === "whatsapp" ? "bg-green-600 hover:bg-green-700" : ""}
+                >
+                  {flagSending
+                    ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Enviando...</>
+                    : flagChannel === "whatsapp"
+                      ? <><MessageSquare className="h-4 w-4 mr-2" />Enviar WhatsApp</>
+                      : <><Mail className="h-4 w-4 mr-2" />Enviar E-mail</>}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog: categorizar transação */}
       <Dialog open={!!catDialog} onOpenChange={o => { if (!o) setCatDialog(null); }}>

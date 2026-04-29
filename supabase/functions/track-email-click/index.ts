@@ -26,11 +26,25 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Redireciona para o destino (WhatsApp ou outro)
-  const destino = dest ? decodeURIComponent(dest) : "https://wa.me/5581994058847";
+  const destino = dest ?? "https://wa.me/5581994058847";
 
-  return new Response(null, {
-    status: 302,
-    headers: { Location: destino },
+  // Retorna HTML com redirect — evita que clientes de email (iOS/webmail) tentem baixar o arquivo
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="refresh" content="0;url=${destino}">
+  <title>Redirecionando...</title>
+  <script>window.location.replace("${destino}");</script>
+</head>
+<body style="font-family:Arial,sans-serif;text-align:center;padding:40px;color:#374151">
+  <p>Redirecionando para o WhatsApp...</p>
+  <p><a href="${destino}" style="color:#25d366;font-weight:bold">Clique aqui se não for redirecionado automaticamente</a></p>
+</body>
+</html>`;
+
+  return new Response(html, {
+    status: 200,
+    headers: { "Content-Type": "text/html; charset=utf-8" },
   });
 });
