@@ -15,7 +15,7 @@ import {
 import {
   Building2, FileCheck, KeyRound, MailOpen,
   AlertTriangle, CheckCircle, LayoutDashboard,
-  Phone, Mail, FileText, MapPin,
+  Phone, Mail, FileText, MapPin, Cake, PartyPopper,
 } from "lucide-react";
 import { differenceInDays, format } from "date-fns";
 
@@ -45,6 +45,22 @@ const MODULES: { id: ModuleId; label: string; icon: any; color: string }[] = [
   { id: "certificados", label: "Certificados Digitais", icon: KeyRound,        color: BLUE   },
   { id: "caixas",       label: "Caixas Postais",        icon: MailOpen,        color: "#0ea5e9" },
 ];
+
+// ── Helpers de aniversário ────────────────────────────────────────────────
+function diasParaAniversario(dataNasc: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const bd = new Date(dataNasc + "T12:00:00");
+  const ano = today.getFullYear();
+  let prox = new Date(ano, bd.getMonth(), bd.getDate());
+  if (prox < today) prox = new Date(ano + 1, bd.getMonth(), bd.getDate());
+  return Math.round((prox.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function formataBirthday(dataNasc: string): string {
+  const bd = new Date(dataNasc + "T12:00:00");
+  return `${String(bd.getDate()).padStart(2, "0")}/${String(bd.getMonth() + 1).padStart(2, "0")}`;
+}
 
 // ── DDD → UF lookup ───────────────────────────────────────────────────────────
 const DDD_TO_UF: Record<string, string> = {
@@ -213,21 +229,58 @@ export default function Index() {
   // Alertas
   const [alertas, setAlertas] = useState<any[]>([]);
 
+  // Aniversariantes (próximos 7 dias)
+  const [aniversariantes, setAniversariantes] = useState<any[]>([]);
+
   const loadData = useCallback(async () => {
     if (!user) return;
     setIsLoading(true);
 
-    const [empRes, certRes, certDigRes, caixasRes] = await Promise.all([
+    const [empRes, certRes, certDigRes, caixasRes, sociosRes] = await Promise.all([
       supabase.from("empresas").select("*"),
       supabase.from("certidoes").select("*"),
       supabase.from("certificados").select("*"),
       supabase.from("caixas_postais").select("*"),
+      (supabase as any).from("socios").select("id, nome, data_nascimento, email, cargo, empresa_id, ultimo_email_aniversario, empresas(razao_social)"),
     ]);
 
     const emps     = empRes.data     || [];
     const certs    = certRes.data    || [];
     const certDigs = certDigRes.data || [];
     const caixas   = caixasRes.data  || [];
+    const socios   = sociosRes.data  || [];
+
+    // Aniversariantes: próximos 7 dias (incluindo hoje)
+    const anivProximos = socios
+      .filter((s: any) => s.data_nascimento)
+      .map((s: any) => ({ ...s, diasRestantes: diasParaAniversario(s.data_nascimento) }))
+      .filter((s: any) => s.diasRestantes <= 7)
+      .sort((a: any, b: any) => a.diasRestantes - b.diasRestantes);
+    setAniversariantes(anivProximos);
+
+    // Auto-envio para aniversariantes de HOJE com email cadastrado
+    const hoje = new Date();
+    const anoAtual = hoje.getFullYear();
+    for (const s of anivProximos) {
+      if (s.diasRestantes !== 0) continue;
+      if (!s.email) continue;
+      const jaEnviou = s.ultimo_email_aniversario
+        && new Date(s.ultimo_email_aniversario).getFullYear() === anoAtual;
+      if (jaEnviou) continue;
+      // Envia email de parabéns
+      supabase.functions.invoke("enviar-felicitacoes-aniversario", {
+        body: {
+          to_email: s.email,
+          nome: s.nome,
+          empresa_nome: s.empresas?.razao_social ?? null,
+        },
+      }).then(() => {
+        // Marca como enviado neste ano
+        (supabase as any).from("socios")
+          .update({ ultimo_email_aniversario: hoje.toISOString().slice(0, 10) })
+          .eq("id", s.id);
+      });
+    }
 
     setTotalEmpresas(emps.length);
 
@@ -435,6 +488,73 @@ export default function Index() {
           </Card>
         ))}
       </div>
+
+      {/* ── Aniversariantes (próximos 7 dias) ── */}
+      {activeModule === "todos" && aniversariantes.length > 0 && (
+        <Card className="shadow-sm border-amber-200 overflow-hidden">
+          {/* Faixa colorida topo */}
+          <div className="h-1.5 w-full flex">
+            <div className="flex-1 bg-red-500" />
+            <div className="flex-1 bg-amber-400" />
+            <div className="flex-1 bg-green-500" />
+            <div className="flex-1 bg-blue-500" />
+            <div className="flex-1 bg-violet-500" />
+          </div>
+          <CardHeader className="pb-3" style={{ background: "linear-gradient(135deg,#fffbeb 0%,#fef3c7 100%)" }}>
+            <div className="flex items-center gap-2">
+              <div className="w-1 h-5 rounded-full bg-amber-500" />
+              <Cake className="h-4 w-4 text-amber-600" />
+              <h2 className="text-sm font-semibold text-amber-700">Aniversariantes — Próximos 7 dias</h2>
+              <Badge variant="secondary" className="ml-1 bg-amber-100 text-amber-700 border-amber-200">
+                {aniversariantes.length}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-4" style={{ background: "linear-gradient(135deg,#fffbeb 0%,#fef9ee 100%)" }}>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {aniversariantes.map((s) => {
+                const hoje = s.diasRestantes === 0;
+                return (
+                  <div
+                    key={s.id}
+                    className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${hoje ? "border-amber-300 bg-amber-50 shadow-sm" : "border-amber-100 bg-white"}`}
+                  >
+                    {/* Ícone / avatar com dia */}
+                    <div className={`h-12 w-12 rounded-xl flex flex-col items-center justify-center shrink-0 font-bold ${hoje ? "bg-amber-500 text-white" : "bg-amber-100 text-amber-700"}`}>
+                      {hoje
+                        ? <PartyPopper className="h-6 w-6" />
+                        : <>
+                            <span className="text-lg leading-none">{formataBirthday(s.data_nascimento).split("/")[0]}</span>
+                            <span className="text-[10px] font-medium uppercase opacity-70">
+                              {["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"][new Date(s.data_nascimento + "T12:00:00").getMonth()]}
+                            </span>
+                          </>
+                      }
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-semibold text-sm text-foreground truncate">{s.nome}</span>
+                        {hoje && (
+                          <Badge className="bg-amber-500 text-white text-[10px] px-1.5 py-0 h-4">Hoje!</Badge>
+                        )}
+                      </div>
+                      {s.empresas?.razao_social && (
+                        <p className="text-xs text-muted-foreground truncate">{s.empresas.razao_social}</p>
+                      )}
+                      <p className="text-xs mt-0.5" style={{ color: hoje ? "#d97706" : "#6b7280" }}>
+                        {hoje
+                          ? s.email ? "Email enviado automaticamente" : "Sem email cadastrado"
+                          : `Em ${s.diasRestantes} dia${s.diasRestantes > 1 ? "s" : ""} — ${formataBirthday(s.data_nascimento)}`
+                        }
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Campos em branco (only on Todos) ── */}
       {show.campos && (
