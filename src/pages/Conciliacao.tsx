@@ -316,13 +316,28 @@ export default function Conciliacao() {
   // Carregar conexão Pluggy da conta selecionada
   useEffect(() => {
     if (!selectedConta) { setPluggyConn(null); return; }
-    (supabase as any).from("pluggy_connections")
-      .select("item_id, banco_nome, ultima_sincronizacao")
-      .eq("conta_bancaria_id", selectedConta)
-      .eq("status", "connected")
-      .maybeSingle()
-      .then(({ data }: any) => setPluggyConn(data ?? null));
-  }, [selectedConta]);
+    const load = async () => {
+      // Busca exata pela conta selecionada
+      const { data } = await (supabase as any).from("pluggy_connections")
+        .select("item_id, banco_nome, ultima_sincronizacao")
+        .eq("conta_bancaria_id", selectedConta)
+        .eq("status", "connected")
+        .maybeSingle();
+      if (data) { setPluggyConn(data); return; }
+      // Fallback: qualquer conta conectada da mesma empresa
+      if (!selectedEmpresa) { setPluggyConn(null); return; }
+      const idsEmpresa = contas.filter(c => c.empresa_id === selectedEmpresa).map(c => c.id);
+      if (idsEmpresa.length === 0) { setPluggyConn(null); return; }
+      const { data: fb } = await (supabase as any).from("pluggy_connections")
+        .select("item_id, banco_nome, ultima_sincronizacao")
+        .in("conta_bancaria_id", idsEmpresa)
+        .eq("status", "connected")
+        .order("ultima_sincronizacao", { ascending: false })
+        .maybeSingle();
+      setPluggyConn(fb ?? null);
+    };
+    load();
+  }, [selectedConta, selectedEmpresa, contas]);
 
   // Carregar conexão Belvo da conta selecionada
   useEffect(() => {
