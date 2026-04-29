@@ -231,6 +231,10 @@ export default function Conciliacao() {
   const [pluggyInicio,   setPluggyInicio]   = useState("");
   const [pluggyFim,      setPluggyFim]      = useState("");
 
+  // Integração — popover simples (estilo Mister Contador)
+  const [integracaoOpen, setIntegracaoOpen] = useState(false);
+  const [integracaoMes,  setIntegracaoMes]  = useState(() => format(new Date(), "yyyy-MM"));
+
   // Belvo Open Finance
   const [belvoConn,       setBelvoConn]       = useState<{ link_id: string; banco_nome: string | null; ultima_sincronizacao: string | null } | null>(null);
   const [belvoLoading,    setBelvoLoading]    = useState(false);
@@ -921,31 +925,64 @@ export default function Conciliacao() {
                 <FileText className="mr-2 h-4 w-4" />Exportar Domínio
               </Button>
             )}
-            {pluggyConn ? (
-              <Button variant="outline" onClick={() => { setPluggyInicio(""); setPluggyFim(""); setShowPluggySync(true); }} disabled={syncLoading}>
-                {syncLoading
-                  ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  : <BankLogo banco={pluggyConn.banco_nome ?? ""} size={18} className="mr-2" />}
-                {pluggyConn.banco_nome ?? "Open Finance"}
-              </Button>
+            {(pluggyConn || belvoConn) ? (
+              <Popover open={integracaoOpen} onOpenChange={setIntegracaoOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" disabled={syncLoading || belvoLoading}>
+                    {(syncLoading || belvoLoading)
+                      ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      : <BankLogo banco={pluggyConn?.banco_nome ?? belvoConn?.banco_nome ?? ""} size={18} className="mr-2" />}
+                    Integração
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-4" align="end">
+                  <div className="space-y-3">
+                    <div>
+                      <p className="font-semibold text-sm flex items-center gap-2">
+                        <BankLogo banco={pluggyConn?.banco_nome ?? belvoConn?.banco_nome ?? ""} size={18} />
+                        {pluggyConn?.banco_nome ?? belvoConn?.banco_nome ?? "Banco"}
+                      </p>
+                      {(pluggyConn?.ultima_sincronizacao ?? belvoConn?.ultima_sincronizacao) && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Última sync: {new Date(pluggyConn?.ultima_sincronizacao ?? belvoConn?.ultima_sincronizacao!).toLocaleString("pt-BR")}
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Selecione o mês e ano:</Label>
+                      <Input
+                        type="month"
+                        value={integracaoMes}
+                        onChange={e => setIntegracaoMes(e.target.value)}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <Button
+                      className="w-full"
+                      disabled={syncLoading || belvoLoading || !integracaoMes}
+                      onClick={async () => {
+                        setIntegracaoOpen(false);
+                        await handlePuxarMovimentacao(integracaoMes);
+                      }}
+                    >
+                      {(syncLoading || belvoLoading)
+                        ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Processando...</>
+                        : "Processar"}
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
             ) : (
-              <Button variant="outline" onClick={openPluggyWidget} disabled={pluggyLoading}>
-                {pluggyLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Link className="mr-2 h-4 w-4" />}
-                Conectar banco
-              </Button>
-            )}
-            {belvoConn ? (
-              <Button variant="outline" onClick={() => { setBelvoInicio(""); setBelvoFim(""); setShowBelvoSync(true); }} disabled={belvoLoading}>
-                {belvoLoading
-                  ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  : <BankLogo banco={belvoConn.banco_nome ?? ""} size={18} className="mr-2" />}
-                {belvoConn.banco_nome ?? "Belvo"}
-              </Button>
-            ) : (
-              <Button variant="outline" onClick={() => { setBelvoManualLink(""); setBelvoInicio(""); setBelvoFim(""); setShowBelvoSync(true); }} disabled={belvoLoading}>
-                <Link className="mr-2 h-4 w-4" />
-                Conectar via Belvo
-              </Button>
+              <>
+                <Button variant="outline" onClick={openPluggyWidget} disabled={pluggyLoading}>
+                  {pluggyLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Link className="mr-2 h-4 w-4" />}
+                  Conectar banco
+                </Button>
+                <Button variant="outline" onClick={() => { setBelvoManualLink(""); setBelvoInicio(""); setBelvoFim(""); setShowBelvoSync(true); }} disabled={belvoLoading}>
+                  <Link className="mr-2 h-4 w-4" />
+                  Conectar via Belvo
+                </Button>
+              </>
             )}
             <input ref={fileInputRef} type="file" accept=".ofx,.ofc,.csv,.pdf,.txt" className="hidden" onChange={handleFileImport} />
             <Button onClick={() => fileInputRef.current?.click()} disabled={uploading}>
@@ -1094,26 +1131,7 @@ export default function Conciliacao() {
           </>
         )}
 
-        {/* Botão Puxar movimentação — abre dialog com seleção de período */}
-        {selectedConta && (pluggyConn || belvoConn) && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              const mes = selectedMes || format(new Date(), "yyyy-MM");
-              const ini = `${mes}-01`;
-              const fim = format(endOfMonth(new Date(`${ini}T12:00:00`)), "yyyy-MM-dd");
-              if (pluggyConn) { setPluggyInicio(ini); setPluggyFim(fim); setShowPluggySync(true); }
-              else { setBelvoInicio(ini); setBelvoFim(fim); setShowBelvoSync(true); }
-            }}
-            className="gap-1.5 text-xs h-8 border-blue-200 text-blue-700 hover:bg-blue-50"
-          >
-            <Download className="h-3.5 w-3.5" />
-            {selectedMes ? `Puxar ${fmtMes(selectedMes)}` : "Puxar movimentação"}
-          </Button>
-        )}
-
-        {importacoesFiltradas.length > 0 && (
+{importacoesFiltradas.length > 0 && (
           <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground ml-auto" onClick={() => setShowHistory(h => !h)}>
             <History className="h-3.5 w-3.5" />
             {showHistory ? "Ocultar" : "Ver"} histórico ({importacoesFiltradas.length})
