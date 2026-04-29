@@ -317,13 +317,13 @@ export default function Conciliacao() {
   useEffect(() => {
     if (!selectedConta) { setPluggyConn(null); return; }
     const load = async () => {
-      // Busca exata pela conta selecionada
-      const { data } = await (supabase as any).from("pluggy_connections")
+      // Busca exata pela conta selecionada (limit 1 para evitar erro com duplicatas)
+      const { data: rows } = await (supabase as any).from("pluggy_connections")
         .select("item_id, banco_nome, ultima_sincronizacao")
         .eq("conta_bancaria_id", selectedConta)
-        .eq("status", "connected")
-        .maybeSingle();
-      if (data) { setPluggyConn(data); return; }
+        .order("ultima_sincronizacao", { ascending: false })
+        .limit(1);
+      if (rows?.[0]) { setPluggyConn(rows[0]); return; }
       // Fallback: qualquer conta conectada da mesma empresa
       if (!selectedEmpresa) { setPluggyConn(null); return; }
       const idsEmpresa = contas.filter(c => c.empresa_id === selectedEmpresa).map(c => c.id);
@@ -331,10 +331,9 @@ export default function Conciliacao() {
       const { data: fb } = await (supabase as any).from("pluggy_connections")
         .select("item_id, banco_nome, ultima_sincronizacao")
         .in("conta_bancaria_id", idsEmpresa)
-        .eq("status", "connected")
         .order("ultima_sincronizacao", { ascending: false })
-        .maybeSingle();
-      setPluggyConn(fb ?? null);
+        .limit(1);
+      setPluggyConn(fb?.[0] ?? null);
     };
     load();
   }, [selectedConta, selectedEmpresa, contas]);
@@ -391,8 +390,8 @@ export default function Conciliacao() {
       setShowPluggySync(false);
       loadAll();
       // Recarregar conexão
-      const { data: conn } = await (supabase as any).from("pluggy_connections").select("item_id, banco_nome, ultima_sincronizacao").eq("conta_bancaria_id", selectedConta).eq("status", "connected").maybeSingle();
-      setPluggyConn(conn ?? null);
+      const { data: connRows } = await (supabase as any).from("pluggy_connections").select("item_id, banco_nome, ultima_sincronizacao").eq("conta_bancaria_id", selectedConta).order("ultima_sincronizacao", { ascending: false }).limit(1);
+      setPluggyConn(connRows?.[0] ?? null);
     } catch (e: any) {
       toast({ title: "Erro na sincronização", description: e.message, variant: "destructive" });
     } finally {
@@ -480,8 +479,8 @@ export default function Conciliacao() {
         if (data?.error) throw new Error(data.error);
         toast({ title: `${data.total ?? 0} transações importadas!`, description: `${fmtMes(selectedMes)} — ${data.banco ?? "banco"}` });
         loadAll();
-        const { data: conn } = await (supabase as any).from("pluggy_connections").select("item_id, banco_nome, ultima_sincronizacao").eq("conta_bancaria_id", selectedConta).eq("status", "connected").maybeSingle();
-        setPluggyConn(conn ?? null);
+        const { data: pRows } = await (supabase as any).from("pluggy_connections").select("item_id, banco_nome, ultima_sincronizacao").eq("conta_bancaria_id", selectedConta).order("ultima_sincronizacao", { ascending: false }).limit(1);
+        setPluggyConn(pRows?.[0] ?? null);
       } catch (e: any) {
         toast({ title: "Erro na sincronização", description: e.message, variant: "destructive" });
       } finally {
