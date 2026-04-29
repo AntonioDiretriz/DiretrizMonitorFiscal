@@ -322,7 +322,8 @@ export default function Conciliacao() {
       .eq("conta_bancaria_id", selectedConta)
       .order("ultima_sincronizacao", { ascending: false })
       .limit(1)
-      .then(({ data: rows }: any) => {
+      .then(({ data: rows, error }: any) => {
+        console.log("[pluggy debug]", { selectedConta, rows, error });
         if (!active) return;
         setPluggyConn(rows?.[0] ?? null);
       });
