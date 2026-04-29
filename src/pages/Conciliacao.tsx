@@ -232,8 +232,13 @@ export default function Conciliacao() {
   const [pluggyFim,      setPluggyFim]      = useState("");
 
   // Integração — popover simples (estilo Mister Contador)
+  // Padrão: mês anterior (em maio → abril; em junho → maio...)
   const [integracaoOpen, setIntegracaoOpen] = useState(false);
-  const [integracaoMes,  setIntegracaoMes]  = useState(() => format(new Date(), "yyyy-MM"));
+  const [integracaoMes,  setIntegracaoMes]  = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
+    return format(d, "yyyy-MM");
+  });
 
   // Belvo Open Finance
   const [belvoConn,       setBelvoConn]       = useState<{ link_id: string; banco_nome: string | null; ultima_sincronizacao: string | null } | null>(null);
@@ -961,10 +966,14 @@ export default function Conciliacao() {
                       <Input
                         type="month"
                         value={integracaoMes}
+                        max={(() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return format(d, "yyyy-MM"); })()}
                         onChange={e => setIntegracaoMes(e.target.value)}
                         className="h-8 text-sm"
                       />
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      Mês atual bloqueado — processe sempre o mês fechado.
+                    </p>
                     <Button
                       className="w-full"
                       disabled={syncLoading || belvoLoading || !integracaoMes}
