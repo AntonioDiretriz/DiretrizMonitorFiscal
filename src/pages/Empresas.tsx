@@ -517,33 +517,36 @@ export default function Empresas() {
   const handlePluggyDireto = async () => {
     if (!gerarLinkContaId || !ownerUserId) return;
     setPluggyDirectLoading(true);
+    // Fecha o dialog antes para não bloquear eventos do widget Pluggy
+    setGerarLinkOpen(false);
     try {
       const { data, error } = await supabase.functions.invoke("pluggy-token", { body: {} });
       if (error || (data as any)?.error) throw new Error((data as any)?.error ?? error?.message ?? "Erro ao gerar token");
       const { PluggyConnect } = await import("pluggy-connect-sdk");
-      const widget = new PluggyConnect({
+      const contaIdCapturado = gerarLinkContaId;
+      new PluggyConnect({
         connectToken: (data as any).connectToken,
-        includeSandbox: true,
-        onSuccess: async ({ item }) => {
+        onSuccess: async ({ item }: any) => {
+          toast({ title: "Banco conectado! Sincronizando..." });
           const { data: sd, error: se } = await supabase.functions.invoke("sync-pluggy", {
-            body: { item_id: item.id, conta_bancaria_id: gerarLinkContaId, user_id: ownerUserId },
+            body: { item_id: item.id, conta_bancaria_id: contaIdCapturado, user_id: ownerUserId },
           });
           if (se || (sd as any)?.error) {
             toast({ title: "Erro ao sincronizar", description: (sd as any)?.error ?? se?.message, variant: "destructive" });
             return;
           }
           toast({ title: "Banco conectado!", description: `${(sd as any).banco ?? ""} · ${(sd as any).total ?? 0} transações importadas` });
-          setGerarLinkOpen(false);
+          setPluggyDirectLoading(false);
           if (editingId) await loadCbsEmpresa(editingId);
         },
-        onError: ({ message }) => {
+        onError: ({ message }: any) => {
           toast({ title: "Erro na conexão", description: message, variant: "destructive" });
+          setPluggyDirectLoading(false);
         },
-      });
-      await widget.init();
+        onClose: () => setPluggyDirectLoading(false),
+      }).init();
     } catch (e: any) {
       toast({ title: "Erro ao inicializar widget", description: e.message, variant: "destructive" });
-    } finally {
       setPluggyDirectLoading(false);
     }
   };
