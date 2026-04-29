@@ -624,23 +624,50 @@ export default function Empresas() {
     if (cnpjNumeric.length !== 14) return;
     setLoadingCnpj(true);
     try {
-      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjNumeric}`);
-      if (!res.ok) throw new Error();
-      const d = await res.json();
+      // 1. Tenta BrasilAPI
+      let razao_social = "", cep = "", logradouro = "", numero = "", complemento = "", bairro = "", municipio = "", uf = "";
+
+      const r1 = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjNumeric}`).catch(() => null);
+      if (r1?.ok) {
+        const d = await r1.json();
+        razao_social = d.razao_social || "";
+        cep          = d.cep?.replace(/\D/g, "") || "";
+        logradouro   = d.logradouro   || "";
+        numero       = d.numero       || "";
+        complemento  = d.complemento  || "";
+        bairro       = d.bairro       || "";
+        municipio    = d.municipio    || "";
+        uf           = d.uf           || "";
+      } else {
+        // 2. Fallback: cnpj.ws
+        const r2 = await fetch(`https://publica.cnpj.ws/cnpj/${cnpjNumeric}`).catch(() => null);
+        if (!r2?.ok) throw new Error("não encontrado");
+        const d = await r2.json();
+        const est = d.estabelecimento ?? {};
+        razao_social = d.razao_social || "";
+        cep          = est.cep?.replace(/\D/g, "") || "";
+        logradouro   = est.logradouro   || "";
+        numero       = est.numero       || "";
+        complemento  = est.complemento  || "";
+        bairro       = est.bairro       || "";
+        municipio    = est.municipio?.nome || "";
+        uf           = est.estado?.sigla  || "";
+      }
+
       setForm(prev => ({
         ...prev,
-        razao_social: d.razao_social    || prev.razao_social,
-        cep:          d.cep?.replace(/\D/g, "") || prev.cep,
-        logradouro:   d.logradouro      || prev.logradouro,
-        numero:       d.numero          || prev.numero,
-        complemento:  d.complemento     || prev.complemento,
-        bairro:       d.bairro          || prev.bairro,
-        municipio:    d.municipio       || prev.municipio,
-        uf:           d.uf              || prev.uf,
+        razao_social: razao_social || prev.razao_social,
+        cep:          cep          || prev.cep,
+        logradouro:   logradouro   || prev.logradouro,
+        numero:       numero       || prev.numero,
+        complemento:  complemento  || prev.complemento,
+        bairro:       bairro       || prev.bairro,
+        municipio:    municipio    || prev.municipio,
+        uf:           uf           || prev.uf,
       }));
       toast({ title: "Dados encontrados!" });
     } catch {
-      toast({ title: "CNPJ não encontrado", variant: "destructive" });
+      toast({ title: "CNPJ não encontrado nas bases consultadas. Preencha os dados manualmente.", variant: "destructive" });
     } finally {
       setLoadingCnpj(false);
     }
