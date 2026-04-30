@@ -1204,7 +1204,15 @@ export default function Conciliacao() {
 
       {/* ── PAINEL DE REGRAS ───────────────────────────────────────────────── */}
       {showRegras && selectedConta && regras.length > 0 && (() => {
-        const regrasContaAtual = regras.filter(r => r.conta_bancaria_id === selectedConta);
+        const regrasContaAtual = regras.filter(r => r.conta_bancaria_id === selectedConta || !r.conta_bancaria_id);
+        const regrasSemConta   = regrasContaAtual.filter(r => !r.conta_bancaria_id);
+        const handleAssociarBanco = async () => {
+          if (regrasSemConta.length === 0) return;
+          const ids = regrasSemConta.map(r => r.id);
+          await supabase.from("regras_conciliacao").update({ conta_bancaria_id: selectedConta }).in("id", ids);
+          setRegras(prev => prev.map(r => ids.includes(r.id) ? { ...r, conta_bancaria_id: selectedConta! } : r));
+          toast({ title: `${ids.length} regras vinculadas ao banco!` });
+        };
         const contaAtual = contas.find(c => c.id === selectedConta);
         const handleDeletarRegra = async (id: string) => {
           await supabase.from("regras_conciliacao").delete().eq("id", id);
@@ -1227,6 +1235,17 @@ export default function Conciliacao() {
                   </Button>
                 </div>
               </div>
+              {regrasSemConta.length > 0 && (
+                <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-50 border-b border-amber-200 text-sm">
+                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                  <span className="text-amber-700 flex-1">
+                    <strong>{regrasSemConta.length} regras</strong> sem banco vinculado — foram importadas antes de selecionar o banco.
+                  </span>
+                  <Button size="sm" variant="outline" className="border-amber-400 text-amber-700 hover:bg-amber-100 shrink-0" onClick={handleAssociarBanco}>
+                    Vincular a este banco
+                  </Button>
+                </div>
+              )}
               {regrasContaAtual.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10 text-sm text-muted-foreground gap-2">
                   <BookOpen className="h-8 w-8 opacity-30" />
