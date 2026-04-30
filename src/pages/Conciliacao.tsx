@@ -4,6 +4,7 @@ import {
   Upload, CheckCircle, XCircle, Clock, Link,
   RefreshCw, Tag, FileText, Building2, Trash2, History, Check, ChevronDown,
   RotateCcw, Pencil, AlertTriangle, Download, HelpCircle, Mail, MessageSquare,
+  BookOpen, ChevronUp, Trash,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { BankLogo } from "@/components/BankLogo";
@@ -75,6 +76,7 @@ interface RegrasConciliacao {
   plano_contas_id: string;
   tipo: string;
   automatica: boolean;
+  conta_bancaria_id: string | null;
 }
 
 interface ImportLinha {
@@ -293,7 +295,7 @@ export default function Conciliacao() {
       supabase.from("transacoes_bancarias").select("id, conta_bancaria_id, data, descricao, valor, tipo, status, importacao_id, plano_contas_id, categorizado_por, aguardando_cliente").order("data", { ascending: false }).limit(2000),
       supabase.from("contas_pagar").select("id, fornecedor, valor, data_vencimento, status").in("status", ["pendente", "aprovado"]).order("data_vencimento"),
       supabase.from("empresas").select("id, razao_social, cnpj").order("razao_social"),
-      supabase.from("regras_conciliacao").select("id, padrao, plano_contas_id, tipo, automatica"),
+      supabase.from("regras_conciliacao").select("id, padrao, plano_contas_id, tipo, automatica, conta_bancaria_id"),
       (supabase as any).from("importacoes_bancarias").select("id, arquivo_nome, formato, status, total_transacoes, created_at, conta_bancaria_id").order("created_at", { ascending: false }).limit(100),
     ]);
     setContas((cbRes.data ?? []) as ContaBancaria[]);
@@ -592,7 +594,7 @@ export default function Conciliacao() {
       user_id: ownerUserId, padrao: p, tipo,
       plano_contas_id: planoContasId, uso_count: 1, automatica: true,
     }, { onConflict: "user_id,padrao,tipo" });
-    supabase.from("regras_conciliacao").select("id, padrao, plano_contas_id, tipo, automatica")
+    supabase.from("regras_conciliacao").select("id, padrao, plano_contas_id, tipo, automatica, conta_bancaria_id")
       .then(({ data }) => { if (data) setRegras(data as RegrasConciliacao[]); });
     return p;
   };
@@ -649,6 +651,8 @@ export default function Conciliacao() {
     setCatDialog(null);
   };
 
+  const [showRegras, setShowRegras] = useState(false);
+
   // ── Importar Regras do Mister Contador ───────────────────────────────────
   const [importarOpen,   setImportarOpen]   = useState(false);
   const [importarTexto,  setImportarTexto]  = useState("");
@@ -676,12 +680,13 @@ export default function Conciliacao() {
           padrao: r.historico.slice(0, 60).trim(),
           tipo: r.tipo,
           plano_contas_id: r.plano_id,
+          conta_bancaria_id: selectedConta ?? null,
           uso_count: 0,
           automatica: false,
         })),
         { onConflict: "user_id,padrao,tipo" }
       );
-      const { data } = await supabase.from("regras_conciliacao").select("id, padrao, plano_contas_id, tipo, automatica");
+      const { data } = await supabase.from("regras_conciliacao").select("id, padrao, plano_contas_id, tipo, automatica, conta_bancaria_id");
       if (data) setRegras(data as RegrasConciliacao[]);
       toast({ title: `${validas.length} regras importadas com sucesso!`, description: "Clique em Aplicar Regras para classificar os pendentes." });
       setImportarOpen(false);
@@ -1070,6 +1075,12 @@ export default function Conciliacao() {
                 <Upload className="mr-2 h-4 w-4" />Importar Regras
               </Button>
             )}
+            {regras.length > 0 && (
+              <Button variant="outline" onClick={() => setShowRegras(v => !v)}>
+                {showRegras ? <ChevronUp className="mr-2 h-4 w-4" /> : <BookOpen className="mr-2 h-4 w-4" />}
+                {showRegras ? "Ocultar Regras" : `Ver Regras (${regras.length})`}
+              </Button>
+            )}
             {txConciliados.length > 0 && (
               <Button variant="outline" onClick={() => setShowExport(true)}>
                 <FileText className="mr-2 h-4 w-4" />Exportar Domínio
@@ -1195,6 +1206,65 @@ export default function Conciliacao() {
           </div>
         )}
       </div>
+
+      {/* ── PAINEL DE REGRAS ───────────────────────────────────────────────── */}
+      {showRegras && selectedConta && regras.length > 0 && (() => {
+        const regrasContaAtual = regras.filter(r => !r.conta_bancaria_id || r.conta_bancaria_id === selectedConta);
+        const contaAtual = contas.find(c => c.id === selectedConta);
+        const handleDeletarRegra = async (id: string) => {
+          await supabase.from("regras_conciliacao").delete().eq("id", id);
+          setRegras(prev => prev.filter(r => r.id !== id));
+        };
+        return (
+          <Card className="shadow-sm border-blue-100">
+            <CardContent className="p-0">
+              <div className="flex items-center gap-2 px-4 py-3 border-b bg-blue-50/50">
+                <BankLogo banco={contaAtual?.banco ?? ""} size={20} />
+                <span className="font-semibold text-sm text-foreground">{contaAtual?.banco}</span>
+                {contaAtual?.agencia && <span className="text-xs text-muted-foreground">Ag. {contaAtual.agencia}</span>}
+                {contaAtual?.conta && <span className="text-xs text-muted-foreground">Cc. {contaAtual.conta}</span>}
+                <Badge variant="secondary" className="ml-auto">{regrasContaAtual.length} regras</Badge>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Histórico</TableHead>
+                    <TableHead className="w-16">D/C</TableHead>
+                    <TableHead>Conta Contábil</TableHead>
+                    <TableHead className="w-12"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {regrasContaAtual.map(r => {
+                    const plano = planoById[r.plano_contas_id];
+                    return (
+                      <TableRow key={r.id}>
+                        <TableCell className="text-xs font-mono">{r.padrao}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={r.tipo === "credito" ? "text-green-600 border-green-300 text-[10px]" : "text-red-600 border-red-300 text-[10px]"}>
+                            {r.tipo === "credito" ? "C" : "D"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {plano
+                            ? <><span className="font-mono text-muted-foreground mr-1">{plano.codigo}</span>{plano.nome}</>
+                            : <span className="text-muted-foreground">—</span>
+                          }
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-red-600" onClick={() => handleDeletarRegra(r.id)}>
+                            <Trash className="h-3.5 w-3.5" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* ── LISTA DE EMPRESAS ───────────────────────────────────────────────── */}
       {!selectedEmpresa && (
