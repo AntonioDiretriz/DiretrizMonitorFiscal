@@ -1203,92 +1203,130 @@ export default function Conciliacao() {
       </div>
 
       {/* ── PAINEL DE REGRAS ───────────────────────────────────────────────── */}
-      {showRegras && selectedConta && regras.length > 0 && (() => {
-        const regrasContaAtual = regras.filter(r => r.conta_bancaria_id === selectedConta || !r.conta_bancaria_id);
-        const regrasSemConta   = regrasContaAtual.filter(r => !r.conta_bancaria_id);
+      {showRegras && selectedConta && (() => {
+        // Regras específicas deste banco
+        const regrasContaAtual = regras.filter(r => r.conta_bancaria_id === selectedConta);
+        // Regras sem banco (importadas antes da migration)
+        const regrasSemConta   = regras.filter(r => !r.conta_bancaria_id);
+        const contaAtual       = contas.find(c => c.id === selectedConta);
+
         const handleAssociarBanco = async () => {
-          if (regrasSemConta.length === 0) return;
           const ids = regrasSemConta.map(r => r.id);
           await supabase.from("regras_conciliacao").update({ conta_bancaria_id: selectedConta }).in("id", ids);
           setRegras(prev => prev.map(r => ids.includes(r.id) ? { ...r, conta_bancaria_id: selectedConta! } : r));
           toast({ title: `${ids.length} regras vinculadas ao banco!` });
         };
-        const contaAtual = contas.find(c => c.id === selectedConta);
         const handleDeletarRegra = async (id: string) => {
           await supabase.from("regras_conciliacao").delete().eq("id", id);
           setRegras(prev => prev.filter(r => r.id !== id));
         };
+        const handleEditarRegra = async (id: string, planoContasId: string) => {
+          await supabase.from("regras_conciliacao").update({ plano_contas_id: planoContasId }).eq("id", id);
+          setRegras(prev => prev.map(r => r.id === id ? { ...r, plano_contas_id: planoContasId } : r));
+          toast({ title: "Regra atualizada!" });
+        };
+
         return (
           <Card className="shadow-sm border-blue-100">
             <CardContent className="p-0">
+              {/* Cabeçalho do banco */}
               <div className="flex items-center gap-2 px-4 py-3 border-b bg-blue-50/50">
                 <BankLogo banco={contaAtual?.banco ?? ""} size={20} />
-                <span className="font-semibold text-sm text-foreground">{contaAtual?.banco}</span>
+                <span className="font-semibold text-sm">{contaAtual?.banco}</span>
                 {contaAtual?.agencia && <span className="text-xs text-muted-foreground">Ag. {contaAtual.agencia}</span>}
-                {contaAtual?.conta && <span className="text-xs text-muted-foreground">Cc. {contaAtual.conta}</span>}
+                {contaAtual?.conta   && <span className="text-xs text-muted-foreground">Cc. {contaAtual.conta}</span>}
                 <Badge variant="secondary" className="ml-1">{regrasContaAtual.length} regras</Badge>
                 <div className="ml-auto">
-                  <Button size="sm" variant="default" onClick={handleAplicarTodasRegras} disabled={aplicandoRegras}>
+                  <Button size="sm" onClick={handleAplicarTodasRegras} disabled={aplicandoRegras}>
                     {aplicandoRegras
                       ? <><RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" />Aplicando...</>
                       : <><Tag className="mr-1.5 h-3.5 w-3.5" />Aplicar às Pendentes</>}
                   </Button>
                 </div>
               </div>
+
+              {/* Banner: regras sem banco */}
               {regrasSemConta.length > 0 && (
                 <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-50 border-b border-amber-200 text-sm">
                   <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
                   <span className="text-amber-700 flex-1">
-                    <strong>{regrasSemConta.length} regras</strong> sem banco vinculado — foram importadas antes de selecionar o banco.
+                    <strong>{regrasSemConta.length} regras</strong> sem banco vinculado. Clique para associar a este banco.
                   </span>
                   <Button size="sm" variant="outline" className="border-amber-400 text-amber-700 hover:bg-amber-100 shrink-0" onClick={handleAssociarBanco}>
                     Vincular a este banco
                   </Button>
                 </div>
               )}
-              {regrasContaAtual.length === 0 ? (
+
+              {/* Tabela de regras ou empty state */}
+              {regrasContaAtual.length === 0 && regrasSemConta.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10 text-sm text-muted-foreground gap-2">
                   <BookOpen className="h-8 w-8 opacity-30" />
                   <p>Nenhuma regra para este banco ainda.</p>
-                  <p className="text-xs">Clique em <strong>Importar Regras</strong> para importar do Mister Contador.</p>
+                  <p className="text-xs">Categorize transações ou clique em <strong>Importar Regras</strong>.</p>
                 </div>
-              ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Histórico</TableHead>
-                    <TableHead className="w-16">D/C</TableHead>
-                    <TableHead>Conta Contábil</TableHead>
-                    <TableHead className="w-12"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {regrasContaAtual.map(r => {
-                    const plano = planoById[r.plano_contas_id];
-                    return (
-                      <TableRow key={r.id}>
-                        <TableCell className="text-xs font-mono">{r.padrao}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={r.tipo === "credito" ? "text-green-600 border-green-300 text-[10px]" : "text-red-600 border-red-300 text-[10px]"}>
-                            {r.tipo === "credito" ? "C" : "D"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          {plano
-                            ? <><span className="font-mono text-muted-foreground mr-1">{plano.codigo}</span>{plano.nome}</>
-                            : <span className="text-muted-foreground">—</span>
-                          }
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-red-600" onClick={() => handleDeletarRegra(r.id)}>
-                            <Trash className="h-3.5 w-3.5" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+              ) : regrasContaAtual.length > 0 && (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Histórico do Extrato</TableHead>
+                      <TableHead className="w-16">D/C</TableHead>
+                      <TableHead>Conta Contábil</TableHead>
+                      <TableHead className="w-20 text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {regrasContaAtual.map(r => {
+                      const plano = planoById[r.plano_contas_id];
+                      return (
+                        <TableRow key={r.id}>
+                          <TableCell className="text-xs font-mono max-w-xs truncate">{r.padrao}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={r.tipo === "credito" ? "text-green-600 border-green-300 text-[10px]" : "text-red-600 border-red-300 text-[10px]"}>
+                              {r.tipo === "credito" ? "C" : "D"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <button className="flex items-center gap-1 hover:bg-muted/50 rounded px-1 py-0.5 text-left w-full">
+                                  {plano
+                                    ? <><span className="font-mono text-muted-foreground shrink-0">{plano.codigo}</span><span className="truncate ml-1">{plano.nome}</span></>
+                                    : <span className="text-muted-foreground italic">Selecionar conta...</span>
+                                  }
+                                  <Pencil className="h-3 w-3 text-muted-foreground ml-auto shrink-0" />
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent className="p-0 w-80" align="start">
+                                <Command>
+                                  <CommandInput placeholder="Buscar conta..." />
+                                  <CommandList className="max-h-56">
+                                    <CommandEmpty>Nenhuma conta encontrada.</CommandEmpty>
+                                    <CommandGroup>
+                                      {planoContas.map(p => (
+                                        <CommandItem key={p.id} value={`${p.codigo} ${p.nome}`}
+                                          onSelect={() => handleEditarRegra(r.id, p.id)}>
+                                          <span className="font-mono text-muted-foreground mr-2 shrink-0">{p.codigo}</span>
+                                          <span className="truncate">{p.nome}</span>
+                                          {r.plano_contas_id === p.id && <Check className="ml-auto h-3.5 w-3.5 text-green-600 shrink-0" />}
+                                        </CommandItem>
+                                      ))}
+                                    </CommandGroup>
+                                  </CommandList>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-red-600" onClick={() => handleDeletarRegra(r.id)}>
+                              <Trash className="h-3.5 w-3.5" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
               )}
             </CardContent>
           </Card>
