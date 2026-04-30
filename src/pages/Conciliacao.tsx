@@ -1063,24 +1063,15 @@ export default function Conciliacao() {
         </div>
         {selectedConta && podeIncluir && (
           <div className="flex gap-2 flex-wrap">
-            {regras.length > 0 && (
-              <Button variant="outline" onClick={handleAplicarTodasRegras} disabled={aplicandoRegras}>
-                {aplicandoRegras
-                  ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Aplicando...</>
-                  : <><Tag className="mr-2 h-4 w-4" />Aplicar Regras</>}
-              </Button>
-            )}
             {planoContas.length > 0 && (
               <Button variant="outline" onClick={() => { setImportarLinhas([]); setImportarTexto(""); setImportarOpen(true); }}>
                 <Upload className="mr-2 h-4 w-4" />Importar Regras
               </Button>
             )}
-            {regras.length > 0 && (
-              <Button variant="outline" onClick={() => setShowRegras(v => !v)}>
-                {showRegras ? <ChevronUp className="mr-2 h-4 w-4" /> : <BookOpen className="mr-2 h-4 w-4" />}
-                {showRegras ? "Ocultar Regras" : `Ver Regras (${regras.length})`}
-              </Button>
-            )}
+            <Button variant="outline" onClick={() => setShowRegras(v => !v)}>
+              {showRegras ? <ChevronUp className="mr-2 h-4 w-4" /> : <BookOpen className="mr-2 h-4 w-4" />}
+              {regras.length > 0 ? `Regras (${regras.length})` : "Regras"}
+            </Button>
             {txConciliados.length > 0 && (
               <Button variant="outline" onClick={() => setShowExport(true)}>
                 <FileText className="mr-2 h-4 w-4" />Exportar Domínio
@@ -1223,7 +1214,14 @@ export default function Conciliacao() {
                 <span className="font-semibold text-sm text-foreground">{contaAtual?.banco}</span>
                 {contaAtual?.agencia && <span className="text-xs text-muted-foreground">Ag. {contaAtual.agencia}</span>}
                 {contaAtual?.conta && <span className="text-xs text-muted-foreground">Cc. {contaAtual.conta}</span>}
-                <Badge variant="secondary" className="ml-auto">{regrasContaAtual.length} regras</Badge>
+                <Badge variant="secondary" className="ml-1">{regrasContaAtual.length} regras</Badge>
+                <div className="ml-auto">
+                  <Button size="sm" variant="default" onClick={handleAplicarTodasRegras} disabled={aplicandoRegras}>
+                    {aplicandoRegras
+                      ? <><RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" />Aplicando...</>
+                      : <><Tag className="mr-1.5 h-3.5 w-3.5" />Aplicar às Pendentes</>}
+                  </Button>
+                </div>
               </div>
               <Table>
                 <TableHeader>
