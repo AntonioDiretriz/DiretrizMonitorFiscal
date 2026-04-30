@@ -77,6 +77,33 @@ interface RegrasConciliacao {
   automatica: boolean;
 }
 
+interface ImportLinha {
+  historico: string;
+  tipo: "credito" | "debito";
+  codigo: string;
+  plano_id: string | null;
+  plano_nome: string | null;
+}
+
+function parseMisterContador(text: string): Array<{ historico: string; tipo: "credito" | "debito"; codigo: string }> {
+  const result: Array<{ historico: string; tipo: "credito" | "debito"; codigo: string }> = [];
+  const seen = new Set<string>();
+  for (const line of text.split('\n')) {
+    const parts = line.split('\t');
+    if (parts.length < 6) continue;
+    const historico = parts[0]?.trim();
+    const rawTipo   = parts[3]?.trim();
+    const codigo    = parts[5]?.trim();
+    if (!historico || !codigo || !['C', 'D'].includes(rawTipo)) continue;
+    const tipo = rawTipo === 'C' ? 'credito' as const : 'debito' as const;
+    const key = `${historico}|${tipo}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({ historico, tipo, codigo });
+  }
+  return result;
+}
+
 interface Empresa { id: string; razao_social: string; cnpj: string; }
 
 interface Importacao {
@@ -622,6 +649,51 @@ export default function Conciliacao() {
     setCatDialog(null);
   };
 
+  // ── Importar Regras do Mister Contador ───────────────────────────────────
+  const [importarOpen,   setImportarOpen]   = useState(false);
+  const [importarTexto,  setImportarTexto]  = useState("");
+  const [importarLinhas, setImportarLinhas] = useState<ImportLinha[]>([]);
+  const [importarSaving, setImportarSaving] = useState(false);
+
+  const handleAnalisarImport = () => {
+    const parsed = parseMisterContador(importarTexto);
+    const planoByCodigo = Object.fromEntries(planoContas.map(p => [p.codigo ?? "", p]));
+    setImportarLinhas(parsed.map(r => {
+      const plano = planoByCodigo[r.codigo];
+      return { historico: r.historico, tipo: r.tipo, codigo: r.codigo, plano_id: plano?.id ?? null, plano_nome: plano?.nome ?? null };
+    }));
+  };
+
+  const handleSalvarRegrasImportadas = async () => {
+    if (!ownerUserId) return;
+    setImportarSaving(true);
+    try {
+      const validas = importarLinhas.filter(r => r.plano_id);
+      if (validas.length === 0) { toast({ title: "Nenhuma conta encontrada para importar", variant: "destructive" }); return; }
+      await supabase.from("regras_conciliacao").upsert(
+        validas.map(r => ({
+          user_id: ownerUserId,
+          padrao: r.historico.slice(0, 60).trim(),
+          tipo: r.tipo,
+          plano_contas_id: r.plano_id,
+          uso_count: 0,
+          automatica: false,
+        })),
+        { onConflict: "user_id,padrao,tipo" }
+      );
+      const { data } = await supabase.from("regras_conciliacao").select("id, padrao, plano_contas_id, tipo, automatica");
+      if (data) setRegras(data as RegrasConciliacao[]);
+      toast({ title: `${validas.length} regras importadas com sucesso!`, description: "Clique em Aplicar Regras para classificar os pendentes." });
+      setImportarOpen(false);
+      setImportarTexto("");
+      setImportarLinhas([]);
+    } catch (e: any) {
+      toast({ title: "Erro ao importar", description: e.message, variant: "destructive" });
+    } finally {
+      setImportarSaving(false);
+    }
+  };
+
   const [aplicandoRegras, setAplicandoRegras] = useState(false);
   const handleAplicarTodasRegras = async () => {
     if (!selectedConta || regras.length === 0) return;
@@ -991,6 +1063,11 @@ export default function Conciliacao() {
                 {aplicandoRegras
                   ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Aplicando...</>
                   : <><Tag className="mr-2 h-4 w-4" />Aplicar Regras</>}
+              </Button>
+            )}
+            {planoContas.length > 0 && (
+              <Button variant="outline" onClick={() => { setImportarLinhas([]); setImportarTexto(""); setImportarOpen(true); }}>
+                <Upload className="mr-2 h-4 w-4" />Importar Regras
               </Button>
             )}
             {txConciliados.length > 0 && (
@@ -2060,6 +2137,83 @@ export default function Conciliacao() {
               <Link className="mr-2 h-4 w-4" /> Conciliar
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Importar Regras do Mister Contador ── */}
+      <Dialog open={importarOpen} onOpenChange={o => { if (!o) setImportarOpen(false); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Importar Regras do Mister Contador</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Cole o extrato exportado do Mister Contador abaixo. O sistema vai identificar cada histórico e sua conta contábil correspondente.
+          </p>
+
+          {importarLinhas.length === 0 ? (
+            <div className="space-y-3">
+              <Textarea
+                className="font-mono text-xs h-64"
+                placeholder={"BASANCO SERVICOS LTDA\t\t25/06/2025\tC\tHistórico\t634\n Inter 0001 1441016 8\ntrue\n..."}
+                value={importarTexto}
+                onChange={e => setImportarTexto(e.target.value)}
+              />
+              <Button className="w-full" onClick={handleAnalisarImport} disabled={!importarTexto.trim()}>
+                Analisar
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="text-sm text-muted-foreground flex gap-4">
+                <span className="text-green-600 font-medium">{importarLinhas.filter(r => r.plano_id).length} encontradas</span>
+                {importarLinhas.filter(r => !r.plano_id).length > 0 && (
+                  <span className="text-red-500 font-medium">{importarLinhas.filter(r => !r.plano_id).length} conta não localizada</span>
+                )}
+              </div>
+              <div className="border rounded-lg overflow-hidden max-h-80 overflow-y-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Histórico</TableHead>
+                      <TableHead className="w-20">Tipo</TableHead>
+                      <TableHead>Conta Contábil</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {importarLinhas.map((r, i) => (
+                      <TableRow key={i} className={!r.plano_id ? "bg-red-50" : ""}>
+                        <TableCell className="text-xs font-mono truncate max-w-xs">{r.historico}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={r.tipo === "credito" ? "text-green-600 border-green-300" : "text-red-600 border-red-300"}>
+                            {r.tipo === "credito" ? "C" : "D"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {r.plano_id
+                            ? <span className="text-green-700"><span className="font-mono text-muted-foreground mr-1">{r.codigo}</span>{r.plano_nome}</span>
+                            : <span className="text-red-500">Código {r.codigo} não encontrado</span>
+                          }
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button variant="outline" className="flex-1" onClick={() => setImportarLinhas([])}>Voltar</Button>
+                <Button
+                  className="flex-1"
+                  onClick={handleSalvarRegrasImportadas}
+                  disabled={importarSaving || importarLinhas.filter(r => r.plano_id).length === 0}
+                >
+                  {importarSaving
+                    ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Importando...</>
+                    : <><Upload className="mr-2 h-4 w-4" />Importar {importarLinhas.filter(r => r.plano_id).length} regras</>
+                  }
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
