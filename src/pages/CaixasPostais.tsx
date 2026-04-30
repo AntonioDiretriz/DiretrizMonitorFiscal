@@ -236,17 +236,25 @@ export default function CaixasPostais() {
       return;
     }
 
-    // 2. Fallback: BrasilAPI (same as Empresas page)
+    // 2. Fallback: BrasilAPI → cnpj.ws
     setLoadingCnpj(true);
     try {
-      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`);
-      if (!res.ok) throw new Error("não encontrado");
-      const data = await res.json();
-      const nome = data.razao_social || data.nome_fantasia || "";
+      let nome = "";
+      const r1 = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`).catch(() => null);
+      if (r1?.ok) {
+        const d = await r1.json();
+        nome = d.razao_social || d.nome_fantasia || "";
+      } else {
+        const r2 = await fetch(`https://publica.cnpj.ws/cnpj/${digits}`).catch(() => null);
+        if (r2?.ok) {
+          const d = await r2.json();
+          nome = d.razao_social || "";
+        }
+      }
+      if (!nome) throw new Error("não encontrado");
       setForm(prev => ({ ...prev, cnpj: formatted, empresa: nome, empresa_id: "" }));
       toast({ title: "Empresa encontrada!", description: nome });
     } catch {
-      // CNPJ not in BrasilAPI — clear empresa field and allow manual entry
       setForm(prev => ({ ...prev, cnpj: formatted, empresa: "", empresa_id: "" }));
       toast({
         title: "Empresa não encontrada automaticamente",
