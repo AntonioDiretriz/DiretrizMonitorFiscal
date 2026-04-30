@@ -593,6 +593,7 @@ export default function Conciliacao() {
     await supabase.from("regras_conciliacao").upsert({
       user_id: ownerUserId, padrao: p, tipo,
       plano_contas_id: planoContasId, uso_count: 1, automatica: true,
+      conta_bancaria_id: selectedConta ?? null,
     }, { onConflict: "user_id,padrao,tipo" });
     supabase.from("regras_conciliacao").select("id, padrao, plano_contas_id, tipo, automatica, conta_bancaria_id")
       .then(({ data }) => { if (data) setRegras(data as RegrasConciliacao[]); });
@@ -1070,7 +1071,10 @@ export default function Conciliacao() {
             )}
             <Button variant="outline" onClick={() => setShowRegras(v => !v)}>
               {showRegras ? <ChevronUp className="mr-2 h-4 w-4" /> : <BookOpen className="mr-2 h-4 w-4" />}
-              {regras.length > 0 ? `Regras (${regras.length})` : "Regras"}
+              {(() => {
+                const n = regras.filter(r => r.conta_bancaria_id === selectedConta).length;
+                return n > 0 ? `Regras (${n})` : "Regras";
+              })()}
             </Button>
             {txConciliados.length > 0 && (
               <Button variant="outline" onClick={() => setShowExport(true)}>
@@ -1200,7 +1204,7 @@ export default function Conciliacao() {
 
       {/* ── PAINEL DE REGRAS ───────────────────────────────────────────────── */}
       {showRegras && selectedConta && regras.length > 0 && (() => {
-        const regrasContaAtual = regras.filter(r => !r.conta_bancaria_id || r.conta_bancaria_id === selectedConta);
+        const regrasContaAtual = regras.filter(r => r.conta_bancaria_id === selectedConta);
         const contaAtual = contas.find(c => c.id === selectedConta);
         const handleDeletarRegra = async (id: string) => {
           await supabase.from("regras_conciliacao").delete().eq("id", id);
@@ -1223,6 +1227,13 @@ export default function Conciliacao() {
                   </Button>
                 </div>
               </div>
+              {regrasContaAtual.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-sm text-muted-foreground gap-2">
+                  <BookOpen className="h-8 w-8 opacity-30" />
+                  <p>Nenhuma regra para este banco ainda.</p>
+                  <p className="text-xs">Clique em <strong>Importar Regras</strong> para importar do Mister Contador.</p>
+                </div>
+              ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -1259,6 +1270,7 @@ export default function Conciliacao() {
                   })}
                 </TableBody>
               </Table>
+              )}
             </CardContent>
           </Card>
         );
