@@ -288,7 +288,7 @@ export default function Conciliacao() {
 
   // ── Load ──────────────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
-    if (!user) return;
+    if (!user) return null;
     setLoading(true);
     const [cbRes, txRes, cpRes, empRes, rRes, impRes] = await Promise.all([
       supabase.from("contas_bancarias").select("id, empresa_id, banco, agencia, conta, tipo, descricao, saldo_inicial, codigo_dominio").order("banco"),
@@ -298,14 +298,40 @@ export default function Conciliacao() {
       supabase.from("regras_conciliacao").select("id, padrao, plano_contas_id, tipo, automatica, conta_bancaria_id"),
       (supabase as any).from("importacoes_bancarias").select("id, arquivo_nome, formato, status, total_transacoes, created_at, conta_bancaria_id").order("created_at", { ascending: false }).limit(100),
     ]);
+    const newTransacoes = (txRes.data ?? []) as Transacao[];
+    const newRegras     = (rRes.data ?? []) as RegrasConciliacao[];
     setContas((cbRes.data ?? []) as ContaBancaria[]);
-    setTransacoes((txRes.data ?? []) as Transacao[]);
+    setTransacoes(newTransacoes);
     setContasPagar((cpRes.data ?? []) as ContaPagar[]);
     setEmpresas((empRes.data ?? []) as Empresa[]);
-    setRegras((rRes.data ?? []) as RegrasConciliacao[]);
+    setRegras(newRegras);
     setImportacoes((impRes.data ?? []) as Importacao[]);
     setLoading(false);
+    return { transacoes: newTransacoes, regras: newRegras };
   }, [user]);
+
+  // Aplica regras de conciliação sobre um conjunto de transações frescos (pós-sync)
+  const aplicarRegrasAosPendentes = useCallback((txs: Transacao[], regs: RegrasConciliacao[], contaId: string) => {
+    const pendentes = txs.filter(t => t.conta_bancaria_id === contaId && t.status === "pendente");
+    if (pendentes.length === 0) return;
+    const updates: { id: string; planoId: string }[] = [];
+    pendentes.forEach(t => {
+      const desc  = t.descricao.toLowerCase();
+      const regra = regs.find(r => (r.tipo === t.tipo || r.tipo === "ambos") && desc.includes(r.padrao.toLowerCase()));
+      if (regra) updates.push({ id: t.id, planoId: regra.plano_contas_id });
+    });
+    if (updates.length === 0) return;
+    Promise.all(updates.map(u =>
+      supabase.from("transacoes_bancarias")
+        .update({ plano_contas_id: u.planoId, status: "conciliado", categorizado_por: "regra" })
+        .eq("id", u.id)
+    )).then(() => {
+      setTransacoes(prev => prev.map(t => {
+        const u = updates.find(x => x.id === t.id);
+        return u ? { ...t, plano_contas_id: u.planoId, status: "conciliado", categorizado_por: "regra" } : t;
+      }));
+    });
+  }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
@@ -352,7 +378,7 @@ export default function Conciliacao() {
         return u ? { ...t, plano_contas_id: u.planoId, status: "conciliado", categorizado_por: "regra" } : t;
       }));
     });
-  }, [selectedConta, regras, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedConta, regras, loading, transacoes.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Carregar contato da empresa selecionada (para flag)
   useEffect(() => {
@@ -428,7 +454,8 @@ export default function Conciliacao() {
       if (data?.error) throw new Error(data.error);
       toast({ title: `Sincronizado! ${data.total} transações importadas de ${data.banco ?? "banco"}.` });
       setShowPluggySync(false);
-      loadAll();
+      const fresh = await loadAll();
+      if (fresh && selectedConta) aplicarRegrasAosPendentes(fresh.transacoes, fresh.regras, selectedConta);
       // Recarregar conexão
       const { data: connRows } = await (supabase as any).from("pluggy_connections").select("item_id, banco_nome, ultima_sincronizacao, status").eq("conta_bancaria_id", selectedConta).order("ultima_sincronizacao", { ascending: false }).limit(1);
       setPluggyConn(connRows?.[0] ?? null);
@@ -493,7 +520,8 @@ export default function Conciliacao() {
       if (data?.error) throw new Error(data.error);
       toast({ title: `Sincronizado! ${data.total} transações importadas de ${data.banco ?? "banco"}.` });
       setShowBelvoSync(false);
-      loadAll();
+      const fresh = await loadAll();
+      if (fresh && selectedConta) aplicarRegrasAosPendentes(fresh.transacoes, fresh.regras, selectedConta);
       const { data: conn } = await (supabase as any).from("belvo_connections").select("link_id, banco_nome, ultima_sincronizacao").eq("conta_bancaria_id", selectedConta).eq("status", "connected").maybeSingle();
       setBelvoConn(conn ?? null);
     } catch (e: any) {
@@ -518,7 +546,8 @@ export default function Conciliacao() {
         if (error) throw new Error(error.message);
         if (data?.error) throw new Error(data.error);
         toast({ title: `${data.total ?? 0} transações importadas!`, description: `${fmtMes(selectedMes)} — ${data.banco ?? "banco"}` });
-        loadAll();
+        const fresh = await loadAll();
+        if (fresh) aplicarRegrasAosPendentes(fresh.transacoes, fresh.regras, selectedConta);
         const { data: pRows } = await (supabase as any).from("pluggy_connections").select("item_id, banco_nome, ultima_sincronizacao, status").eq("conta_bancaria_id", selectedConta).order("ultima_sincronizacao", { ascending: false }).limit(1);
         setPluggyConn(pRows?.[0] ?? null);
       } catch (e: any) {
@@ -540,7 +569,8 @@ export default function Conciliacao() {
         if (error) throw new Error(error.message);
         if (data?.error) throw new Error(data.error);
         toast({ title: `${data.total ?? 0} transações importadas!`, description: `${fmtMes(selectedMes)} — ${data.banco ?? "banco"}` });
-        loadAll();
+        const fresh = await loadAll();
+        if (fresh) aplicarRegrasAosPendentes(fresh.transacoes, fresh.regras, selectedConta);
         const { data: conn } = await (supabase as any).from("belvo_connections").select("link_id, banco_nome, ultima_sincronizacao").eq("conta_bancaria_id", selectedConta).eq("status", "connected").maybeSingle();
         setBelvoConn(conn ?? null);
       } catch (e: any) {
