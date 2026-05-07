@@ -1145,18 +1145,15 @@ export default function Conciliacao() {
                       )}
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">Selecione o mês e ano:</Label>
+                      <Label className="text-xs">Selecione o mês para sincronizar:</Label>
                       <Input
                         type="month"
                         value={integracaoMes}
-                        max={(() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return format(d, "yyyy-MM"); })()}
+                        max={format(new Date(), "yyyy-MM")}
                         onChange={e => setIntegracaoMes(e.target.value)}
                         className="h-8 text-sm"
                       />
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Mês atual bloqueado — processe sempre o mês fechado.
-                    </p>
                     <Button
                       className="w-full"
                       disabled={syncLoading || belvoLoading || !integracaoMes}
@@ -1470,7 +1467,42 @@ export default function Conciliacao() {
           </>
         )}
 
-{importacoesFiltradas.length > 0 && (
+        {/* Botão Atualizar Lançamentos */}
+        {selectedConta && selectedMes && (() => {
+          const hasConn = !!(pluggyConn || belvoConn);
+          const ultimaTx = transacoes
+            .filter(t => t.conta_bancaria_id === selectedConta && t.data.startsWith(selectedMes))
+            .map(t => t.data).sort().reverse()[0] ?? null;
+          return (
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-blue-300 text-blue-700 hover:bg-blue-50 gap-1.5"
+              disabled={syncLoading || belvoLoading || pluggyLoading}
+              onClick={() => {
+                if (hasConn) {
+                  handlePuxarMovimentacao(selectedMes);
+                } else {
+                  // Abre o popover de integração com o mês já preenchido
+                  setIntegracaoMes(selectedMes);
+                  setIntegracaoOpen(true);
+                }
+              }}
+            >
+              {(syncLoading || belvoLoading || pluggyLoading)
+                ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                : <RefreshCw className="h-3.5 w-3.5" />}
+              Atualizar
+              {ultimaTx && (
+                <span className="text-[10px] text-blue-500 font-normal">
+                  até {format(new Date(ultimaTx + "T12:00:00"), "dd/MM")}
+                </span>
+              )}
+            </Button>
+          );
+        })()}
+
+        {importacoesFiltradas.length > 0 && (
           <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground ml-auto" onClick={() => setShowHistory(h => !h)}>
             <History className="h-3.5 w-3.5" />
             {showHistory ? "Ocultar" : "Ver"} histórico ({importacoesFiltradas.length})

@@ -821,7 +821,15 @@ export default function Empresas() {
       ({ data: saved, error } = await save(base));
     }
 
-    if (error) { toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" }); return; }
+    if (error) {
+      const isDuplicate = error.code === "23505" || error.message?.toLowerCase().includes("unique");
+      toast({
+        title: isDuplicate ? "CNPJ já cadastrado" : "Erro ao salvar",
+        description: isDuplicate ? "Este CNPJ já está cadastrado no sistema." : error.message,
+        variant: "destructive",
+      });
+      return;
+    }
     if (!editingId) empresaId = (saved as any)?.id ?? null;
 
     // Sync socios

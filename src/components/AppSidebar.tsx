@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Building2, FileCheck, Bell, Settings, LogOut,
   Users, KeyRound, MailOpen, ChevronRight, Stethoscope,
   Banknote, CreditCard, ListChecks, Package, UserCheck, ClipboardList,
-  CalendarDays, BarChart2, User, BookOpen, Bot,
+  CalendarDays, BarChart2, User, BookOpen, Bot, TrendingUp, FileBarChart,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -70,11 +70,12 @@ export function AppSidebar() {
   ].filter(item => temModulo(item.moduleId as ModuleId));
 
   const financeiroItems = temModulo("financeiro") ? [
-    { title: "Visão Geral",    url: "/financeiro",   icon: Banknote   },
-    { title: "Contas a Pagar", url: "/contas-pagar", icon: CreditCard },
-    { title: "Conciliação",    url: "/conciliacao",        icon: ListChecks },
-    { title: "Regras",         url: "/regras-conciliacao", icon: ListChecks },
-    { title: "Obrigações",     url: "/obrigacoes",         icon: ListChecks },
+    { title: "Visão Geral",      url: "/financeiro",       icon: Banknote   },
+    { title: "Finance Insight",  url: "/finance-insight",  icon: TrendingUp },
+    { title: "Contas a Pagar",   url: "/contas-pagar",     icon: CreditCard },
+    { title: "Conciliação",      url: "/conciliacao",      icon: ListChecks },
+    { title: "Regras",           url: "/regras-conciliacao", icon: ListChecks },
+    { title: "Obrigações",       url: "/obrigacoes",       icon: ListChecks },
   ] : [];
 
   const rotinasItems = temModulo("rotinas") ? [
@@ -82,6 +83,10 @@ export function AppSidebar() {
     { title: "Calendário", url: "/rotinas/calendario",  icon: CalendarDays  },
     { title: "Dashboard",  url: "/rotinas/dashboard",   icon: BarChart2     },
     { title: "Automação",  url: "/rotinas/automacao",   icon: Bot           },
+  ] : [];
+
+  const relatoriosItems = temModulo("relatorios") ? [
+    { title: "Análise Gerencial", url: "/relatorios", icon: FileBarChart },
   ] : [];
 
   const configItems = [
@@ -93,7 +98,7 @@ export function AppSidebar() {
   ].filter(item => !item.adminOnly || isAdmin);
 
   const showMonitoramento = monitoramentoItems.length > 0;
-  const showModulo = showMonitoramento || financeiroItems.length > 0 || rotinasItems.length > 0;
+  const showModulo = showMonitoramento || financeiroItems.length > 0 || rotinasItems.length > 0 || relatoriosItems.length > 0;
 
   return (
     <Sidebar collapsible="icon">
@@ -199,6 +204,30 @@ export function AppSidebar() {
                           <NavSection icon={ClipboardList} label="Rotinas">
                             <SidebarMenuSub>
                               {rotinasItems.map((item) => (
+                                <SidebarMenuSubItem key={item.title}>
+                                  <SidebarMenuSubButton asChild>
+                                    <NavLink
+                                      to={item.url}
+                                      className="hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-foreground"
+                                      activeClassName="text-sidebar-foreground font-medium"
+                                    >
+                                      <item.icon className="h-3.5 w-3.5 shrink-0" />
+                                      <span>{item.title}</span>
+                                    </NavLink>
+                                  </SidebarMenuSubButton>
+                                </SidebarMenuSubItem>
+                              ))}
+                            </SidebarMenuSub>
+                          </NavSection>
+                        </SidebarMenuItem>
+                      )}
+
+                      {/* Relatórios */}
+                      {relatoriosItems.length > 0 && (
+                        <SidebarMenuItem>
+                          <NavSection icon={FileBarChart} label="Relatórios">
+                            <SidebarMenuSub>
+                              {relatoriosItems.map((item) => (
                                 <SidebarMenuSubItem key={item.title}>
                                   <SidebarMenuSubButton asChild>
                                     <NavLink

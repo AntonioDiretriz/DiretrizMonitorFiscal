@@ -1,6 +1,6 @@
-import { FileCheck, KeyRound, MailOpen, Banknote, ClipboardList, type LucideIcon } from "lucide-react";
+import { FileCheck, KeyRound, MailOpen, Banknote, ClipboardList, FileBarChart, type LucideIcon } from "lucide-react";
 
-export type ModuleId = "certidoes" | "certificados" | "caixas" | "financeiro" | "rotinas";
+export type ModuleId = "certidoes" | "certificados" | "caixas" | "financeiro" | "rotinas" | "relatorios";
 
 export const MODULES: { id: ModuleId; label: string; url: string; icon: LucideIcon; description: string }[] = [
   {
@@ -37,6 +37,13 @@ export const MODULES: { id: ModuleId; label: string; url: string; icon: LucideIc
     url: "/rotinas",
     icon: ClipboardList,
     description: "Gestão de rotinas e obrigações do escritório",
+  },
+  {
+    id: "relatorios",
+    label: "Relatórios",
+    url: "/relatorios",
+    icon: FileBarChart,
+    description: "Análise gerencial de despesas, receitas e DRE",
   },
 ];
 

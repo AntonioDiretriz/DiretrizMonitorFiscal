@@ -29,6 +29,8 @@ import DashboardRotinas from "./pages/DashboardRotinas";
 import AutomacaoRotinas from "./pages/AutomacaoRotinas";
 import DiagnosticoFiscal from "./pages/DiagnosticoFiscal";
 import ConfiguracaoObrigacoes from "./pages/ConfiguracaoObrigacoes";
+import FinanceInsight from "./pages/FinanceInsight";
+import Relatorios from "./pages/Relatorios";
 import NotFound from "./pages/NotFound";
 import AuthBanco from "./pages/AuthBanco";
 
@@ -73,6 +75,8 @@ const App = () => (
               <Route path="/rotinas/automacao" element={<AutomacaoRotinas />} />
               <Route path="/diagnostico-fiscal" element={<DiagnosticoFiscal />} />
               <Route path="/configuracao/obrigacoes" element={<ConfiguracaoObrigacoes />} />
+              <Route path="/finance-insight" element={<FinanceInsight />} />
+              <Route path="/relatorios" element={<Relatorios />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
