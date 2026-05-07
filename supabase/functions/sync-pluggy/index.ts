@@ -73,13 +73,15 @@ Deno.serve(async (req) => {
     const txUrl = `${PLUGGY_API}/transactions?accountId=${accountId}&from=${inicio}&to=${fim}`;
     const txs   = await fetchAllPages(txUrl, apiKey);
 
+    const connPayload = {
+      user_id, conta_bancaria_id, item_id, account_id: accountId, banco_nome: bancoNome,
+      status: "connected", ultima_sincronizacao: new Date().toISOString(),
+    };
+
     if (txs.length === 0) {
-      // Salvar/atualizar conexão mesmo sem transações
-      await (supabase as any).from("pluggy_connections").upsert({
-        user_id, conta_bancaria_id, item_id, account_id: accountId, banco_nome: bancoNome,
-        status: "connected", ultima_sincronizacao: new Date().toISOString(),
-      }, { onConflict: "user_id,item_id" });
-      return json({ success: true, total: 0 });
+      const { error: connErr } = await (supabase as any).from("pluggy_connections").upsert(connPayload, { onConflict: "user_id,item_id" });
+      if (connErr) console.error("pluggy_connections upsert error:", connErr.message);
+      return json({ success: true, total: 0, banco: bancoNome });
     }
 
     // Mapear para transacoes_bancarias
@@ -103,10 +105,8 @@ Deno.serve(async (req) => {
     if (upsertErr) return json({ error: upsertErr.message }, 500);
 
     // Salvar/atualizar conexão
-    await (supabase as any).from("pluggy_connections").upsert({
-      user_id, conta_bancaria_id, item_id, account_id: accountId, banco_nome: bancoNome,
-      status: "connected", ultima_sincronizacao: new Date().toISOString(),
-    }, { onConflict: "user_id,item_id" });
+    const { error: connErr } = await (supabase as any).from("pluggy_connections").upsert(connPayload, { onConflict: "user_id,item_id" });
+    if (connErr) console.error("pluggy_connections upsert error:", connErr.message);
 
     return json({ success: true, total: txs.length, banco: bancoNome });
 

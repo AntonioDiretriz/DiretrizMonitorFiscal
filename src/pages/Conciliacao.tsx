@@ -424,10 +424,17 @@ export default function Conciliacao() {
       const { PluggyConnect } = await import("pluggy-connect-sdk");
       new PluggyConnect({
         connectToken: data.connectToken,
-        onSuccess: async ({ item }: any) => {
+        onSuccess: async (payload: any) => {
+          // SDK v2 retorna { item } mas algumas versões retornam { itemId } ou { id }
+          const itemId = payload?.item?.id ?? payload?.itemId ?? payload?.id ?? payload?.item;
+          if (!itemId) {
+            toast({ title: "Erro: ID do item não recebido do Pluggy", variant: "destructive" });
+            setPluggyLoading(false);
+            return;
+          }
           toast({ title: "Banco conectado! Sincronizando..." });
           setPluggyLoading(false);
-          await handlePluggySync(item.id);
+          await handlePluggySync(String(itemId));
         },
         onError: (err: any) => {
           toast({ title: "Erro na conexão bancária", description: err?.message ?? String(err), variant: "destructive" });
@@ -454,11 +461,24 @@ export default function Conciliacao() {
       if (data?.error) throw new Error(data.error);
       toast({ title: `Sincronizado! ${data.total} transações importadas de ${data.banco ?? "banco"}.` });
       setShowPluggySync(false);
+
+      // Salvar conexão no cliente (fallback: garante verde mesmo se o server não salvou)
+      const connNow = {
+        item_id: id,
+        banco_nome: data.banco ?? null,
+        ultima_sincronizacao: new Date().toISOString(),
+        status: "connected" as const,
+      };
+      await (supabase as any).from("pluggy_connections").upsert({
+        user_id: ownerUserId, conta_bancaria_id: selectedConta, ...connNow,
+      }, { onConflict: "user_id,item_id" }).then(() => {}).catch(() => {});
+      setPluggyConn(connNow);  // verde imediatamente
+
       const fresh = await loadAll();
       if (fresh && selectedConta) aplicarRegrasAosPendentes(fresh.transacoes, fresh.regras, selectedConta);
-      // Recarregar conexão
+      // Tentar ler conexão do DB para dados mais completos (não sobrescreve se falhar)
       const { data: connRows } = await (supabase as any).from("pluggy_connections").select("item_id, banco_nome, ultima_sincronizacao, status").eq("conta_bancaria_id", selectedConta).order("ultima_sincronizacao", { ascending: false }).limit(1);
-      setPluggyConn(connRows?.[0] ?? null);
+      if (connRows?.[0]) setPluggyConn(connRows[0]);
     } catch (e: any) {
       toast({ title: "Erro na sincronização", description: e.message, variant: "destructive" });
     } finally {
@@ -520,10 +540,23 @@ export default function Conciliacao() {
       if (data?.error) throw new Error(data.error);
       toast({ title: `Sincronizado! ${data.total} transações importadas de ${data.banco ?? "banco"}.` });
       setShowBelvoSync(false);
+
+      // Salvar conexão no cliente (fallback)
+      const connNow = {
+        link_id: id,
+        banco_nome: data.banco ?? null,
+        ultima_sincronizacao: new Date().toISOString(),
+        status: "connected",
+      };
+      await (supabase as any).from("belvo_connections").upsert({
+        user_id: ownerUserId, conta_bancaria_id: selectedConta, ...connNow,
+      }, { onConflict: "user_id,link_id" }).then(() => {}).catch(() => {});
+      setBelvoConn(connNow);  // verde imediatamente
+
       const fresh = await loadAll();
       if (fresh && selectedConta) aplicarRegrasAosPendentes(fresh.transacoes, fresh.regras, selectedConta);
       const { data: conn } = await (supabase as any).from("belvo_connections").select("link_id, banco_nome, ultima_sincronizacao").eq("conta_bancaria_id", selectedConta).eq("status", "connected").maybeSingle();
-      setBelvoConn(conn ?? null);
+      if (conn) setBelvoConn(conn);
     } catch (e: any) {
       toast({ title: "Erro na sincronização Belvo", description: e.message, variant: "destructive" });
     } finally {
