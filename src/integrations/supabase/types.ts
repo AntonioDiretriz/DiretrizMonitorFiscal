@@ -293,6 +293,42 @@ export type Database = {
           },
         ]
       }
+      departamentos: {
+        Row: {
+          id: string
+          user_id: string
+          nome: string
+          descricao: string | null
+          modulos_padrao: string[]
+          cor: string
+          ativo: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          nome: string
+          descricao?: string | null
+          modulos_padrao?: string[]
+          cor?: string
+          ativo?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          nome?: string
+          descricao?: string | null
+          modulos_padrao?: string[]
+          cor?: string
+          ativo?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       empresas: {
         Row: {
           ativa: boolean
@@ -378,6 +414,7 @@ export type Database = {
         Row: {
           cpf: string | null
           created_at: string
+          departamento_id: string | null
           email: string
           escritorio_owner_id: string
           id: string
@@ -392,6 +429,7 @@ export type Database = {
         Insert: {
           cpf?: string | null
           created_at?: string
+          departamento_id?: string | null
           email: string
           escritorio_owner_id: string
           id?: string
@@ -406,6 +444,7 @@ export type Database = {
         Update: {
           cpf?: string | null
           created_at?: string
+          departamento_id?: string | null
           email?: string
           escritorio_owner_id?: string
           id?: string
@@ -417,7 +456,15 @@ export type Database = {
           pode_incluir?: boolean
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "usuarios_perfil_departamento_id_fkey"
+            columns: ["departamento_id"]
+            isOneToOne: false
+            referencedRelation: "departamentos"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

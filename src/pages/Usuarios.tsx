@@ -10,12 +10,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Users, Trash2, Pencil, KeyRound, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Tables } from "@/integrations/supabase/types";
 import { MODULES, ALL_MODULE_IDS, type ModuleId } from "@/lib/modules";
 
 type UsuarioPerfil = Tables<"usuarios_perfil">;
+type Departamento = Tables<"departamentos">;
 
 const PAPEL_ROTINAS_OPTIONS = [
   { value: "gerente",     label: "Gerente"     },
@@ -31,6 +33,7 @@ const EMPTY_FORM = {
   pode_incluir: false, pode_editar: false, pode_excluir: false,
   modulos: [] as ModuleId[],
   papel_rotinas: "",
+  departamento_id: "",
   departamentos: [] as string[],
 };
 
@@ -40,6 +43,7 @@ export default function Usuarios() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [usuarios, setUsuarios] = useState<UsuarioPerfil[]>([]);
+  const [departamentosDisponiveis, setDepartamentosDisponiveis] = useState<Departamento[]>([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [showSenha, setShowSenha] = useState(false);
   const [activeTab, setActiveTab] = useState("dados");
@@ -51,6 +55,16 @@ export default function Usuarios() {
 
   const loadUsuarios = useCallback(async () => {
     if (!user) return;
+    
+    // Carregar departamentos
+    const { data: deptData } = await supabase
+      .from("departamentos")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("ativo", true)
+      .order("nome");
+    setDepartamentosDisponiveis(deptData || []);
+
     const { data } = await supabase
       .from("usuarios_perfil")
       .select("*")
@@ -94,6 +108,7 @@ export default function Usuarios() {
       pode_incluir: u.pode_incluir, pode_editar: u.pode_editar, pode_excluir: u.pode_excluir,
       modulos: (u.modulos ?? []) as ModuleId[],
       papel_rotinas: (u as any).papel_rotinas ?? "",
+      departamento_id: u.departamento_id ?? "",
       departamentos: (u as any).departamentos ?? [],
     });
     setActiveTab("dados");
@@ -158,6 +173,7 @@ export default function Usuarios() {
       pode_excluir: form.is_admin ? true : form.pode_excluir,
       modulos:      form.is_admin ? ALL_MODULE_IDS : form.modulos,
       papel_rotinas: form.papel_rotinas,
+      departamento_id: form.departamento_id || null,
       departamentos: form.departamentos,
     };
 
@@ -165,11 +181,12 @@ export default function Usuarios() {
 
     const tryFallback = async (op: "insert" | "update") => {
       // Remove campos que podem não existir ainda na tabela
-      const { modulos: _m, papel_rotinas: _p, departamentos: _d, ...base } = payload;
+      const { modulos: _m, papel_rotinas: _p, departamentos: _d, departamento_id: _di, ...base } = payload;
       let fb: any = base;
       if (!error!.message.includes("modulos")) fb = { ...fb, modulos: payload.modulos };
       if (!error!.message.includes("papel_rotinas")) fb = { ...fb, papel_rotinas: payload.papel_rotinas };
       if (!error!.message.includes("departamentos")) fb = { ...fb, departamentos: payload.departamentos };
+      if (!error!.message.includes("departamento_id")) fb = { ...fb, departamento_id: payload.departamento_id };
       if (op === "update") {
         ({ error } = await supabase.from("usuarios_perfil").update(fb).eq("id", editingId!));
       } else {
@@ -178,7 +195,7 @@ export default function Usuarios() {
     };
 
     const needsFallback = (msg: string) =>
-      msg.includes("modulos") || msg.includes("papel_rotinas") || msg.includes("departamentos");
+      msg.includes("modulos") || msg.includes("papel_rotinas") || msg.includes("departamentos") || msg.includes("departamento_id");
 
     if (editingId) {
       ({ error } = await supabase.from("usuarios_perfil").update(payload).eq("id", editingId));
@@ -297,6 +314,31 @@ export default function Usuarios() {
                   <div className="space-y-2">
                     <Label>CPF</Label>
                     <Input value={form.cpf} onChange={handleCpfChange} placeholder="000.000.000-00" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Departamento Principal (Opcional)</Label>
+                    <Select
+                      value={form.departamento_id}
+                      onValueChange={(val) => {
+                        const dept = departamentosDisponiveis.find(d => d.id === val);
+                        setForm(p => ({
+                          ...p,
+                          departamento_id: val,
+                          modulos: dept ? (dept.modulos_padrao as ModuleId[]) : p.modulos
+                        }));
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um departamento..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Nenhum</SelectItem>
+                        {departamentosDisponiveis.map(d => (
+                          <SelectItem key={d.id} value={d.id}>{d.nome}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">Ao selecionar, os módulos padrão do departamento serão aplicados na aba Acesso.</p>
                   </div>
 
                   <div className="border-t pt-4 space-y-3">
@@ -573,6 +615,7 @@ export default function Usuarios() {
             <TableHeader>
               <TableRow>
                 <TableHead>Nome e E-mail</TableHead>
+                <TableHead>Departamento</TableHead>
                 <TableHead>Perfil</TableHead>
                 <TableHead>Permissões</TableHead>
                 <TableHead>Módulos</TableHead>
@@ -587,6 +630,20 @@ export default function Usuarios() {
                     <div className="font-medium">{u.nome}</div>
                     <div className="text-sm text-muted-foreground">{u.email}</div>
                     {u.cpf && <div className="text-xs text-muted-foreground opacity-70">CPF: {u.cpf}</div>}
+                  </TableCell>
+                  <TableCell>
+                    {(() => {
+                      const dept = departamentosDisponiveis.find(d => d.id === u.departamento_id);
+                      if (!dept) return <span className="text-muted-foreground text-xs italic">Nenhum</span>;
+                      return (
+                        <span
+                          className="text-xs font-medium px-2 py-0.5 rounded-full"
+                          style={{ backgroundColor: dept.cor + "20", color: dept.cor }}
+                        >
+                          {dept.nome}
+                        </span>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell>
                     {u.is_admin

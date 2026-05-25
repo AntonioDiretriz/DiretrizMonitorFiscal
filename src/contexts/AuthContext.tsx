@@ -6,6 +6,12 @@ import { ALL_MODULE_IDS, type ModuleId } from "@/lib/modules";
 
 type UsuarioPerfil = Tables<"usuarios_perfil">;
 
+interface DepartamentoInfo {
+  id: string;
+  nome: string;
+  cor: string;
+}
+
 interface AuthContextType {
   session: Session | null;
   user: User | null;
@@ -21,6 +27,7 @@ interface AuthContextType {
   isAdmin: boolean;
   modulosPermitidos: ModuleId[];
   temModulo: (id: ModuleId) => boolean;
+  departamento: DepartamentoInfo | null;
   signOut: () => Promise<void>;
 }
 
@@ -39,6 +46,7 @@ const AuthContext = createContext<AuthContextType>({
   isAdmin: true,
   modulosPermitidos: ALL_MODULE_IDS,
   temModulo: () => true,
+  departamento: null,
   signOut: async () => {},
 });
 
@@ -48,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [perfil, setPerfil] = useState<UsuarioPerfil | null>(null);
+  const [departamento, setDepartamento] = useState<DepartamentoInfo | null>(null);
 
   const loadPerfil = async (userId: string) => {
     const { data } = await supabase
@@ -56,6 +65,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq("user_id", userId)
       .maybeSingle();
     setPerfil(data);
+
+    // Carregar departamento se o membro tem departamento_id
+    if (data?.departamento_id) {
+      const { data: dept } = await supabase
+        .from("departamentos")
+        .select("id, nome, cor")
+        .eq("id", data.departamento_id)
+        .maybeSingle();
+      setDepartamento(dept ? { id: dept.id, nome: dept.nome, cor: dept.cor } : null);
+    } else {
+      setDepartamento(null);
+    }
   };
 
   useEffect(() => {
@@ -71,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (event === "SIGNED_OUT") {
           setLoading(false);
           setPerfil(null);
+          setDepartamento(null);
         }
       }
     );
@@ -118,6 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin,
       modulosPermitidos,
       temModulo,
+      departamento,
       signOut,
     }}>
       {children}

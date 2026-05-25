@@ -55,7 +55,7 @@ function NavSection({
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
-  const { signOut, isAdmin, isOwner, temModulo, displayName, user } = useAuth();
+  const { signOut, isAdmin, isOwner, temModulo, displayName, user, departamento } = useAuth();
   const email = user?.email ?? "";
   const initials = displayName
     ? displayName.split(" ").map((n: string) => n[0]).slice(0, 2).join("").toUpperCase()
@@ -63,34 +63,35 @@ export function AppSidebar() {
   const role = isOwner ? "Proprietário" : isAdmin ? "Administrador" : "Colaborador";
 
   const monitoramentoItems = [
-    { title: "Certidões",          url: "/certidoes",      icon: FileCheck,   moduleId: "certidoes"    as ModuleId },
-    { title: "Caixas Postais",     url: "/caixas-postais", icon: MailOpen,    moduleId: "caixas"       as ModuleId },
-    { title: "Diagnóstico Fiscal", icon: Stethoscope,      url: "/diagnostico-fiscal", moduleId: "certidoes" as ModuleId },
-    { title: "Certificados",       url: "/certificados",   icon: KeyRound,    moduleId: "certificados" as ModuleId },
-  ].filter(item => temModulo(item.moduleId as ModuleId));
+    { title: "Certidões",          url: "/certidoes",      icon: FileCheck,   moduleId: "certidoes:dashboard" },
+    { title: "Caixas Postais",     url: "/caixas-postais", icon: MailOpen,    moduleId: "caixas:dashboard" },
+    { title: "Certificados",       url: "/certificados",   icon: KeyRound,    moduleId: "certificados:ativos" },
+  ].filter(item => temModulo(item.moduleId));
 
-  const financeiroItems = temModulo("financeiro") ? [
-    { title: "Visão Geral",      url: "/financeiro",       icon: Banknote   },
-    { title: "Finance Insight",  url: "/finance-insight",  icon: TrendingUp },
-    { title: "Contas a Pagar",   url: "/contas-pagar",     icon: CreditCard },
-    { title: "Conciliação",      url: "/conciliacao",      icon: ListChecks },
-    { title: "Regras",           url: "/regras-conciliacao", icon: ListChecks },
-    { title: "Obrigações",       url: "/obrigacoes",       icon: ListChecks },
-  ] : [];
+  const financeiroItems = [
+    { title: "Visão Geral",      url: "/financeiro",       icon: Banknote, moduleId: "financeiro:visao" },
+    { title: "Comissão x eSocial",url: "/comissao-esocial",icon: Users, moduleId: "financeiro:comissao" },
+    { title: "Finance Insight",  url: "/finance-insight",  icon: TrendingUp, moduleId: "financeiro:insight" },
+    { title: "Contas a Pagar",   url: "/contas-pagar",     icon: CreditCard, moduleId: "financeiro:contas-pagar" },
+    { title: "Conciliação",      url: "/conciliacao",      icon: ListChecks, moduleId: "financeiro:conciliacao" },
+    { title: "Regras",           url: "/regras-conciliacao", icon: ListChecks, moduleId: "financeiro:regras" },
+    { title: "Obrigações",       url: "/obrigacoes",       icon: ListChecks, moduleId: "financeiro:obrigacoes" },
+  ].filter(item => temModulo(item.moduleId));
 
-  const rotinasItems = temModulo("rotinas") ? [
-    { title: "Tarefas",    url: "/rotinas",             icon: ClipboardList },
-    { title: "Calendário", url: "/rotinas/calendario",  icon: CalendarDays  },
-    { title: "Dashboard",  url: "/rotinas/dashboard",   icon: BarChart2     },
-    { title: "Automação",  url: "/rotinas/automacao",   icon: Bot           },
-  ] : [];
+  const rotinasItems = [
+    { title: "Tarefas",    url: "/rotinas",             icon: ClipboardList, moduleId: "rotinas:tarefas" },
+    { title: "Calendário", url: "/rotinas/calendario",  icon: CalendarDays, moduleId: "rotinas:calendario" },
+    { title: "Dashboard",  url: "/rotinas/dashboard",   icon: BarChart2, moduleId: "rotinas:dashboard" },
+    { title: "Automação",  url: "/rotinas/automacao",   icon: Bot, moduleId: "rotinas:automacao" },
+  ].filter(item => temModulo(item.moduleId));
 
-  const relatoriosItems = temModulo("relatorios") ? [
-    { title: "Análise Gerencial", url: "/relatorios", icon: FileBarChart },
-  ] : [];
+  const relatoriosItems = [
+    { title: "Análise Gerencial", url: "/relatorios", icon: FileBarChart, moduleId: "relatorios:analise" },
+  ].filter(item => temModulo(item.moduleId));
 
   const configItems = [
     { title: "Empresas",        url: "/empresas",                  icon: Building2,  adminOnly: false },
+    { title: "Departamentos",   url: "/departamentos",             icon: Building2,  adminOnly: true  },
     { title: "Fornecedores",    url: "/fornecedores",              icon: UserCheck,  adminOnly: true  },
     { title: "Equipe",          url: "/usuarios",                  icon: Users,      adminOnly: true  },
     { title: "Plano de Contas", url: "/plano-contas",              icon: ListChecks, adminOnly: false },
@@ -106,9 +107,9 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupLabel className="px-4 py-6">
             {!collapsed ? (
-              <img src="/logo-white.svg" alt="Diretriz Logo" className="h-8 w-auto object-contain" />
+              <img src="/logo-nova.png" alt="Diretriz Logo" className="h-9 w-auto object-contain" />
             ) : (
-              <img src="/favicon.svg" alt="Diretriz" className="h-7 w-7 object-contain" />
+              <img src="/logo-nova.png" alt="Diretriz" className="h-8 w-8 object-contain rounded" />
             )}
           </SidebarGroupLabel>
 
@@ -310,6 +311,14 @@ export function AppSidebar() {
                 <div className="ml-2 flex flex-col items-start overflow-hidden">
                   <span className="text-sm font-medium leading-tight truncate max-w-[140px]">{displayName}</span>
                   <span className="text-[10px] text-sidebar-foreground/50 truncate max-w-[140px]">{role}</span>
+                  {departamento && (
+                    <span
+                      className="text-[9px] font-medium px-1.5 py-0.5 rounded-full mt-0.5 truncate max-w-[140px]"
+                      style={{ backgroundColor: departamento.cor + "20", color: departamento.cor }}
+                    >
+                      {departamento.nome}
+                    </span>
+                  )}
                 </div>
               )}
             </Button>
@@ -320,6 +329,14 @@ export function AppSidebar() {
                 <p className="text-sm font-medium">{displayName}</p>
                 <p className="text-xs text-muted-foreground truncate">{email}</p>
                 <p className="text-xs text-muted-foreground">{role}</p>
+                {departamento && (
+                  <span
+                    className="text-[10px] font-medium px-2 py-0.5 rounded-full w-fit"
+                    style={{ backgroundColor: departamento.cor + "20", color: departamento.cor }}
+                  >
+                    {departamento.nome}
+                  </span>
+                )}
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />

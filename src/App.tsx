@@ -31,8 +31,12 @@ import DiagnosticoFiscal from "./pages/DiagnosticoFiscal";
 import ConfiguracaoObrigacoes from "./pages/ConfiguracaoObrigacoes";
 import FinanceInsight from "./pages/FinanceInsight";
 import Relatorios from "./pages/Relatorios";
+import Departamentos from "./pages/Departamentos";
 import NotFound from "./pages/NotFound";
 import AuthBanco from "./pages/AuthBanco";
+import ComissaoESocial from "./pages/ComissaoESocial";
+import ComissaoESocialDashboard from "./pages/ComissaoESocialDashboard";
+import ComissaoESocialHistorico from "./pages/ComissaoESocialHistorico";
 
 const queryClient = new QueryClient();
 
@@ -77,6 +81,10 @@ const App = () => (
               <Route path="/configuracao/obrigacoes" element={<ConfiguracaoObrigacoes />} />
               <Route path="/finance-insight" element={<FinanceInsight />} />
               <Route path="/relatorios" element={<Relatorios />} />
+              <Route path="/departamentos" element={<Departamentos />} />
+              <Route path="/comissao-esocial" element={<ComissaoESocial />} />
+              <Route path="/comissao-esocial/dashboard/:id" element={<ComissaoESocialDashboard />} />
+              <Route path="/comissao-esocial/historico" element={<ComissaoESocialHistorico />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

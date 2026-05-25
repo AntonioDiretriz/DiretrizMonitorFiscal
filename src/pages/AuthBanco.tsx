@@ -75,11 +75,11 @@ export default function AuthBanco() {
       <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center space-y-5">
 
         {/* Logo */}
-        <div className="flex justify-center">
+        <div className="relative z-10 text-center px-12">
           <img
-            src="/logo-diretriz.png"
-            alt="Diretriz Contabilidade"
-            className="h-10 object-contain"
+            src="/logo-nova.png"
+            alt="Diretriz"
+            className="h-[60px] w-auto mx-auto mb-8 object-contain"
             onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
           />
         </div>
