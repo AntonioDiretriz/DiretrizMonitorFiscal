@@ -4,6 +4,7 @@ import {
   Users, KeyRound, MailOpen, ChevronRight, Stethoscope,
   Banknote, CreditCard, ListChecks, Package, UserCheck, ClipboardList,
   CalendarDays, BarChart2, User, BookOpen, Bot, TrendingUp, FileBarChart,
+  ScanSearch,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -63,9 +64,10 @@ export function AppSidebar() {
   const role = isOwner ? "Proprietário" : isAdmin ? "Administrador" : "Colaborador";
 
   const monitoramentoItems = [
-    { title: "Certidões",          url: "/certidoes",      icon: FileCheck,   moduleId: "certidoes:dashboard" },
-    { title: "Caixas Postais",     url: "/caixas-postais", icon: MailOpen,    moduleId: "caixas:dashboard" },
-    { title: "Certificados",       url: "/certificados",   icon: KeyRound,    moduleId: "certificados:ativos" },
+    { title: "Certidões",          url: "/certidoes",        icon: FileCheck,   moduleId: "certidoes:dashboard" },
+    { title: "Caixas Postais",     url: "/caixas-postais",   icon: MailOpen,    moduleId: "caixas:dashboard" },
+    { title: "Certificados",       url: "/certificados",     icon: KeyRound,    moduleId: "certificados:ativos" },
+    { title: "Confronto XML",      url: "/confronto-xml",    icon: ScanSearch,  moduleId: "certidoes:confronto-xml" },
   ].filter(item => temModulo(item.moduleId));
 
   const financeiroItems = [

@@ -37,6 +37,8 @@ import AuthBanco from "./pages/AuthBanco";
 import ComissaoESocial from "./pages/ComissaoESocial";
 import ComissaoESocialDashboard from "./pages/ComissaoESocialDashboard";
 import ComissaoESocialHistorico from "./pages/ComissaoESocialHistorico";
+import ConfrontoXML from "./pages/ConfrontoXML";
+import ConfrontoXMLFechamentoDetalhe from "./pages/ConfrontoXMLFechamentoDetalhe";
 
 const queryClient = new QueryClient();
 
@@ -85,6 +87,8 @@ const App = () => (
               <Route path="/comissao-esocial" element={<ComissaoESocial />} />
               <Route path="/comissao-esocial/dashboard/:id" element={<ComissaoESocialDashboard />} />
               <Route path="/comissao-esocial/historico" element={<ComissaoESocialHistorico />} />
+              <Route path="/confronto-xml" element={<ConfrontoXML />} />
+              <Route path="/confronto-xml/fechamento/:fechamentoId" element={<ConfrontoXMLFechamentoDetalhe />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

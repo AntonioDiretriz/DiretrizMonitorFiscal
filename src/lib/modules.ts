@@ -17,7 +17,8 @@ export const MODULES: { id: ModuleId; label: string; url: string; icon: LucideIc
     subModules: [
       { id: "certidoes:dashboard", label: "Dashboard" },
       { id: "certidoes:empresas", label: "Empresas" },
-      { id: "certidoes:logs", label: "Logs" }
+      { id: "certidoes:logs", label: "Logs" },
+      { id: "certidoes:confronto-xml", label: "Confronto XML" }
     ]
   },
   {
