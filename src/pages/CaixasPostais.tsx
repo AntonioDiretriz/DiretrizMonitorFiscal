@@ -26,7 +26,7 @@ import {
   Plus, MailOpen, AlertTriangle, XCircle, CheckCircle2,
   Pencil, RefreshCw, History, Ban, Loader2,
   ChevronsUpDown, ChevronUp, ChevronDown,
-  Mail, MousePointerClick, Clock, Eye,
+  Mail, MousePointerClick, Clock, Eye, CreditCard, CircleDollarSign,
 } from "lucide-react";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
@@ -66,6 +66,9 @@ const EMPTY_FORM = {
   data_inicio: format(new Date(), "yyyy-MM-dd"),
   valor_atual: "",
   gratuidade: false,
+  parcelado: false,
+  num_parcelas: "",
+  parcelas_pagas: "0",
 };
 
 const EMPTY_RENOVACAO = {
@@ -287,6 +290,9 @@ export default function CaixasPostais() {
       data_inicio:      c.data_inicio,
       valor_atual:      c.valor_atual != null ? String(c.valor_atual) : "",
       gratuidade:       c.gratuidade ?? false,
+      parcelado:        (c as any).parcelado ?? false,
+      num_parcelas:     (c as any).num_parcelas != null ? String((c as any).num_parcelas) : "",
+      parcelas_pagas:   String((c as any).parcelas_pagas ?? 0),
     });
     setDialogOpen(true);
   };
@@ -337,9 +343,12 @@ export default function CaixasPostais() {
       data_vencimento:  dataVencimento,
       valor_atual:      form.gratuidade ? 0 : (form.valor_atual ? parseFloat(form.valor_atual) : null),
       gratuidade:       form.gratuidade,
+      parcelado:        form.parcelado,
+      num_parcelas:     form.parcelado && form.num_parcelas ? parseInt(form.num_parcelas) : null,
+      parcelas_pagas:   form.parcelado ? (parseInt(form.parcelas_pagas) || 0) : 0,
       contrato_status:  "ativo" as const,
       data_rescisao:    null,
-    };
+    } as any;
 
     let error: { message: string } | null;
     if (editingId) {
@@ -414,6 +423,18 @@ export default function CaixasPostais() {
     loadCaixas();
   };
 
+  const handlePagarParcela = async (c: CaixaPostal) => {
+    const pagas = (c as any).parcelas_pagas ?? 0;
+    const total = (c as any).num_parcelas ?? 0;
+    if (pagas >= total) return;
+    const { error } = await (supabase as any).from("caixas_postais")
+      .update({ parcelas_pagas: pagas + 1 })
+      .eq("id", c.id);
+    if (error) { toast({ title: "Erro", description: error.message, variant: "destructive" }); return; }
+    toast({ title: `Parcela ${pagas + 1}/${total} registrada!`, description: pagas + 1 === total ? "Contrato quitado!" : `Faltam ${total - pagas - 1} parcela(s).` });
+    loadCaixas();
+  };
+
   // ── Derived data ───────────────────────────────────────────────────────────
 
   const caixasPorBusca = caixas.filter(c =>
@@ -423,13 +444,21 @@ export default function CaixasPostais() {
     c.nome_responsavel.toLowerCase().includes(search.toLowerCase())
   );
 
-  const ativas      = caixasPorBusca.filter(c => getStatus(c).id === "ativa").length;
-  const aVencer     = caixasPorBusca.filter(c => getStatus(c).id === "a_vencer").length;
-  const vencidas    = caixasPorBusca.filter(c => getStatus(c).id === "vencida").length;
-  const rescindidas = caixasPorBusca.filter(c => getStatus(c).id === "rescindido").length;
+  const ativas            = caixasPorBusca.filter(c => getStatus(c).id === "ativa").length;
+  const aVencer           = caixasPorBusca.filter(c => getStatus(c).id === "a_vencer").length;
+  const vencidas          = caixasPorBusca.filter(c => getStatus(c).id === "vencida").length;
+  const rescindidas       = caixasPorBusca.filter(c => getStatus(c).id === "rescindido").length;
+  const parceladoPendente = caixasPorBusca.filter(c =>
+    (c as any).parcelado && ((c as any).parcelas_pagas ?? 0) < ((c as any).num_parcelas ?? 0)
+  ).length;
 
   const caixasFiltradas = caixasPorBusca
-    .filter(c => !statusFilter || statusFilter === "todos" || getStatus(c).id === statusFilter)
+    .filter(c => {
+      if (!statusFilter || statusFilter === "todos") return true;
+      if (statusFilter === "parcelado_pendente")
+        return (c as any).parcelado && ((c as any).parcelas_pagas ?? 0) < ((c as any).num_parcelas ?? 0);
+      return getStatus(c).id === statusFilter;
+    })
     .sort((a, b) => {
       let va: any, vb: any;
       if (sortCol === "empresa")    { va = a.empresa.toLowerCase(); vb = b.empresa.toLowerCase(); }
@@ -477,12 +506,13 @@ export default function CaixasPostais() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         {[
-          { id: "ativa",      label: "Ativas",          count: ativas,      icon: CheckCircle2,  cardCls: "bg-green-50/40 border-green-200",    selCls: "ring-2 ring-green-500 bg-green-50",    textCls: "text-green-700"   },
-          { id: "a_vencer",   label: "A Vencer (30d)",  count: aVencer,     icon: AlertTriangle, cardCls: "bg-amber-50/40 border-amber-200",    selCls: "ring-2 ring-amber-500 bg-amber-50",    textCls: "text-amber-700"   },
-          { id: "vencida",    label: "Vencidas",         count: vencidas,    icon: XCircle,       cardCls: "bg-red-50/40 border-red-200",        selCls: "ring-2 ring-red-500 bg-red-50",        textCls: "text-destructive" },
-          { id: "rescindido", label: "Rescindidas",      count: rescindidas, icon: Ban,           cardCls: "bg-gray-50/60 border-gray-200",      selCls: "ring-2 ring-gray-400 bg-gray-100",     textCls: "text-gray-600"    },
+          { id: "ativa",               label: "Ativas",            count: ativas,            icon: CheckCircle2,       cardCls: "bg-green-50/40 border-green-200",   selCls: "ring-2 ring-green-500 bg-green-50",   textCls: "text-green-700"   },
+          { id: "a_vencer",            label: "A Vencer (30d)",    count: aVencer,           icon: AlertTriangle,      cardCls: "bg-amber-50/40 border-amber-200",   selCls: "ring-2 ring-amber-500 bg-amber-50",   textCls: "text-amber-700"   },
+          { id: "vencida",             label: "Vencidas",           count: vencidas,          icon: XCircle,            cardCls: "bg-red-50/40 border-red-200",       selCls: "ring-2 ring-red-500 bg-red-50",       textCls: "text-destructive" },
+          { id: "parcelado_pendente",  label: "Parcelas Pendentes", count: parceladoPendente, icon: CircleDollarSign,   cardCls: "bg-blue-50/40 border-blue-200",     selCls: "ring-2 ring-blue-500 bg-blue-50",     textCls: "text-blue-700"    },
+          { id: "rescindido",          label: "Rescindidas",        count: rescindidas,       icon: Ban,                cardCls: "bg-gray-50/60 border-gray-200",     selCls: "ring-2 ring-gray-400 bg-gray-100",    textCls: "text-gray-600"    },
         ].map(({ id, label, count, icon: Icon, cardCls, selCls, textCls }) => (
           <Card
             key={id}
@@ -615,6 +645,7 @@ export default function CaixasPostais() {
               <SelectItem value="ativa">Ativas</SelectItem>
               <SelectItem value="a_vencer">A Vencer</SelectItem>
               <SelectItem value="vencida">Vencidas</SelectItem>
+              <SelectItem value="parcelado_pendente">Parcelas Pendentes</SelectItem>
               <SelectItem value="rescindido">Rescindidas</SelectItem>
             </SelectContent>
           </Select>
@@ -647,11 +678,27 @@ export default function CaixasPostais() {
                   <TableRow key={c.id} className={c.contrato_status === "rescindido" ? "opacity-55" : ""}>
                     <TableCell className="font-bold text-primary">#{c.numero}</TableCell>
                     <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         {c.empresa}
                         {c.gratuidade && (
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-100 text-violet-700 border border-violet-200">
                             GRATUIDADE
+                          </span>
+                        )}
+                        {(c as any).parcelado && (() => {
+                          const pagas = (c as any).parcelas_pagas ?? 0;
+                          const total = (c as any).num_parcelas ?? 0;
+                          const quitado = pagas >= total && total > 0;
+                          return (
+                            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${quitado ? "bg-green-100 text-green-700 border-green-200" : "bg-blue-100 text-blue-700 border-blue-200"}`}>
+                              <CreditCard className="h-2.5 w-2.5" />
+                              {quitado ? "QUITADO" : `${pagas}/${total} PARCELAS`}
+                            </span>
+                          );
+                        })()}
+                        {(c as any).parcelado && !(() => { const p = (c as any).parcelas_pagas ?? 0; const t = (c as any).num_parcelas ?? 0; return p >= t && t > 0; })() && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                            Falta {((c as any).num_parcelas ?? 0) - ((c as any).parcelas_pagas ?? 0)}x
                           </span>
                         )}
                       </div>
@@ -702,6 +749,15 @@ export default function CaixasPostais() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1 justify-end">
+                        {(c as any).parcelado && ((c as any).parcelas_pagas ?? 0) < ((c as any).num_parcelas ?? 0) && (
+                          <Button
+                            variant="ghost" size="icon"
+                            title={`Registrar parcela ${((c as any).parcelas_pagas ?? 0) + 1}/${(c as any).num_parcelas}`}
+                            onClick={() => handlePagarParcela(c)}
+                          >
+                            <CircleDollarSign className="h-4 w-4 text-blue-600" />
+                          </Button>
+                        )}
                         {c.contrato_status === "ativo" && (
                           <Button variant="ghost" size="icon" title="Renovar contrato" onClick={() => {
                             setSelectedId(c.id);
@@ -891,6 +947,50 @@ export default function CaixasPostais() {
                 )}
               </div>
             </div>
+
+            {/* Parcelamento */}
+            <div className={`flex items-center justify-between rounded-lg border p-3 ${form.parcelado ? "border-blue-300 bg-blue-50" : "border-border bg-muted/20"}`}>
+              <div>
+                <p className="text-sm font-medium flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-blue-500" />
+                  Pagamento Parcelado
+                </p>
+                <p className="text-xs text-muted-foreground">Contrato com pagamento dividido em parcelas</p>
+              </div>
+              <Switch
+                checked={form.parcelado}
+                onCheckedChange={checked => setForm({ ...form, parcelado: checked, num_parcelas: "", parcelas_pagas: "0" })}
+              />
+            </div>
+            {form.parcelado && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Nº de Parcelas</Label>
+                  <Input
+                    type="number" min="2"
+                    value={form.num_parcelas}
+                    onChange={e => setForm({ ...form, num_parcelas: e.target.value })}
+                    placeholder="Ex: 12"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Parcelas já Pagas</Label>
+                  <Input
+                    type="number" min="0"
+                    max={form.num_parcelas || undefined}
+                    value={form.parcelas_pagas}
+                    onChange={e => setForm({ ...form, parcelas_pagas: e.target.value })}
+                    placeholder="0"
+                  />
+                  {form.num_parcelas && (
+                    <p className="text-xs text-blue-600 font-medium">
+                      {Math.max(0, parseInt(form.num_parcelas || "0") - parseInt(form.parcelas_pagas || "0"))} parcela(s) pendente(s)
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>E-mail do Responsável</Label>
