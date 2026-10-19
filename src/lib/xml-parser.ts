@@ -46,13 +46,27 @@ export function parseXmlNfe(xmlString: string): XmlNfeData | null {
 
     const ide = doc.getElementsByTagName('ide')[0];
     const emit = doc.getElementsByTagName('emit')[0];
+    const dest = doc.getElementsByTagName('dest')[0];
     const icmsTot = doc.getElementsByTagName('ICMSTot')[0];
 
     const nNF = getText(ide, 'nNF');
     const serie = getText(ide, 'serie');
     const dhEmi = getText(ide, 'dhEmi') || getText(ide, 'dEmi');
     const cnpjEmitente = getText(emit, 'CNPJ');
+    const cnpjDest = getText(dest, 'CNPJ') || getText(dest, 'CPF');
     const xNome = getText(emit, 'xNome');
+
+    const vNF = getNumber(icmsTot, 'vNF');
+    const vProd = getNumber(icmsTot, 'vProd');
+    const vST = getNumber(icmsTot, 'vST');
+    const vIPI = getNumber(icmsTot, 'vIPI');
+    const vFrete = getNumber(icmsTot, 'vFrete');
+    const vSeguro = getNumber(icmsTot, 'vSeg');
+    const vOutro = getNumber(icmsTot, 'vOutro');
+    const vDesc = getNumber(icmsTot, 'vDesc');
+    // Valor escriturado (Valor Contábil do Dealernet): não inclui despesas
+    // acessórias que algumas notas somam ao vNF (PIS ST / COFINS ST).
+    const vEscriturado = vProd + vFrete + vSeguro + vOutro - vDesc + vST + vIPI;
 
     return {
       chNFe,
@@ -60,31 +74,56 @@ export function parseXmlNfe(xmlString: string): XmlNfeData | null {
       serie,
       dhEmi,
       cnpjEmitente,
+      cnpjDest,
       xNome,
-      vNF: getNumber(icmsTot, 'vNF'),
+      vNF,
       vBC: getNumber(icmsTot, 'vBC'),
       vICMS: getNumber(icmsTot, 'vICMS'),
       vBCST: getNumber(icmsTot, 'vBCST'),
-      vST: getNumber(icmsTot, 'vST'),
-      vIPI: getNumber(icmsTot, 'vIPI'),
+      vST,
+      vIPI,
       vPIS: getNumber(icmsTot, 'vPIS'),
       vCOFINS: getNumber(icmsTot, 'vCOFINS'),
-      vProd: getNumber(icmsTot, 'vProd'),
+      vProd,
+      vFrete,
+      vSeguro,
+      vOutro,
+      vDesc,
+      vEscriturado: vProd > 0 ? vEscriturado : undefined,
       cancelada: isXmlCancelada(doc),
     };
+
   } catch {
     return null;
   }
 }
 
-export async function parseXmlFiles(files: File[]): Promise<XmlNfeData[]> {
+/**
+ * Lê e interpreta os XMLs com concorrência limitada, cedendo a thread a cada
+ * lote para a interface continuar respondendo em uploads grandes.
+ */
+export async function parseXmlFiles(
+  files: File[],
+  onProgress?: (lidos: number, total: number) => void
+): Promise<XmlNfeData[]> {
   const results: XmlNfeData[] = [];
-  for (const file of files) {
-    const text = await file.text();
-    const parsed = parseXmlNfe(text);
-    if (parsed && parsed.nNF) {
-      results.push(parsed);
+  const LOTE = 25;
+  for (let i = 0; i < files.length; i += LOTE) {
+    const lote = files.slice(i, i + LOTE);
+    const parsed = await Promise.all(
+      lote.map(async (file) => {
+        try {
+          return parseXmlNfe(await file.text());
+        } catch {
+          return null;
+        }
+      })
+    );
+    for (const p of parsed) {
+      if (p && p.nNF) results.push(p);
     }
+    onProgress?.(Math.min(i + lote.length, files.length), files.length);
+    await new Promise((r) => setTimeout(r, 0));
   }
   return results;
 }

@@ -39,6 +39,7 @@ import ComissaoESocialDashboard from "./pages/ComissaoESocialDashboard";
 import ComissaoESocialHistorico from "./pages/ComissaoESocialHistorico";
 import ConfrontoXML from "./pages/ConfrontoXML";
 import ConfrontoXMLFechamentoDetalhe from "./pages/ConfrontoXMLFechamentoDetalhe";
+import ConciliacaoISS from "./pages/ConciliacaoISS";
 
 const queryClient = new QueryClient();
 
@@ -89,6 +90,7 @@ const App = () => (
               <Route path="/comissao-esocial/historico" element={<ComissaoESocialHistorico />} />
               <Route path="/confronto-xml" element={<ConfrontoXML />} />
               <Route path="/confronto-xml/fechamento/:fechamentoId" element={<ConfrontoXMLFechamentoDetalhe />} />
+              <Route path="/conciliacao-iss" element={<ConciliacaoISS />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

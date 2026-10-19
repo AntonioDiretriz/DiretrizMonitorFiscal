@@ -26,16 +26,29 @@ export async function fecharMes(params: {
   return { ok: true };
 }
 
+/** Lista fechamentos SEM o snapshot de resultados (payload leve). */
 export async function listarFechamentos(empresaId?: string): Promise<FechamentoMensal[]> {
   let query = supabase
     .from('fechamentos_mensais')
-    .select('*')
+    .select('id, empresa_id, competencia, titulo, fechado_por, fechado_em, resumo')
     .order('fechado_em', { ascending: false });
   if (empresaId) query = query.eq('empresa_id', empresaId);
   const { data, error } = await query;
   if (error || !data) return [];
-  return data as unknown as FechamentoMensal[];
+  return data.map((f) => ({ ...f, resultados: [] })) as unknown as FechamentoMensal[];
 }
+
+/** Carrega o snapshot de resultados de um fechamento sob demanda. */
+export async function carregarResultados(id: string): Promise<ConfrontoResult[]> {
+  const { data, error } = await supabase
+    .from('fechamentos_mensais')
+    .select('resultados')
+    .eq('id', id)
+    .maybeSingle();
+  if (error || !data) return [];
+  return (data.resultados ?? []) as unknown as ConfrontoResult[];
+}
+
 
 export async function atualizarFechamento(params: {
   id: string;

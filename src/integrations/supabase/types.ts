@@ -329,6 +329,83 @@ export type Database = {
         }
         Relationships: []
       }
+      excel_linhas_armazenadas: {
+        Row: {
+          cfop: string | null
+          ch_nfe: string | null
+          cnpj_emitente: string
+          competencia: string | null
+          created_at: string
+          data_documento: string
+          data_entrada: string | null
+          empresa_id: string
+          id: string
+          n_nf: string
+          nome_emitente: string | null
+          row_data: Json
+          serie: string
+          sheet_name: string | null
+          updated_at: string
+          uploaded_by: string | null
+          v_bc: number | null
+          v_icms: number | null
+          v_st: number | null
+          valor_contabil: number | null
+        }
+        Insert: {
+          cfop?: string | null
+          ch_nfe?: string | null
+          cnpj_emitente?: string
+          competencia?: string | null
+          created_at?: string
+          data_documento?: string
+          data_entrada?: string | null
+          empresa_id: string
+          id?: string
+          n_nf: string
+          nome_emitente?: string | null
+          row_data: Json
+          serie?: string
+          sheet_name?: string | null
+          updated_at?: string
+          uploaded_by?: string | null
+          v_bc?: number | null
+          v_icms?: number | null
+          v_st?: number | null
+          valor_contabil?: number | null
+        }
+        Update: {
+          cfop?: string | null
+          ch_nfe?: string | null
+          cnpj_emitente?: string
+          competencia?: string | null
+          created_at?: string
+          data_documento?: string
+          data_entrada?: string | null
+          empresa_id?: string
+          id?: string
+          n_nf?: string
+          nome_emitente?: string | null
+          row_data?: Json
+          serie?: string
+          sheet_name?: string | null
+          updated_at?: string
+          uploaded_by?: string | null
+          v_bc?: number | null
+          v_icms?: number | null
+          v_st?: number | null
+          valor_contabil?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "excel_linhas_armazenadas_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       empresas: {
         Row: {
           ativa: boolean
@@ -382,6 +459,47 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      fechamentos_mensais: {
+        Row: {
+          competencia: string
+          empresa_id: string
+          fechado_em: string
+          fechado_por: string | null
+          id: string
+          resultados: Json
+          resumo: Json
+          titulo: string | null
+        }
+        Insert: {
+          competencia: string
+          empresa_id: string
+          fechado_em?: string
+          fechado_por?: string | null
+          id?: string
+          resultados: Json
+          resumo: Json
+          titulo?: string | null
+        }
+        Update: {
+          competencia?: string
+          empresa_id?: string
+          fechado_em?: string
+          fechado_por?: string | null
+          id?: string
+          resultados?: Json
+          resumo?: Json
+          titulo?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fechamentos_mensais_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -462,6 +580,71 @@ export type Database = {
             columns: ["departamento_id"]
             isOneToOne: false
             referencedRelation: "departamentos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      xmls_armazenados: {
+        Row: {
+          cancelada: boolean
+          ch_nfe: string
+          cnpj_dest: string | null
+          cnpj_emitente: string | null
+          created_at: string
+          dh_emi: string | null
+          empresa_id: string
+          id: string
+          n_nf: string | null
+          serie: string | null
+          uploaded_by: string | null
+          v_escriturado: number | null
+          v_ipi: number | null
+          v_nf: number | null
+          x_nome: string | null
+          xml_data: Json
+        }
+        Insert: {
+          cancelada?: boolean
+          ch_nfe: string
+          cnpj_dest?: string | null
+          cnpj_emitente?: string | null
+          created_at?: string
+          dh_emi?: string | null
+          empresa_id: string
+          id?: string
+          n_nf?: string | null
+          serie?: string | null
+          uploaded_by?: string | null
+          v_escriturado?: number | null
+          v_ipi?: number | null
+          v_nf?: number | null
+          x_nome?: string | null
+          xml_data: Json
+        }
+        Update: {
+          cancelada?: boolean
+          ch_nfe?: string
+          cnpj_dest?: string | null
+          cnpj_emitente?: string | null
+          created_at?: string
+          dh_emi?: string | null
+          empresa_id?: string
+          id?: string
+          n_nf?: string | null
+          serie?: string | null
+          uploaded_by?: string | null
+          v_escriturado?: number | null
+          v_ipi?: number | null
+          v_nf?: number | null
+          x_nome?: string | null
+          xml_data?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "xmls_armazenados_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
             referencedColumns: ["id"]
           },
         ]

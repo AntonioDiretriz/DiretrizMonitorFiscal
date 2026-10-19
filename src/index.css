@@ -29,6 +29,10 @@
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
+    --success: 160 84% 30%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 30 60% 15%;
 
     --border: 230 18% 90%;
     --input: 230 18% 90%;
@@ -71,6 +75,10 @@
     --accent-foreground: 0 0% 100%;
     --destructive: 0 63% 31%;
     --destructive-foreground: 230 30% 96%;
+    --success: 160 70% 40%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 30 60% 15%;
     --border: 235 40% 17%;
     --input: 235 40% 17%;
     --ring: 358 84% 56%;
@@ -93,5 +101,11 @@
   body {
     @apply bg-background text-foreground;
     font-family: 'Kanit', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
   }
 }

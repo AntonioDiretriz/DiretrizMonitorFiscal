@@ -14,11 +14,12 @@ interface EmpresaOpt {
 }
 
 interface UploadSectionProps {
-  onProcess: (xmlFiles: File[], workbook: WorkBook, selectedSheets: string[], empresaId: string) => void;
+  onProcess: (xmlFiles: File[], workbook: WorkBook | null, selectedSheets: string[], empresaId: string) => void;
   isProcessing: boolean;
+  progressLabel?: string;
 }
 
-export function UploadSection({ onProcess, isProcessing }: UploadSectionProps) {
+export function UploadSection({ onProcess, isProcessing, progressLabel }: UploadSectionProps) {
   const [xmlFiles, setXmlFiles] = useState<File[]>([]);
   const [workbook, setWorkbook] = useState<WorkBook | null>(null);
   const [excelFileName, setExcelFileName] = useState('');
@@ -26,6 +27,8 @@ export function UploadSection({ onProcess, isProcessing }: UploadSectionProps) {
   const [selectedSheets, setSelectedSheets] = useState<string[]>([]);
   const [empresas, setEmpresas] = useState<EmpresaOpt[]>([]);
   const [empresaId, setEmpresaId] = useState<string>('');
+  const [readingExcel, setReadingExcel] = useState(false);
+  const [excelError, setExcelError] = useState('');
   const xmlInputRef = useRef<HTMLInputElement>(null);
   const xmlFolderInputRef = useRef<HTMLInputElement>(null);
   const excelInputRef = useRef<HTMLInputElement>(null);
@@ -34,7 +37,7 @@ export function UploadSection({ onProcess, isProcessing }: UploadSectionProps) {
     supabase
       .from('empresas')
       .select('id, razao_social, cnpj')
-      .eq('ativo', true)
+      .eq('ativa', true)
       .order('razao_social', { ascending: true })
       .then(({ data }) => {
         if (data) setEmpresas(data as EmpresaOpt[]);
@@ -56,13 +59,26 @@ export function UploadSection({ onProcess, isProcessing }: UploadSectionProps) {
     const file = e.target.files?.[0];
     if (!file) return;
     setExcelFileName(file.name);
-    const buffer = await file.arrayBuffer();
-    const wb = readWorkbook(buffer);
-    setWorkbook(wb);
-    const names = getSheetNames(wb);
-    setSheetNames(names);
-    const auto = autoDetectSheet(wb);
-    setSelectedSheets(auto ? [auto] : names.length > 0 ? [names[0]] : []);
+    setExcelError('');
+    setReadingExcel(true);
+    setWorkbook(null);
+    setSheetNames([]);
+    setSelectedSheets([]);
+    try {
+      const buffer = await file.arrayBuffer();
+      // dá um tick para a interface pintar o estado "Lendo planilha…"
+      await new Promise((r) => setTimeout(r, 0));
+      const wb = readWorkbook(buffer);
+      const names = getSheetNames(wb);
+      const auto = autoDetectSheet(wb);
+      setWorkbook(wb);
+      setSheetNames(names);
+      setSelectedSheets(auto ? [auto] : names.length > 0 ? [names[0]] : []);
+    } catch (err) {
+      setExcelError(err instanceof Error ? err.message : 'Não foi possível ler esta planilha.');
+    } finally {
+      setReadingExcel(false);
+    }
   }, []);
 
   const toggleSheet = (name: string) => {
@@ -71,7 +87,7 @@ export function UploadSection({ onProcess, isProcessing }: UploadSectionProps) {
     );
   };
 
-  const canProcess = !!empresaId && workbook && selectedSheets.length > 0;
+  const canProcess = !!empresaId && !readingExcel && (!workbook || selectedSheets.length > 0);
 
   return (
     <div className="mx-auto max-w-5xl space-y-8">
@@ -162,7 +178,7 @@ export function UploadSection({ onProcess, isProcessing }: UploadSectionProps) {
               </div>
               {xmlFiles.length > 0 && (
                 <div className="flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
                     {xmlFiles.length}
                   </span>
                   <span className="text-sm font-medium">
@@ -189,7 +205,7 @@ export function UploadSection({ onProcess, isProcessing }: UploadSectionProps) {
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground/10 text-sm font-bold text-foreground">
                 XLS
               </span>
-              Planilha de Registro de Entrada
+              Planilha de Registro de Entrada <span className="text-xs font-normal text-muted-foreground">(opcional se já houver base)</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -206,15 +222,29 @@ export function UploadSection({ onProcess, isProcessing }: UploadSectionProps) {
               />
               <Button
                 variant="outline"
+                disabled={readingExcel}
                 onClick={() => excelInputRef.current?.click()}
                 className="border-foreground/30 text-foreground hover:bg-foreground/5"
               >
-                Selecionar Planilha
+                {readingExcel ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-foreground border-t-transparent" />
+                    Lendo planilha…
+                  </span>
+                ) : (
+                  'Selecionar Planilha'
+                )}
               </Button>
               {excelFileName && (
                 <div className="text-center">
                   <p className="text-sm font-medium">{excelFileName}</p>
-                  <p className="text-xs text-muted-foreground">{sheetNames.length} aba(s) encontrada(s)</p>
+                  {readingExcel ? (
+                    <p className="text-xs text-muted-foreground">Lendo abas da planilha…</p>
+                  ) : excelError ? (
+                    <p className="text-xs text-destructive">{excelError}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">{sheetNames.length} aba(s) encontrada(s)</p>
+                  )}
                 </div>
               )}
             </div>
@@ -236,7 +266,7 @@ export function UploadSection({ onProcess, isProcessing }: UploadSectionProps) {
                   onClick={() => toggleSheet(name)}
                   className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
                     selectedSheets.includes(name)
-                      ? 'border-primary bg-primary text-white'
+                      ? 'border-primary bg-primary text-primary-foreground'
                       : 'border-border bg-background text-foreground hover:bg-muted'
                   }`}
                 >
@@ -249,22 +279,25 @@ export function UploadSection({ onProcess, isProcessing }: UploadSectionProps) {
       )}
 
       {/* Process Button */}
-      <div className="flex justify-center">
+      <div className="flex flex-col items-center gap-2">
         <Button
           size="lg"
           disabled={!canProcess || isProcessing}
-          onClick={() => workbook && empresaId && onProcess(xmlFiles, workbook, selectedSheets, empresaId)}
+          onClick={() => empresaId && onProcess(xmlFiles, workbook, selectedSheets, empresaId)}
           className="bg-primary px-8 text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
           {isProcessing ? (
             <span className="flex items-center gap-2">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
               Processando...
             </span>
           ) : (
             'Processar Confronto'
           )}
         </Button>
+        {isProcessing && progressLabel && (
+          <p className="text-xs text-muted-foreground">{progressLabel}</p>
+        )}
       </div>
     </div>
   );

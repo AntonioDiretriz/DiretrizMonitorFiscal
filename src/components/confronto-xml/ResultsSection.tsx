@@ -1,10 +1,10 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Plus, Trash2, Loader2, Upload, CalendarDays, Search, Lock, Save } from 'lucide-react';
+import { Plus, Trash2, Loader2, Upload, CalendarDays, Search, Lock, Save, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -25,7 +25,7 @@ import {
 import { Label } from '@/components/ui/label';
 import type { ConfrontoResult, ConfrontoSummary, ConfrontoStatus } from '@/lib/xml-confront-types';
 import { exportResults } from '@/lib/export-excel';
-import { getMonthKey } from '@/lib/confronto-engine';
+import { getMonthKey, recomputeSummary } from '@/lib/confronto-engine';
 import { fecharMes } from '@/lib/fechamentos';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -57,27 +57,30 @@ const MONTH_NAMES_PT = [
 ];
 
 function formatMonthLabel(key: string): string {
-  if (key === 'sem-data') return 'Sem data';
-  const [year, month] = key.split('-');
-  const idx = parseInt(month, 10) - 1;
-  if (idx < 0 || idx > 11) return key;
+  if (!key || key === 'sem-data') return 'Sem data';
+  const [year, month] = String(key).split('-');
+  const idx = parseInt(month ?? '', 10) - 1;
+  if (!Number.isFinite(idx) || idx < 0 || idx > 11) return key;
   return `${MONTH_NAMES_PT[idx]}/${year}`;
 }
 
-function formatCurrency(v: number | null): string {
-  if (v === null) return '—';
+
+function formatCurrency(v: number | null | undefined): string {
+  if (v === null || v === undefined || typeof v !== 'number' || !Number.isFinite(v)) return '—';
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function formatCnpj(v: string): string {
-  if (v.length === 14) {
-    return v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+function formatCnpj(v: string | null | undefined): string {
+  const s = String(v ?? '');
+  if (s.length === 14) {
+    return s.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
   }
-  if (v.length === 11) {
-    return v.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+  if (s.length === 11) {
+    return s.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
   }
-  return v;
+  return s;
 }
+
 
 export function ResultsSection({ results: initialResults, summary: initialSummary, onReset, empresaId, readOnly = false, resetLabel, onUpdate }: ResultsSectionProps) {
   const { user } = useAuth();
@@ -87,20 +90,36 @@ export function ResultsSection({ results: initialResults, summary: initialSummar
   const [filter, setFilter] = useState<FilterType>('todos');
   const [selectedMonth, setSelectedMonth] = useState<MonthSelection>('todos');
   const [searchNf, setSearchNf] = useState('');
+  const [showZeradas, setShowZeradas] = useState(false);
+
   const [deleteIdx, setDeleteIdx] = useState<number | null>(null);
   const [isAddingXmls, setIsAddingXmls] = useState(false);
+  const [isReconciling, setIsReconciling] = useState(false);
+  const [progressMsg, setProgressMsg] = useState<string | null>(null);
+  const [isAddingExcel, setIsAddingExcel] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [competenciasFechadas] = useState<Set<string>>(new Set());
   const [isClosing, setIsClosing] = useState(false);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveTitulo, setSaveTitulo] = useState('');
   const [saveCompetencia, setSaveCompetencia] = useState<string>('');
+  const [excelSheetDialog, setExcelSheetDialog] = useState<{ workbook: import('xlsx').WorkBook; sheets: string[]; selected: string[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const excelInputRef = useRef<HTMLInputElement>(null);
+
+  // Notas zeradas (valor contábil 0) — ocultas por padrão
+  const isZeradaRow = (r: ConfrontoResult) =>
+    r.isZerada ?? (r.valorPlanilha === 0 && (r.valorXml ?? 0) === 0);
+  const zeradasCount = useMemo(() => results.filter(isZeradaRow).length, [results]);
+  const visibleResults = useMemo(
+    () => (showZeradas ? results : results.filter((r) => !isZeradaRow(r))),
+    [results, showZeradas]
+  );
 
   // Months available in the dataset, sorted chronologically with counts
   const monthsAvailable = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const r of results) {
+    for (const r of visibleResults) {
       const key = getMonthKey(r.data);
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
@@ -111,27 +130,19 @@ export function ResultsSection({ results: initialResults, summary: initialSummar
         return a.localeCompare(b);
       })
       .map(([key, count]) => ({ key, count }));
-  }, [results]);
+  }, [visibleResults]);
 
   // Results filtered by selected month
   const resultsForMonth = useMemo(
-    () => (selectedMonth === 'todos' ? results : results.filter((r) => getMonthKey(r.data) === selectedMonth)),
-    [results, selectedMonth]
+    () => (selectedMonth === 'todos' ? visibleResults : visibleResults.filter((r) => getMonthKey(r.data) === selectedMonth)),
+    [visibleResults, selectedMonth]
   );
 
-  // Summary recalculated for the selected month
-  const summaryForMonth = useMemo<ConfrontoSummary>(() => {
-    if (selectedMonth === 'todos') return summary;
-    return {
-      totalPlanilha: resultsForMonth.filter((r) => r.valorPlanilha !== null).length,
-      totalXmls: resultsForMonth.filter((r) => r.valorXml !== null).length,
-      ok: resultsForMonth.filter((r) => r.status === 'ok').length,
-      divergentes: resultsForMonth.filter((r) => r.status === 'divergente').length,
-      ausentes: resultsForMonth.filter((r) => r.status === 'ausente_xml').length,
-      naoEscriturados: resultsForMonth.filter((r) => r.status === 'nao_escriturado').length,
-      canceladas: resultsForMonth.filter((r) => r.status === 'cancelada').length,
-    };
-  }, [resultsForMonth, selectedMonth, summary]);
+  // Summary recalculated for the current visible set
+  const summaryForMonth = useMemo<ConfrontoSummary>(
+    () => recomputeSummary(resultsForMonth),
+    [resultsForMonth]
+  );
 
   const filtered = useMemo(() => {
     let arr = filter === 'todos' ? resultsForMonth : resultsForMonth.filter((r) => r.status === filter);
@@ -139,6 +150,23 @@ export function ResultsSection({ results: initialResults, summary: initialSummar
     if (q) arr = arr.filter((r) => r.nNF && r.nNF.includes(q));
     return arr;
   }, [resultsForMonth, filter, searchNf]);
+
+
+  // Paginação da tabela (evita renderizar milhares de linhas de uma vez)
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(100);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, totalPages - 1);
+  const pageStart = safePage * pageSize;
+  const paged = useMemo(
+    () => filtered.slice(pageStart, pageStart + pageSize),
+    [filtered, pageStart, pageSize]
+  );
+
+  useEffect(() => {
+    setPage(0);
+  }, [filter, searchNf, selectedMonth, pageSize, showZeradas]);
+
 
   // Competências válidas para escolher como rótulo da análise (exclui "sem-data")
   const competenciasOpcoes = useMemo(
@@ -187,12 +215,13 @@ export function ResultsSection({ results: initialResults, summary: initialSummar
         competencia: saveCompetencia,
         titulo,
         fechadoPor: user.id,
-        resumo: summary,
-        resultados: results,
+        resumo: recomputeSummary(visibleResults),
+        resultados: visibleResults,
       });
       if (res.ok) {
         toast.success('Análise salva em Fechamentos');
-        exportResults(results);
+        exportResults(visibleResults);
+
         setSaveDialogOpen(false);
         navigate('/confronto-xml?tab=fechamentos');
       } else {
@@ -214,32 +243,43 @@ export function ResultsSection({ results: initialResults, summary: initialSummar
 
   const handleAddXmlsClick = () => fileInputRef.current?.click();
 
+  const monthFilterFn = () =>
+    selectedMonth === 'todos'
+      ? undefined
+      : (row: ConfrontoResult) => {
+          const k = getMonthKey(row.data);
+          return k === selectedMonth || k === 'sem-data';
+        };
+
+  const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
   const processXmlFiles = async (files: File[]) => {
     if (files.length === 0) return;
     setIsAddingXmls(true);
+    let etapa = 'preparar';
     try {
       const { parseXmlFiles } = await import('@/lib/xml-parser');
       const { reconcileMissing } = await import('@/lib/confronto-engine');
       const { salvarXmls } = await import('@/lib/xml-storage');
+
+      etapa = 'ler os XMLs';
       const xmlData = await parseXmlFiles(files);
 
       // Persistir os XMLs na base da empresa para reaproveitamento futuro
       let salvos = 0;
       if (empresaId && user && xmlData.length > 0) {
-        salvos = await salvarXmls(empresaId, user.id, xmlData);
+        etapa = 'salvar na base';
+        salvos = await salvarXmls(empresaId, user.id, xmlData, (feitos, total) =>
+          setProgressMsg(`Salvando ${feitos.toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')} XML(s)…`)
+        );
+        setProgressMsg(null);
       }
 
-      // Filtro de mês: aceita também notas com data não parseada ('sem-data')
-      const monthFilter = selectedMonth === 'todos'
-        ? undefined
-        : (row: ConfrontoResult) => {
-            const k = getMonthKey(row.data);
-            return k === selectedMonth || k === 'sem-data';
-          };
+      etapa = 'reconciliar';
       const { results: newResults, summary: newSummary, matched, unmatched } = reconcileMissing(
         results,
         xmlData,
-        monthFilter
+        monthFilterFn()
       );
       setResults(newResults);
       setSummary(newSummary);
@@ -248,7 +288,7 @@ export function ResultsSection({ results: initialResults, summary: initialSummar
           await onUpdate(newResults, newSummary);
         } catch (persistErr) {
           console.error('Erro ao persistir análise atualizada:', persistErr);
-          toast.error('XMLs reconciliados, mas falha ao salvar atualização');
+          toast.error(`XMLs reconciliados, mas falha ao salvar atualização: ${errMsg(persistErr)}`);
         }
       }
       const monthLabel = selectedMonth === 'todos' ? '' : `${formatMonthLabel(selectedMonth)}: `;
@@ -259,17 +299,179 @@ export function ResultsSection({ results: initialResults, summary: initialSummar
         description: descParts.length > 0 ? descParts.join(' · ') : undefined,
       });
     } catch (err) {
-      console.error('Erro ao adicionar XMLs:', err);
-      toast.error('Falha ao processar XMLs');
+      console.error(`Erro ao adicionar XMLs (etapa: ${etapa}):`, err);
+      toast.error(`Falha ao ${etapa}: ${errMsg(err)}`, { duration: 12000 });
     } finally {
+      setProgressMsg(null);
       setIsAddingXmls(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
+  /**
+   * Reconcilia as linhas "Ausente no XML" contra os XMLs já armazenados na base
+   * da empresa (e das filiais do mesmo CNPJ raiz), sem precisar reanexar arquivos.
+   */
+  const reconciliarComBase = async () => {
+    if (!empresaId) {
+      toast.error('Selecione uma empresa para reconciliar com a base');
+      return;
+    }
+    setIsReconciling(true);
+    let etapa = 'carregar a base de XMLs';
+    try {
+      const { carregarXmlsDaEmpresa } = await import('@/lib/xml-storage');
+      const { carregarLinhasDaEmpresa } = await import('@/lib/excel-storage');
+      const { reconcileMissing, refreshPlanilhaValues } = await import('@/lib/confronto-engine');
+      const base = await carregarXmlsDaEmpresa(empresaId, (feitos, total) =>
+        setProgressMsg(`Carregando ${feitos.toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')} XML(s) da base…`)
+      );
+      setProgressMsg(null);
+      if (base.length === 0) {
+        toast.info('Nenhum XML armazenado para esta empresa');
+        return;
+      }
+
+      // Atualiza os valores da planilha com a base atual (linhas corrigidas/reenviadas)
+      etapa = 'carregar a base de planilhas';
+      const linhasBase = await carregarLinhasDaEmpresa(empresaId, (feitas, total) =>
+        setProgressMsg(`Carregando ${feitas.toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')} linha(s) de planilha da base…`)
+      );
+      setProgressMsg(null);
+      const { results: atualizados } = refreshPlanilhaValues(results, linhasBase);
+
+      etapa = 'reconciliar com a base';
+      // Divergentes também podem ser recomparados com o XML da mesma chave
+      const existentes = new Set(
+        atualizados
+          .filter((r) => r.status === 'ok' || r.status === 'cancelada')
+          .map((r) => r.chNFe)
+          .filter((c) => !!c && c.length === 44)
+      );
+      const candidatos = base.filter((x) => !existentes.has(x.chNFe));
+
+      const { results: newResults, summary: newSummary, matched } = reconcileMissing(
+        atualizados,
+        candidatos,
+        monthFilterFn()
+      );
+      // Não transformar toda a base em "Não escriturado": manter só linhas já existentes + as reconciliadas
+      const keys = new Set(results.map((r) => (r.chNFe && r.chNFe.length === 44 ? `ch:${r.chNFe}` : `n:${r.nNF}|${r.serie}|${r.valorPlanilha ?? r.valorXml ?? ''}`)));
+      const filtered = newResults.filter((r) => {
+        const k = r.chNFe && r.chNFe.length === 44 ? `ch:${r.chNFe}` : `n:${r.nNF}|${r.serie}|${r.valorPlanilha ?? r.valorXml ?? ''}`;
+        return keys.has(k) || r.status !== 'nao_escriturado';
+      });
+      const { recomputeSummary: recompute } = await import('@/lib/confronto-engine');
+      const finalResults = filtered;
+      const finalSummary = filtered.length === newResults.length ? newSummary : recompute(filtered);
+
+      setResults(finalResults);
+      setSummary(finalSummary);
+      if (onUpdate) {
+        try {
+          await onUpdate(finalResults, finalSummary);
+        } catch (persistErr) {
+          console.error('Erro ao persistir análise atualizada:', persistErr);
+          toast.error(`Reconciliado, mas falha ao salvar atualização: ${errMsg(persistErr)}`);
+        }
+      }
+      const monthLabel = selectedMonth === 'todos' ? '' : `${formatMonthLabel(selectedMonth)}: `;
+      toast.success(`${monthLabel}${matched} nota(s) reconciliada(s) com a base`, {
+        description: `${base.length.toLocaleString('pt-BR')} XML(s) da base consultados`,
+      });
+    } catch (err) {
+      console.error(`Erro ao reconciliar com a base (etapa: ${etapa}):`, err);
+      toast.error(`Falha ao ${etapa}: ${errMsg(err)}`, { duration: 12000 });
+    } finally {
+      setProgressMsg(null);
+      setIsReconciling(false);
+    }
+  };
+
+
   const handleXmlFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []).filter((f) => f.name.toLowerCase().endsWith('.xml'));
     await processXmlFiles(files);
+  };
+
+  const handleAddExcelClick = () => excelInputRef.current?.click();
+
+  const processExcelSheets = async (workbook: import('xlsx').WorkBook, sheets: string[]) => {
+    setIsAddingExcel(true);
+    try {
+      const { parseSheet } = await import('@/lib/excel-parser');
+      const { reconcileExcel } = await import('@/lib/confronto-engine');
+      const { salvarLinhasExcel } = await import('@/lib/excel-storage');
+      const novasLinhas = sheets.flatMap((s) => parseSheet(workbook, s));
+      if (novasLinhas.length === 0) {
+        toast.error('Nenhuma linha encontrada nas abas selecionadas');
+        return;
+      }
+      let salvas = 0;
+      if (empresaId && user) {
+        salvas = await salvarLinhasExcel(empresaId, user.id, novasLinhas);
+      }
+      const monthFilter = selectedMonth === 'todos'
+        ? undefined
+        : (row: ConfrontoResult) => {
+            const k = getMonthKey(row.data);
+            return k === selectedMonth || k === 'sem-data';
+          };
+      const { results: newResults, summary: newSummary, matched, unmatched } = reconcileExcel(
+        results,
+        novasLinhas,
+        monthFilter
+      );
+      setResults(newResults);
+      setSummary(newSummary);
+      if (onUpdate) {
+        try {
+          await onUpdate(newResults, newSummary);
+        } catch (err) {
+          console.error('Erro ao persistir análise atualizada:', err);
+          toast.error('Linhas reconciliadas, mas falha ao salvar atualização');
+        }
+      }
+      const monthLabel = selectedMonth === 'todos' ? '' : `${formatMonthLabel(selectedMonth)}: `;
+      const descParts: string[] = [];
+      if (unmatched > 0) descParts.push(`${unmatched} linha(s) sem correspondência adicionada(s) como "Ausente no XML"`);
+      if (salvas > 0) descParts.push(`${salvas} linha(s) salva(s) na base da empresa`);
+      toast.success(`${monthLabel}${matched} linha(s) reconciliada(s)`, {
+        description: descParts.length > 0 ? descParts.join(' · ') : undefined,
+      });
+    } catch (err) {
+      console.error('Erro ao adicionar Excel:', err);
+      toast.error('Falha ao processar Excel');
+    } finally {
+      setIsAddingExcel(false);
+      if (excelInputRef.current) excelInputRef.current.value = '';
+    }
+  };
+
+  const handleExcelFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const { readWorkbook, getSheetNames, autoDetectSheet } = await import('@/lib/excel-parser');
+      const buffer = await file.arrayBuffer();
+      const wb = readWorkbook(buffer);
+      const names = getSheetNames(wb);
+      if (names.length === 0) {
+        toast.error('Planilha sem abas');
+        return;
+      }
+      if (names.length === 1) {
+        await processExcelSheets(wb, names);
+        return;
+      }
+      const auto = autoDetectSheet(wb);
+      setExcelSheetDialog({ workbook: wb, sheets: names, selected: auto ? [auto] : [names[0]] });
+    } catch (err) {
+      console.error('Erro ao ler Excel:', err);
+      toast.error('Falha ao ler arquivo Excel');
+    } finally {
+      if (excelInputRef.current) excelInputRef.current.value = '';
+    }
   };
 
   const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
@@ -303,22 +505,28 @@ export function ResultsSection({ results: initialResults, summary: initialSummar
   const showDropzone = canEditXmls && selectedMonth !== 'todos' && summaryForMonth.ausentes > 0;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6 notranslate" translate="no">
+
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Resultado do Confronto</h1>
-          <div className="text-sm text-muted-foreground flex items-center gap-2 mt-1">
+          <p className="text-sm text-muted-foreground flex items-center gap-2">
             {selectedMonth !== 'todos' && (
               <>
-                <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                <CalendarDays className="h-4 w-4" />
                 <span className="font-medium text-foreground">{formatMonthLabel(selectedMonth)}</span>
                 <span>·</span>
               </>
             )}
             {resultsForMonth.length} registro{resultsForMonth.length === 1 ? '' : 's'}
             {selectedMonth !== 'todos' ? ' nesta competência' : ' processados'}
-          </div>
+          </p>
+          {progressMsg && (
+            <p className="text-xs text-muted-foreground flex items-center gap-2 mt-1">
+              <Loader2 className="h-3 w-3 animate-spin" /> {progressMsg}
+            </p>
+          )}
         </div>
         <div className="flex gap-3 flex-wrap">
           <input
@@ -329,10 +537,29 @@ export function ResultsSection({ results: initialResults, summary: initialSummar
             className="hidden"
             onChange={handleXmlFiles}
           />
+          <input
+            ref={excelInputRef}
+            type="file"
+            accept=".xlsx,.xlsb,.xls"
+            className="hidden"
+            onChange={handleExcelFile}
+          />
           {canEditXmls && (
             <Button variant="outline" onClick={handleAddXmlsClick} disabled={isAddingXmls}>
               {isAddingXmls ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               Adicionar XMLs
+            </Button>
+          )}
+          {canEditXmls && !!empresaId && (
+            <Button variant="outline" onClick={reconciliarComBase} disabled={isReconciling || isAddingXmls}>
+              {isReconciling ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Reconciliar com a base
+            </Button>
+          )}
+          {canEditXmls && (
+            <Button variant="outline" onClick={handleAddExcelClick} disabled={isAddingExcel}>
+              {isAddingExcel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Adicionar Excel
             </Button>
           )}
           {readOnly && (
@@ -368,16 +595,30 @@ export function ResultsSection({ results: initialResults, summary: initialSummar
       </div>
 
       {/* Search by NF number */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          type="search"
-          placeholder="Buscar por nº da NF…"
-          value={searchNf}
-          onChange={(e) => setSearchNf(e.target.value)}
-          className="pl-9"
-        />
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="relative max-w-sm flex-1 min-w-[220px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Buscar por nº da NF…"
+            value={searchNf}
+            onChange={(e) => setSearchNf(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        {zeradasCount > 0 && (
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={showZeradas}
+              onChange={(e) => setShowZeradas(e.target.checked)}
+              className="h-4 w-4 accent-[var(--primary)]"
+            />
+            Mostrar notas zeradas ({zeradasCount})
+          </label>
+        )}
       </div>
+
 
       {/* Month chips */}
       {monthsAvailable.length > 0 && (
@@ -387,11 +628,11 @@ export function ResultsSection({ results: initialResults, summary: initialSummar
             onClick={() => setSelectedMonth('todos')}
             className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
               selectedMonth === 'todos'
-                ? 'border-primary bg-primary text-primary-foreground'
+                ? 'border-foreground bg-foreground text-background'
                 : 'border-border bg-background text-foreground hover:bg-muted'
             }`}
           >
-            Todos ({results.length})
+            Todos ({visibleResults.length})
           </button>
           {monthsAvailable.map((m) => {
             const closed = competenciasFechadas.has(m.key);
@@ -401,7 +642,7 @@ export function ResultsSection({ results: initialResults, summary: initialSummar
                 onClick={() => setSelectedMonth(m.key)}
                 className={`flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                   selectedMonth === m.key
-                    ? 'border-primary bg-primary text-primary-foreground'
+                    ? 'border-foreground bg-foreground text-background'
                     : 'border-border bg-background text-foreground hover:bg-muted'
                 }`}
               >
@@ -459,7 +700,7 @@ export function ResultsSection({ results: initialResults, summary: initialSummar
             onClick={() => setFilter(f.key)}
             className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${
               filter === f.key
-                ? 'border-primary bg-primary text-primary-foreground'
+                ? 'border-foreground bg-foreground text-background'
                 : 'border-border bg-background text-foreground hover:bg-muted'
             }`}
           >
@@ -490,14 +731,15 @@ export function ResultsSection({ results: initialResults, summary: initialSummar
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((row, i) => {
+                  {paged.map((row, i) => {
                     const cfg = STATUS_CONFIG[row.status];
                     return (
-                      <TableRow key={i} className={i % 2 === 0 ? '' : 'bg-muted/30'}>
+                      <TableRow key={pageStart + i} className={i % 2 === 0 ? '' : 'bg-muted/30'}>
+
                         <TableCell>
                           <Badge
-                              variant="outline"
-                              className={`whitespace-nowrap ${cfg.color}`}
+                            variant="outline"
+                            className={`whitespace-nowrap ${cfg.color}`}
                           >
                             {cfg.emoji} {cfg.label}
                           </Badge>
@@ -538,7 +780,7 @@ export function ResultsSection({ results: initialResults, summary: initialSummar
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                                  onClick={() => setDeleteIdx(i)}
+                                  onClick={() => setDeleteIdx(pageStart + i)}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -561,8 +803,38 @@ export function ResultsSection({ results: initialResults, summary: initialSummar
               </Table>
             </TooltipProvider>
           </div>
+          {filtered.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm">
+              <span className="text-muted-foreground">
+                {(pageStart + 1).toLocaleString('pt-BR')}–{Math.min(pageStart + pageSize, filtered.length).toLocaleString('pt-BR')} de{' '}
+                {filtered.length.toLocaleString('pt-BR')} linhas
+              </span>
+              <div className="flex items-center gap-2">
+                <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
+                  <SelectTrigger className="h-8 w-[130px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[50, 100, 250, 500].map((n) => (
+                      <SelectItem key={n} value={String(n)}>{n} por página</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="sm" disabled={safePage === 0} onClick={() => setPage(safePage - 1)}>
+                  Anterior
+                </Button>
+                <span className="text-muted-foreground whitespace-nowrap">
+                  {safePage + 1} / {totalPages}
+                </span>
+                <Button variant="outline" size="sm" disabled={safePage >= totalPages - 1} onClick={() => setPage(safePage + 1)}>
+                  Próxima
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
+
 
       <AlertDialog open={deleteIdx !== null} onOpenChange={(open) => !open && setDeleteIdx(null)}>
         <AlertDialogContent>
@@ -613,7 +885,7 @@ export function ResultsSection({ results: initialResults, summary: initialSummar
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                {results.length} registro{results.length === 1 ? '' : 's'} serão salvos nesta análise.
+                {visibleResults.length} registro{visibleResults.length === 1 ? "" : "s"} serão salvos nesta análise.
               </p>
             </div>
           </div>
@@ -632,6 +904,65 @@ export function ResultsSection({ results: initialResults, summary: initialSummar
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!excelSheetDialog} onOpenChange={(o) => !isAddingExcel && !o && setExcelSheetDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Selecione as abas para processar</DialogTitle>
+            <DialogDescription>
+              Marque as abas da planilha que devem ser importadas e reconciliadas com os XMLs já carregados.
+            </DialogDescription>
+          </DialogHeader>
+          {excelSheetDialog && (
+            <div className="flex flex-wrap gap-2 py-2">
+              {excelSheetDialog.sheets.map((name) => {
+                const active = excelSheetDialog.selected.includes(name);
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() =>
+                      setExcelSheetDialog((d) =>
+                        d
+                          ? {
+                              ...d,
+                              selected: active ? d.selected.filter((s) => s !== name) : [...d.selected, name],
+                            }
+                          : d
+                      )
+                    }
+                    className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                      active
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border bg-background text-foreground hover:bg-muted'
+                    }`}
+                  >
+                    {name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExcelSheetDialog(null)} disabled={isAddingExcel}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!excelSheetDialog || excelSheetDialog.selected.length === 0) return;
+                const { workbook, selected } = excelSheetDialog;
+                setExcelSheetDialog(null);
+                await processExcelSheets(workbook, selected);
+              }}
+              disabled={isAddingExcel || !excelSheetDialog || excelSheetDialog.selected.length === 0}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {isAddingExcel ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Processar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }

@@ -18,7 +18,8 @@ export const MODULES: { id: ModuleId; label: string; url: string; icon: LucideIc
       { id: "certidoes:dashboard", label: "Dashboard" },
       { id: "certidoes:empresas", label: "Empresas" },
       { id: "certidoes:logs", label: "Logs" },
-      { id: "certidoes:confronto-xml", label: "Confronto XML" }
+      { id: "certidoes:confronto-xml", label: "Confronto XML" },
+      { id: "certidoes:conciliacao-iss", label: "Conciliação ISS" }
     ]
   },
   {

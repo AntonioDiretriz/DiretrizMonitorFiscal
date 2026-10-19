@@ -4,6 +4,8 @@ export interface XmlNfeData {
   serie: string;
   dhEmi: string;
   cnpjEmitente: string;
+  /** CNPJ do destinatário — usado para casar notas emitidas pela própria empresa. */
+  cnpjDest?: string;
   xNome: string;
   vNF: number;
   vBC: number;
@@ -14,7 +16,19 @@ export interface XmlNfeData {
   vPIS: number;
   vCOFINS: number;
   vProd: number;
+  /** Frete, seguro, outras despesas e desconto (totais da NF-e). */
+  vFrete?: number;
+  vSeguro?: number;
+  vOutro?: number;
+  vDesc?: number;
+  /**
+   * Valor da nota como o Dealernet escritura no "Valor Contábil":
+   * produtos + frete + seguro + outras despesas - desconto + ICMS ST + IPI.
+   * Ignora despesas acessórias somadas ao vNF (ex.: PIS ST / COFINS ST).
+   */
+  vEscriturado?: number;
   cancelada: boolean;
+
 }
 
 export interface ExcelNfeData {
@@ -33,12 +47,16 @@ export interface ExcelNfeData {
   sheetName: string;
   isFrete?: boolean;
   cfop?: string;
+  /** Valor contábil zerado — ocultada do relatório por padrão. */
+  isZerada?: boolean;
+
 }
 
 export interface Empresa {
   id: string;
   razao_social: string;
   cnpj: string;
+  soma_ipi_dealernet: boolean;
   ativo: boolean;
 }
 
@@ -69,6 +87,8 @@ export interface ConfrontoResult {
   serie: string;
   data: string;
   cnpjEmitente: string;
+  /** CNPJ do destinatário do XML casado (notas emitidas pela própria empresa). */
+  cnpjDest?: string;
   nomeEmitente: string;
   valorPlanilha: number | null;
   valorXml: number | null;
@@ -77,7 +97,10 @@ export interface ConfrontoResult {
   sheetName?: string;
   cfop?: string;
   isFrete?: boolean;
+  /** Valor contábil zerado — ocultada do relatório por padrão. */
+  isZerada?: boolean;
 }
+
 
 export interface ConfrontoSummary {
   totalPlanilha: number;

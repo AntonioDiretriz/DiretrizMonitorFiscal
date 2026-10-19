@@ -22,6 +22,14 @@ export const CFOPS_FRETE_IGNORADOS = new Set<string>([
 // CFOPs de ajuste/estorno — quando valor contábil é zero, ignorar de "ausentes"
 export const CFOPS_AJUSTE_ZERADO = new Set<string>(['2949', '1949']);
 
+// Emitentes em que o relatório RFS008 quebra valores extras (PIS/COFINS RET,
+// ICMS ST RET ENTRADA, etc.) em linhas de continuação logo abaixo da NF principal.
+// Para esses CNPJs somamos a coluna AR (índice 43) da linha principal e de
+// todas as linhas de continuação (sem nNF) ao Valor Contábil da NF.
+// Yamaha Motor da Amazônia LTDA — 04.817.052/0001-06.
+const CNPJS_SOMA_AR = new Set<string>(['04817052000106']);
+const AR_COL_INDEX = 43; // coluna AR (1-based 44) no layout fixo do RFS008
+
 function normalizeStr(s: string): string {
   return s
     .toLowerCase()
@@ -90,7 +98,14 @@ function mapColumns(headerRow: unknown[]): ColumnMap {
   headerRow.forEach((cell, idx) => {
     const t = cell ? normalizeStr(String(cell)) : '';
     if (t.includes('chave') || t.includes('chnfe')) map.chNFe = idx;
-    else if (t.includes('cfop') || t.includes('c.f.o.p')) map.cfop = idx;
+    else if (
+      t.includes('cfop') || t.includes('c.f.o.p') ||
+      t === 'fiscal' || t === 'cod. fiscal' || t === 'cod fiscal' ||
+      t.includes('codificacao fiscal')
+    ) {
+      if (map.cfop === -1) map.cfop = idx;
+    }
+
     else if (t.includes('numero') || t.includes('nº') || t.includes('n°') || t === 'nf') map.nNF = idx;
     else if (t.includes('serie') || t.includes('sub')) {
       if (map.serie === -1) map.serie = idx;
@@ -141,15 +156,69 @@ export function parseSheet(workbook: XLSX.WorkBook, sheetName: string): ExcelNfe
     return HEADER_KEYWORDS.some((kw) => t.includes(kw));
   }) ? 2 : 1);
 
+  // Fallback posicional: alguns relatórios (RFS008) rotulam a coluna de CFOP
+  // apenas como "Codificação / Fiscal". Se o cabeçalho não revelou, procuramos
+  // a coluna cujos valores sejam predominantemente códigos CFOP (4 dígitos
+  // iniciando em 1, 2, 3, 5, 6 ou 7).
+  if (colMap.cfop === -1) {
+    const sampleRows = data.slice(dataStart, dataStart + 200) as unknown[][];
+    const maxCols = sampleRows.reduce((m, r) => Math.max(m, r?.length ?? 0), 0);
+    let bestCol = -1;
+    let bestRatio = 0;
+    for (let c = 0; c < maxCols; c++) {
+      if (c === colMap.nNF || c === colMap.serie || c === colMap.valorContabil) continue;
+      let filled = 0;
+      let cfopLike = 0;
+      for (const r of sampleRows) {
+        const raw = String(r?.[c] ?? '').trim();
+        if (!raw) continue;
+        filled++;
+        if (/^[123567]\d{3}$/.test(raw.replace(/\D/g, ''))) cfopLike++;
+      }
+      if (filled < 5) continue;
+      const ratio = cfopLike / filled;
+      if (ratio > 0.7 && ratio > bestRatio) { bestRatio = ratio; bestCol = c; }
+    }
+    if (bestCol >= 0) colMap.cfop = bestCol;
+  }
+
   const results: ExcelNfeData[] = [];
+
+
+  // Após uma linha "Total", linhas sem nNF são totais gerais — não somar na última NF.
+  let aposTotal = false;
 
   for (let i = dataStart; i < data.length; i++) {
     const row = data[i] as unknown[];
     if (!row || row.every((c) => !c || String(c).trim() === '')) continue;
+    if (row.some((c) => /^total:?$/i.test(String(c ?? '').trim()))) { aposTotal = true; continue; }
 
     const nNF = colMap.nNF >= 0 ? String(row[colMap.nNF] ?? '').trim() : '';
     const cnpj = colMap.cnpj >= 0 ? cleanCnpj(String(row[colMap.cnpj] ?? '')) : '';
 
+    const parseCell = (v: unknown): number => {
+      if (typeof v === 'number') return v;
+      const s = String(v ?? '').replace(/[^\d,.\-]/g, '').replace(',', '.');
+      return parseFloat(s) || 0;
+    };
+
+    // Linha de continuação (sem nNF e sem CNPJ): para Yamaha (e outros CNPJs
+    // de CNPJS_SOMA_AR), somar o valor da coluna AR ao Valor Contábil da
+    // última NF emitida.
+    if (!nNF && !cnpj) {
+      const last = results[results.length - 1];
+      // Continuação legítima repete o CFOP da nota; linhas de total geral
+      // (ex.: "ICMS ST RET ENTRADA" no rodapé) não têm CFOP.
+      const temCfop = colMap.cfop < 0 ||
+        /^[123]\d{3}$/.test(String(row[colMap.cfop] ?? '').replace(/\D/g, ''));
+      if (!aposTotal && temCfop && last && CNPJS_SOMA_AR.has(last.cnpjEmitente)) {
+        const arVal = parseCell(row[AR_COL_INDEX]);
+        if (arVal !== 0) {
+          last.valorContabil = +(last.valorContabil + arVal).toFixed(2);
+        }
+      }
+      continue;
+    }
     // Skip rows that don't look like data (need at least nNF or CNPJ)
     if (!nNF && !cnpj) continue;
     // Skip if nNF is not numeric
@@ -164,14 +233,13 @@ export function parseSheet(workbook: XLSX.WorkBook, sheetName: string): ExcelNfe
     }
 
     const valorStr = colMap.valorContabil >= 0 ? row[colMap.valorContabil] : 0;
-    const valor = typeof valorStr === 'number' ? valorStr : parseFloat(String(valorStr).replace(/[^\d,.\-]/g, '').replace(',', '.')) || 0;
+    let valor = typeof valorStr === 'number' ? valorStr : parseFloat(String(valorStr).replace(/[^\d,.\-]/g, '').replace(',', '.')) || 0;
 
-    const parseCell = (v: unknown): number => {
-      if (typeof v === 'number') return v;
-      const s = String(v ?? '').replace(/[^\d,.\-]/g, '').replace(',', '.');
-      return parseFloat(s) || 0;
-    };
+    // Nota: para Yamaha (CNPJS_SOMA_AR), o AA da linha principal já inclui o
+    // AR dela (ICMS ST RET ENTRADA). Só somamos o AR das linhas de continuação
+    // (tratado no bloco acima, sem nNF).
 
+    aposTotal = false;
     results.push({
       nNF,
       serie: colMap.serie >= 0 ? String(row[colMap.serie] ?? '').trim() : '',
@@ -188,7 +256,9 @@ export function parseSheet(workbook: XLSX.WorkBook, sheetName: string): ExcelNfe
       sheetName,
       isFrete,
       cfop: cfopRaw || undefined,
+      isZerada: valor === 0,
     });
+
   }
 
   return results;
@@ -199,7 +269,15 @@ export function autoDetectSheet(workbook: XLSX.WorkBook): string {
   for (const name of names) {
     const ws = workbook.Sheets[name];
     if (!ws) continue;
-    const data: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    // Só as primeiras linhas bastam para achar o cabeçalho — converter a aba
+    // inteira travava a interface em planilhas grandes.
+    const data: unknown[][] = XLSX.utils.sheet_to_json(ws, {
+      header: 1,
+      defval: '',
+      blankrows: true,
+      range: 0,
+      sheetRows: 30,
+    } as XLSX.Sheet2JSONOpts);
     const headerIdx = findHeaderRow(data);
     if (headerIdx >= 0) return name;
   }

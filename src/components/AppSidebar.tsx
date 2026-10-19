@@ -4,7 +4,7 @@ import {
   Users, KeyRound, MailOpen, ChevronRight, Stethoscope,
   Banknote, CreditCard, ListChecks, Package, UserCheck, ClipboardList,
   CalendarDays, BarChart2, User, BookOpen, Bot, TrendingUp, FileBarChart,
-  ScanSearch,
+  ScanSearch, Receipt,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -68,6 +68,7 @@ export function AppSidebar() {
     { title: "Caixas Postais",     url: "/caixas-postais",   icon: MailOpen,    moduleId: "caixas:dashboard" },
     { title: "Certificados",       url: "/certificados",     icon: KeyRound,    moduleId: "certificados:ativos" },
     { title: "Confronto XML",      url: "/confronto-xml",    icon: ScanSearch,  moduleId: "certidoes:confronto-xml" },
+    { title: "Conciliação ISS",    url: "/conciliacao-iss",  icon: Receipt,     moduleId: "certidoes:conciliacao-iss" },
   ].filter(item => temModulo(item.moduleId));
 
   const financeiroItems = [
